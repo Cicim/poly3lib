@@ -134,7 +134,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_tile() {
+    fn new_tile() {
         let tile = Tile::new(0x3F1, 0xA, false, true);
         assert_eq!(tile.index(), 0x3F1);
         assert_eq!(tile.palette(), 0xA);
@@ -143,7 +143,7 @@ mod tests {
     }
 
     #[test]
-    fn test_metatile() {
+    fn new_metatile() {
         let tiles = [
             Tile::new(0x000, 0xA, true, false),
             Tile::new(0x000, 0xF, true, true),
@@ -191,7 +191,7 @@ mod tests {
     }
 
     #[test]
-    fn test_read_tile() {
+    fn read_tile() {
         let rom = Rom::new(vec![0x4f, 0x3f, 0x1a, 0x00]);
         let tile = rom.read_tile(0).unwrap();
         assert_eq!(tile.index(), 0x34f);
@@ -207,7 +207,7 @@ mod tests {
     }
 
     #[test]
-    fn test_write_tile() {
+    fn write_tile() {
         let mut rom = Rom::new(vec![0x00, 0x00, 0x00, 0x00]);
         let tile = Tile::new(0x34f, 0x3, false, true);
         rom.write_tile(0, tile).unwrap();

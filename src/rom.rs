@@ -105,7 +105,7 @@ impl Rom {
 #[cfg(test)]
 mod tests {
     use super::*;
-    const FIRERED_PATH: &str = "tests/roms/firered.gba";
+    const FIRERED_PATH: &str = "roms/firered.gba";
 
     #[test]
     fn rom_loading() {
@@ -123,7 +123,7 @@ mod tests {
         // Load the ROM
         let rom = Rom::load(FIRERED_PATH).unwrap();
         // Save the ROM to a temporary file
-        let tmp_path = "tests/roms/firered.tmp.gba";
+        let tmp_path = "roms/firered.tmp.gba";
         rom.save(tmp_path).unwrap();
         // Load the temporary ROM
         let tmp_rom = Rom::load(tmp_path).unwrap();

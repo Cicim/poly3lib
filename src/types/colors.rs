@@ -169,7 +169,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_color() {
+    fn new_color() {
         let color = GBAColor::new(0x1F, 0x1F, 0x1F);
         assert_eq!(color.r(), 0x1F);
         assert_eq!(color.g(), 0x1F);
@@ -178,7 +178,7 @@ mod tests {
     }
 
     #[test]
-    fn test_palette() {
+    fn new_palette() {
         let mut palette = GBAPalette::new([GBAColor::new(0x1F, 0x1F, 0x1F); 16]);
         assert_eq!(palette.get(0), GBAColor::new(0x1F, 0x1F, 0x1F));
         palette.set(0, GBAColor::new(0x00, 0x00, 0x00));
@@ -186,7 +186,7 @@ mod tests {
     }
 
     #[test]
-    fn test_read_palette() {
+    fn read_palette() {
         let rom = Rom::new(vec![
             0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f,
             0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f,
@@ -198,7 +198,7 @@ mod tests {
     }
 
     #[test]
-    fn test_palette_read_write() {
+    fn palette_read_write() {
         let mut rom = Rom::new(vec![0; 32]);
         let palette = GBAPalette::new([GBAColor::new(0x1F, 0x1F, 0x1F); 16]);
         rom.write_palette(0, palette.clone()).unwrap();

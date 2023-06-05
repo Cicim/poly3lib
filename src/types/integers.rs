@@ -118,12 +118,11 @@ impl Rom {
 #[cfg(test)]
 mod tests {
     use super::*;
-    const FIRERED_PATH: &str = "tests/roms/firered.gba";
 
     #[test]
     fn read_u8() {
         // Load the ROM
-        let rom = Rom::load(FIRERED_PATH).unwrap();
+        let rom = Rom::new(vec![0x7f, 0, 0, 0]);
         // Read the first byte
         let byte = rom.read_u8(0);
         assert!(byte.is_ok());
@@ -136,20 +135,20 @@ mod tests {
     #[test]
     fn read_u16() {
         // Load the ROM
-        let rom = Rom::load(FIRERED_PATH).unwrap();
+        let rom = Rom::new(vec![0x7f, 0x10, 0, 0]);
         // Read the first 2 bytes
         let bytes = rom.read_u16(0);
         assert!(bytes.is_ok());
 
         if let Ok(bytes) = bytes {
-            assert_eq!(bytes, 0x007f);
+            assert_eq!(bytes, 0x107f);
         }
     }
 
     #[test]
     fn read_u32() {
         // Load the ROM
-        let rom = Rom::load(FIRERED_PATH).unwrap();
+        let rom = Rom::new(vec![0x7f, 0, 0, 0xea]);
         // Read the first 4 bytes
         let bytes = rom.read_u32(0);
         assert!(bytes.is_ok());
@@ -162,7 +161,7 @@ mod tests {
     #[test]
     fn write_u8() {
         // Load the ROM
-        let mut rom = Rom::load(FIRERED_PATH).unwrap();
+        let mut rom = Rom::new(vec![0, 0, 0, 0]);
         // Write 0xff to the ROM
         let bytes = rom.write_u8(0, 0xff);
         assert!(bytes.is_ok());
@@ -181,7 +180,7 @@ mod tests {
     #[test]
     fn write_u16() {
         // Load the ROM
-        let mut rom = Rom::load(FIRERED_PATH).unwrap();
+        let mut rom = Rom::new(vec![0, 0, 0, 0]);
         // Write 0xffff to the ROM
         let bytes = rom.write_u16(0, 0xfffe);
         assert!(bytes.is_ok());
@@ -200,7 +199,7 @@ mod tests {
     #[test]
     fn write_u32() {
         // Load the ROM
-        let mut rom = Rom::load(FIRERED_PATH).unwrap();
+        let mut rom = Rom::new(vec![0, 0, 0, 0]);
         // Write 0xffffffff to the ROM
         let bytes = rom.write_u32(0, 0xabcdef00);
         assert!(bytes.is_ok());
@@ -216,4 +215,16 @@ mod tests {
         }
     }
 
+    #[test]
+    fn read_i8() {
+        // Load the ROM
+        let rom = Rom::new(vec![0xff, 0, 0, 0]);
+        // Read the first byte
+        let byte = rom.read_i8(0);
+        assert!(byte.is_ok());
+
+        if let Ok(byte) = byte {
+            assert_eq!(byte, -1);
+        }
+    }
 }
