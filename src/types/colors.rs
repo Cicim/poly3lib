@@ -74,6 +74,12 @@ impl Into<u16> for GBAColor {
     }
 }
 
+impl From<u16> for GBAColor {
+    fn from(color: u16) -> GBAColor {
+        GBAColor(color)
+    }
+}
+
 impl Rom {
     /// Reads a color from the ROM at the given offset.
     pub fn read_color(&self, offset: usize) -> Result<GBAColor, OutOfBoundsError> {
@@ -186,14 +192,14 @@ mod tests {
             0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f,
             0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f,
             0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f, 0xff, 0x7f,
-        ], crate::rom::RomType::Emerald);
+        ]);
         let palette = GBAPalette::new([GBAColor::new(0x1F, 0x1F, 0x1F); 16]);
         assert_eq!(rom.read_palette(0).unwrap(), palette);
     }
 
     #[test]
     fn test_palette_read_write() {
-        let mut rom = Rom::new(vec![0; 32], crate::rom::RomType::Emerald);
+        let mut rom = Rom::new(vec![0; 32]);
         let palette = GBAPalette::new([GBAColor::new(0x1F, 0x1F, 0x1F); 16]);
         rom.write_palette(0, palette.clone()).unwrap();
         assert_eq!(rom.read_palette(0).unwrap(), palette);
