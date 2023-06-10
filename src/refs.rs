@@ -43,7 +43,7 @@ pub struct Refs {
     /// The list of map header groups pointed to by map_groups.
     pub map_groups_list: Option<Vec<TablePointer>>,
     /// The offsets to each map layout in the ROM.
-    pub map_layout_table: Option<TablePointer>,
+    pub map_layouts_table: Option<TablePointer>,
 }
 
 impl Display for Refs {
@@ -51,7 +51,7 @@ impl Display for Refs {
         use colored::Colorize;
 
         // If every field is None
-        if self.map_groups.is_none() && self.map_layout_table.is_none() {
+        if self.map_groups.is_none() && self.map_layouts_table.is_none() {
             return writeln!(f, "No references found");
         }
 
@@ -66,7 +66,7 @@ impl Display for Refs {
             }
         }
 
-        if let Some(table) = &self.map_layout_table {
+        if let Some(table) = &self.map_layouts_table {
             writeln!(f, "  map_layout_table: {}", table)?;
         }
 
@@ -105,6 +105,7 @@ impl Rom {
 pub enum TableInitError {
     NotImplemented,
     InvalidTablePointer,
+    TableGoesOutOfBounds,
 }
 
 impl Refs {
@@ -117,6 +118,11 @@ impl Refs {
         }
 
         None
+    }
+
+    /// Return the map layouts table if present.
+    pub fn get_map_layouts_table(&self) -> Option<&TablePointer> {
+        self.map_layouts_table.as_ref()
     }
 }
 

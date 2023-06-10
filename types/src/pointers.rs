@@ -97,6 +97,30 @@ impl<T: GBAType> std::fmt::Debug for PointedData<T> {
     }
 }
 
+impl<T: GBAType> PointedData<T> {
+    pub fn offset(&self) -> Option<u32> {
+        match self {
+            PointedData::Null => None,
+            PointedData::Valid(offset, _) => Some(*offset),
+            PointedData::NoData(offset) => Some(*offset),
+            PointedData::Invalid(_) => None,
+        }
+    }
+
+    pub fn data(&self) -> Option<&T> {
+        match self {
+            PointedData::Null => None,
+            PointedData::Valid(_, data) => Some(data),
+            PointedData::NoData(_) => None,
+            PointedData::Invalid(_) => None,
+        }
+    }
+
+    pub fn offset_unchecked(&self) -> u32 {
+        self.offset().unwrap()
+    }
+}
+
 #[derive(Default, Clone, Debug, Copy, PartialEq, Eq, Hash)]
 pub struct Nothing;
 

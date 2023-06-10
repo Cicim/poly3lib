@@ -171,18 +171,21 @@ impl Rom {
         value.write_to(&mut self.data, offset)
     }
 
+    pub fn is_pointer_valid(&self, pointer: u32) -> bool {
+        pointer >= 0x08000000 && pointer < 0x08000000 + self.size() as u32
+    }
+
     /// Read a pointer from the ROM at the given offset.
     ///
     /// Converts it from a 0x08000000 base address to a 0x00000000 base address
     /// if it lies in the correct range from 0x08000000 to 0x08000000 + rom.size().
     pub fn read_ptr(&self, offset: usize) -> Result<usize, GBAIOError> {
-        let ptr = self.read::<u32>(offset)? as i32 - 0x08000000;
+        let pointer = self.read::<u32>(offset)?;
 
-        if ptr < 0 || ptr >= self.size() as i32 {
-            return Err(GBAIOError::InvalidOffset(ptr as u32));
+        match self.is_pointer_valid(pointer) {
+            false => Err(GBAIOError::InvalidOffset(pointer)),
+            true => Ok(pointer as usize - 0x08000000),
         }
-
-        Ok(ptr as usize)
     }
 
     /// Write a pointer to the ROM at the given offset.s
