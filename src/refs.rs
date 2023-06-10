@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{fmt::Display, collections::HashMap};
 
 use serde::{Deserialize, Serialize};
 
@@ -44,6 +44,8 @@ pub struct Refs {
     pub map_groups_list: Option<Vec<TablePointer>>,
     /// The offsets to each map layout in the ROM.
     pub map_layouts_table: Option<TablePointer>,
+    /// Tilesets table with the relative size and whether it is secondary.
+    pub tilesets_table: Option<HashMap<usize, (usize, bool)>>,
 }
 
 impl Display for Refs {
@@ -67,7 +69,25 @@ impl Display for Refs {
         }
 
         if let Some(table) = &self.map_layouts_table {
-            writeln!(f, "  map_layout_table: {}", table)?;
+            writeln!(f, "  map_layouts_table: {}", table)?;
+        }
+
+        if let Some(table) = &self.tilesets_table {
+            writeln!(f, "  tilesets_table:")?;
+            // Sort the hashmap by offset
+            let mut table: Vec<_> = table.iter().collect();
+            table.sort_by(|a, b| a.0.cmp(b.0));
+
+            for (offset, (size, is_secondary)) in table.iter() {
+                let offset = format!("0x{:X}", offset).blue();
+                let size = format!("{:<3}", size).red();
+                let primary = if *is_secondary {
+                    "secondary".yellow()
+                } else {
+                    "primary".green()
+                };
+                writeln!(f, "    tileset {} size {} is {}", offset, size, primary)?;
+            }
         }
 
         Ok(())
@@ -123,6 +143,11 @@ impl Refs {
     /// Return the map layouts table if present.
     pub fn get_map_layouts_table(&self) -> Option<&TablePointer> {
         self.map_layouts_table.as_ref()
+    }
+
+    /// Return the tilesets table if present.
+    pub fn get_tilesets_table(&self) -> Option<&HashMap<usize, (usize, bool)>> {
+        self.tilesets_table.as_ref()
     }
 }
 

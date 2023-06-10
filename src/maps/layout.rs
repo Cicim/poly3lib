@@ -2,16 +2,6 @@ use gba_macro::gba_struct;
 
 use crate::rom::Rom;
 
-gba_struct!(Tileset {
-    u8 is_compressed;
-    u8 is_secondary;
-    void* graphics;
-    void* palette;
-    void* blocks;
-    void* animations;
-    void* behaviors;
-});
-
 gba_struct!(MapLayout {
     i32 width;
     i32 height;
