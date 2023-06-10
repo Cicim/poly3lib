@@ -1,13 +1,10 @@
 [package]
-name = "poly3lib"
+name = "gba_types"
 version = "0.1.0"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-gba_types = { path = "types" }
-gba_macro = { path = "types/gba_macro" }
+gba_macro = { path = "gba_macro" }
 colored = "2.0.0"
-serde = { version = "1.0.130", features = ["derive"] }
-serde_json = "1.0.68"

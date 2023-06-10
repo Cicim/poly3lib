@@ -1,6 +1,6 @@
-use std::fmt::Display;
+use std::fmt;
 
-use crate::rom::*;
+use crate::{GBAType, GBAIOError};
 
 /// Data for a single 8x8 tile in a map.
 ///
@@ -9,7 +9,7 @@ use crate::rom::*;
 /// + Bit 10-13: palette index
 /// + Bit 14: horizontal flip
 /// + Bit 15: vertical flip
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Tile(u16);
 
 impl Tile {
@@ -57,7 +57,7 @@ impl Into<u16> for Tile {
 
 const FLIP_STRINGS: [&str; 4] = ["□", "◧", "⬒", "◩"];
 
-impl Display for Tile {
+impl fmt::Debug for Tile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use colored::Colorize;
         let tile = format!("T{:03X}", self.index()).cyan().on_black();
@@ -70,19 +70,21 @@ impl Display for Tile {
     }
 }
 
-impl Rom {
-    /// Reads a tile from the ROM at the given offset.
-    pub fn read_tile(&self, offset: usize) -> Result<Tile, OutOfBoundsError> {
-        let tile_bytes = self.read_u16(offset)?;
-        Ok(Tile(tile_bytes))
+impl GBAType for Tile {
+    const SIZE: usize = 2;
+
+    fn read_from(bytes: &[u8], offset: usize) -> Result<Self, GBAIOError> {
+        let tile = u16::read_from(bytes, offset)?;
+        Ok(Tile(tile))
     }
 
-    /// Writes a tile to the ROM at the given offset.
-    pub fn write_tile(&mut self, offset: usize, tile: Tile) -> Result<(), OutOfBoundsError> {
-        self.write_u16(offset, tile.into())
+    fn write_to(&self, bytes: &mut [u8], offset: usize) -> Result<(), GBAIOError> {
+        self.0.write_to(bytes, offset)
     }
 }
 
+
+#[derive(Copy, Clone, PartialEq, Eq)]
 pub struct MetaTile {
     pub tiles: [Tile; 8],
 }
@@ -93,11 +95,11 @@ impl MetaTile {
     }
 }
 
-impl Display for MetaTile {
+impl fmt::Debug for MetaTile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "MetaTile[")?;
         for (i, tile) in self.tiles.iter().enumerate() {
-            write!(f, "{}", tile)?;
+            write!(f, "{:?}", tile)?;
             if i != 7 {
                 write!(f, " ")?;
             }
@@ -106,44 +108,41 @@ impl Display for MetaTile {
     }
 }
 
-impl Rom {
-    /// Reads a metatile from the ROM at the given offset.
-    pub fn read_metatile(&self, offset: usize) -> Result<MetaTile, OutOfBoundsError> {
-        let mut tiles = [Tile(0); 8];
-        for i in 0..8 {
-            tiles[i] = self.read_tile(offset + 2 * i)?;
-        }
-        Ok(MetaTile::new(tiles))
+impl GBAType for MetaTile {
+    const SIZE: usize = 16;
+
+    fn read_from(bytes: &[u8], offset: usize) -> Result<Self, GBAIOError> {
+        let array = <[Tile; 8]>::read_from(bytes, offset)?;
+        Ok(MetaTile::new(array))
     }
 
-    /// Writes a metatile to the ROM at the given offset.
-    pub fn write_metatile(
-        &mut self,
-        offset: usize,
-        metatile: MetaTile,
-    ) -> Result<(), OutOfBoundsError> {
-        for (i, tile) in metatile.tiles.iter().enumerate() {
-            self.write_tile(offset + 2 * i, *tile)?;
-        }
-        Ok(())
+    fn write_to(&self, bytes: &mut [u8], offset: usize) -> Result<(), GBAIOError> {
+        self.tiles.write_to(bytes, offset)
     }
 }
+
+
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn new_tile() {
+    fn tile() {
         let tile = Tile::new(0x3F1, 0xA, false, true);
         assert_eq!(tile.index(), 0x3F1);
         assert_eq!(tile.palette(), 0xA);
         assert_eq!(tile.hflip(), false);
         assert_eq!(tile.vflip(), true);
+
+        // Write it
+        let mut bytes = [0; 2];
+        tile.write_to(&mut bytes, 0).unwrap();
+        assert_eq!(bytes, u16::to_le_bytes(tile.0));
     }
 
     #[test]
-    fn new_metatile() {
+    fn metatile() {
         let tiles = [
             Tile::new(0x000, 0xA, true, false),
             Tile::new(0x000, 0xF, true, true),
@@ -190,28 +189,4 @@ mod tests {
         assert_eq!(meta_tile.tiles[7].vflip(), true);
     }
 
-    #[test]
-    fn read_tile() {
-        let rom = Rom::new(vec![0x4f, 0x3f, 0x1a, 0x00]);
-        let tile = rom.read_tile(0).unwrap();
-        assert_eq!(tile.index(), 0x34f);
-        assert_eq!(tile.palette(), 0x3);
-        assert_eq!(tile.hflip(), true);
-        assert_eq!(tile.vflip(), true);
-
-        let tile = rom.read_tile(2).unwrap();
-        assert_eq!(tile.index(), 0x1A);
-        assert_eq!(tile.palette(), 0x0);
-        assert_eq!(tile.hflip(), false);
-        assert_eq!(tile.vflip(), false);
-    }
-
-    #[test]
-    fn write_tile() {
-        let mut rom = Rom::new(vec![0x00, 0x00, 0x00, 0x00]);
-        let tile = Tile::new(0x34f, 0x3, false, true);
-        rom.write_tile(0, tile).unwrap();
-        assert_eq!(rom.data[0], 0x4F);
-        assert_eq!(rom.data[1], 0x3B);
-    }
 }

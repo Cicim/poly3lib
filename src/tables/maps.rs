@@ -1,7 +1,4 @@
-use crate::{
-    refs::{TablePointer},
-    rom::Rom,
-};
+use crate::{refs::TablePointer, rom::Rom};
 
 #[derive(Debug)]
 pub enum MapError {
@@ -48,9 +45,6 @@ impl Rom {
         }
 
         // Get the map header
-        let _ = self
-            .read_ptr(map_group.offset + index as usize * 4)
-            .map_err(|_| MapError::InvalidHeaderIndex)?;
 
         Ok(())
     }

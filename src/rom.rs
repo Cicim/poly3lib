@@ -1,6 +1,8 @@
 use std::fs::File;
 use std::io::{Read, Write};
 
+use gba_types::{GBAIOError, GBAType};
+
 use crate::refs::Refs;
 
 const MAX_ROM_SIZE: usize = 1 << 25;
@@ -32,11 +34,8 @@ pub enum RomError {
     InvalidRom,
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub struct OutOfBoundsError;
-
 impl Rom {
-    // Create a new ROM from the given buffer.
+    /// Create a new ROM from the given buffer.
     pub fn new(data: Vec<u8>) -> Self {
         Rom {
             data,
@@ -105,6 +104,12 @@ impl Rom {
         // Write the ROM to the file
         file.write_all(&self.data).map_err(RomError::IoError)?;
 
+        // Serialize and write the refs to the file
+        let refs_path = format!("{}.refs.json", path);
+        let mut file = File::create(refs_path).map_err(RomError::IoError)?;
+        let json = serde_json::to_string_pretty(&self.refs).unwrap();
+        file.write_all(json.as_bytes()).map_err(RomError::IoError)?;
+
         Ok(())
     }
 
@@ -113,115 +118,82 @@ impl Rom {
         self.data.len()
     }
 
-    /// Writes the given data to the ROM at the given offset.
-    pub fn write(&mut self, offset: usize, data: &[u8]) -> Result<(), OutOfBoundsError> {
-        // Check that the offset is valid
-        if offset + data.len() > self.size() {
-            return Err(OutOfBoundsError);
-        }
-
-        self.data[offset..offset + data.len()].copy_from_slice(data);
-        Ok(())
+    /// Reads a value of type `T` from the ROM at the given offset.
+    ///
+    /// # Examples
+    /// Read a byte from the ROM at offset 0.
+    /// ```
+    /// use poly3lib::rom::Rom;
+    /// let rom = Rom::load("roms/firered.gba").unwrap();
+    /// let byte = rom.read::<u8>(0).unwrap();
+    /// assert_eq!(byte, 127);
+    ///
+    /// // Or, equivalently:
+    /// let byte: u8 = rom.read(0).unwrap();
+    /// assert_eq!(byte, 127);
+    /// ```
+    ///
+    /// Read an array of i16s from the ROM at offset 0.
+    /// ```
+    /// use poly3lib::rom::Rom;
+    /// let rom = Rom::load("roms/firered.gba").unwrap();
+    /// let array = rom.read::<[i16; 4]>(0).unwrap();
+    /// assert_eq!(array, [127i16, -5632, -220, 20910]);
+    ///
+    /// // Or, equivalently
+    ///
+    /// let array: [i16; 4] = rom.read(0).unwrap();
+    /// assert_eq!(array, [127i16, -5632, -220, 20910]);
+    /// ```
+    pub fn read<T: GBAType>(&self, offset: usize) -> Result<T, GBAIOError> {
+        T::read_from(&self.data, offset)
     }
 
-    /// Reads the given number of bytes from the ROM at the given offset.
-    pub fn read(&self, offset: usize, size: usize) -> Result<&[u8], OutOfBoundsError> {
-        // Check that the offset is valid
-        if offset + size > self.size() {
-            return Err(OutOfBoundsError);
-        }
-
-        Ok(&self.data[offset..offset + size])
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    const FIRERED_PATH: &str = "roms/firered.gba";
-
-    #[test]
-    fn rom_loading() {
-        // Load the ROM
-        let rom = Rom::load(FIRERED_PATH);
-        assert!(rom.is_ok());
-        let rom = rom.unwrap();
-
-        assert_eq!(rom.data.len(), 0x1000000);
-        assert_eq!(rom.rom_type, RomType::FireRed);
+    /// Writes a value of type `T` to the ROM at the given offset.
+    ///
+    /// # Examples
+    /// Write a byte to the ROM at offset 0.
+    /// ```
+    /// use poly3lib::rom::Rom;
+    /// let mut rom = Rom::load("roms/firered.gba").unwrap();
+    /// rom.write(0, 0x12_u8).unwrap();
+    /// assert_eq!(rom.data[0], 0x12);
+    /// ```
+    ///
+    /// Write an array of i16s to the ROM at offset 0.
+    /// ```
+    /// use poly3lib::rom::Rom;
+    /// let mut rom = Rom::load("roms/firered.gba").unwrap();
+    /// rom.write(0, [0x12i16, 0x34i16, 0x56i16, 0x78i16]).unwrap();
+    /// assert_eq!(rom.data[0..8], [0x12, 0, 0x34, 0, 0x56, 0, 0x78, 0]);
+    /// ```
+    pub fn write<T: GBAType>(&mut self, offset: usize, value: T) -> Result<(), GBAIOError> {
+        value.write_to(&mut self.data, offset)
     }
 
-    // #[test]
-    // fn rom_saving() {
-    //     // Load the ROM
-    //     let rom = Rom::load(FIRERED_PATH).unwrap();
-    //     // Save the ROM to a temporary file
-    //     let tmp_path = "roms/firered.tmp.gba";
-    //     rom.save(tmp_path).unwrap();
-    //     // Load the temporary ROM
-    //     let tmp_rom = Rom::load(tmp_path).unwrap();
-    //     // Delete the temporary file
-    //     std::fs::remove_file(tmp_path).unwrap();
-    //     // Compare the two ROMs
-    //     assert!(rom.data == tmp_rom.data);
-    // }
+    /// Read a pointer from the ROM at the given offset.
+    ///
+    /// Converts it from a 0x08000000 base address to a 0x00000000 base address
+    /// if it lies in the correct range from 0x08000000 to 0x08000000 + rom.size().
+    pub fn read_ptr(&self, offset: usize) -> Result<usize, GBAIOError> {
+        let ptr = self.read::<u32>(offset)? as i32 - 0x08000000;
 
-    // Read/Write tests
-    #[test]
-    fn rom_read() {
-        // Load the ROM
-        let rom = Rom::new(vec![1, 2, 3, 4]);
-        // Read the first 4 bytes
-        let bytes = rom.read(0, 4);
-        assert!(bytes.is_ok());
-
-        if let Ok(bytes) = bytes {
-            assert_eq!(bytes, vec![1, 2, 3, 4]);
+        if ptr < 0 || ptr >= self.size() as i32 {
+            return Err(GBAIOError::InvalidOffset(ptr as u32));
         }
+
+        Ok(ptr as usize)
     }
 
-    #[test]
-    fn rom_read_out_of_bounds() {
-        // Load the ROM
-        let rom = Rom::new(vec![0, 0, 0, 0]);
-        // Read 4 bytes starting at the end of the ROM
-        let bytes = rom.read(rom.size(), 4);
-        assert!(bytes.is_err());
-
-        if let Err(err) = bytes {
-            assert_eq!(err, OutOfBoundsError);
+    /// Write a pointer to the ROM at the given offset.s
+    ///
+    /// Converts it from a 0x00000000 base address to a 0x08000000 base address
+    /// only if it lies in the correct range from 0x00000000 to rom.size().
+    pub fn write_ptr(&mut self, offset: usize, ptr: usize) -> Result<(), GBAIOError> {
+        if ptr >= self.size() {
+            return Err(GBAIOError::InvalidOffset(ptr as u32));
         }
-    }
 
-    #[test]
-    fn rom_write() {
-        // Load the ROM
-        let mut rom = Rom::new(vec![0, 0, 0, 0]);
-        // Write 4 bytes to the ROM
-        let bytes = rom.write(0, &[0xff, 0xff, 0xff, 0xff]);
-        assert!(bytes.is_ok());
-
-        if let Ok(()) = bytes {
-            // Read the first 4 bytes
-            let bytes = rom.read(0, 4);
-            assert!(bytes.is_ok());
-
-            if let Ok(bytes) = bytes {
-                assert_eq!(bytes, vec![0xff, 0xff, 0xff, 0xff]);
-            }
-        }
-    }
-
-    #[test]
-    fn rom_write_out_of_bounds() {
-        // Load the ROM
-        let mut rom = Rom::new(vec![0, 0, 0, 0]);
-        // Write 4 bytes starting at the end of the ROM
-        let bytes = rom.write(rom.size(), &[0xff, 0xff, 0xff, 0xff]);
-        assert!(bytes.is_err());
-
-        if let Err(err) = bytes {
-            assert_eq!(err, OutOfBoundsError);
-        }
+        self.write(offset, (ptr + 0x08000000) as u32)
     }
 }
