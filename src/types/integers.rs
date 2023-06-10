@@ -90,14 +90,14 @@ impl Rom {
         // Read the pointer
         let bytes = self.read_u32(offset).map_err(|_| PointerError::OutOfBounds)?;
         // Subtract the ROM base address
-        let offset: i32 = bytes as i32 - 0x08000000;
+        let pointer: i32 = bytes as i32 - 0x08000000;
 
         // Check if the offset is negative or out of bounds
-        if offset < 0 || offset as usize >= self.size() {
+        if pointer < 0 || pointer as usize >= self.size() {
             return Err(PointerError::InvalidPointer);
         }
 
-        Ok(bytes as usize)
+        Ok(pointer as usize)
     }
 
     /// Writes a pointer to the ROM at the given offset.
