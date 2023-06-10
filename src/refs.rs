@@ -101,6 +101,12 @@ impl Rom {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum TableInitError {
+    NotImplemented,
+    InvalidTablePointer,
+}
+
 impl Refs {
     /// Return the map and map groups vectors if present.
     pub fn get_map_groups(&self) -> Option<(&TablePointer, &Vec<TablePointer>)> {
