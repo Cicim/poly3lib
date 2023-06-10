@@ -7,8 +7,20 @@ pub type VoidPointer = PointedData<Nothing>;
 #[derive(Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum PointedData<T: GBAType> {
     #[default]
+    /// When the pointer is null (0), so the data is not present.
     Null,
+    /// When the offset is valid, and you have data to write
+    /// or when you read the data.
     Valid(u32, T),
+    /// When you have a valid offset to write, but you don't want to write
+    /// any data to that offset, even though the pointer has a type.
+    /// 
+    /// Is never created by reading data
+    NoData(u32),
+    /// When the pointer was not rebased because it was not a valid offset,
+    /// so no data can be read, but you may still want to see the result.
+    /// 
+    /// Throws an error when writing.
     Invalid(u32),
 }
 
@@ -59,10 +71,12 @@ impl<T: GBAType> GBAType for PointedData<T> {
                 data.write_to(bytes, *offset as usize)?;
 
                 *offset + 0x08000000
-            }
+            },
+            // Write the pointer at the offset, but don't write any data.
+            PointedData::NoData(offset) => *offset + 0x08000000,
             PointedData::Invalid(pointer) => {
                 return Err(GBAIOError::WritingInvalidPointer(*pointer))
-            }
+            },
         };
 
         let buf = pointer.to_le_bytes();
@@ -73,10 +87,12 @@ impl<T: GBAType> GBAType for PointedData<T> {
 
 impl<T: GBAType> std::fmt::Debug for PointedData<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        use PointedData::*;
         match self {
-            PointedData::Null => write!(f, "NULL"),
-            PointedData::Valid(offset, data) => write!(f, "Valid(offset ${:07X} => {:#?})", offset, data),
-            PointedData::Invalid(pointer) => write!(f, "Invalid(pointer 0x{:08X})", pointer),
+            Null => write!(f, "NULL"),
+            Valid(offset, data) => write!(f, "Valid(offset ${:07X} => {:#?})", offset, data),
+            NoData(offset) => write!(f, "Valid(offset ${:07X})", offset),
+            Invalid(pointer) => write!(f, "Invalid(pointer 0x{:08X})", pointer),
         }
     }
 }
