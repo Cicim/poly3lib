@@ -1,13 +1,12 @@
 use std::collections::{HashMap, HashSet};
 
-use gba_types::tiles;
-
 use crate::{
+    maps::tileset::TilesetHeader,
     refs::{TableInitError, TablePointer},
     rom::Rom,
 };
 
-use self::{layout::MapLayout, tileset::Tileset};
+use self::layout::MapLayout;
 
 pub mod header;
 pub mod layout;
@@ -32,7 +31,6 @@ impl Rom {
             let tilesets_data = get_tilesets_data(self, &map_layouts_table)?;
             self.refs.tilesets_table = Some(tilesets_data);
         }
-
 
         Ok(())
     }
@@ -194,22 +192,26 @@ fn get_tilesets_data(
     // For each tileset you found
     for (tileset_offset, is_secondary) in tileset {
         // Read the tileset data
-        let tileset_data: Tileset = rom
+        let tileset_data: TilesetHeader = rom
             .read(tileset_offset as usize)
             .map_err(|_| TableInitError::TableGoesOutOfBounds)?;
 
         // Make sure both the blocks offset and the behaviors offset are valid
-        if let Some(blocks_offset) = tileset_data.blocks.offset() {
+        if let Some(blocks_offset) = tileset_data.metatiles.offset() {
             if let Some(behaviors_offset) = tileset_data.behaviors.offset() {
                 // These should be adjacent to each other
                 let size = (behaviors_offset - blocks_offset) >> 4;
 
                 if size <= 0 {
-                    println!("[Warning] Cannot compute tileset size for {:X}, using default", tileset_offset);
+                    println!(
+                        "[Warning] Cannot compute tileset size for {:X}, using default",
+                        tileset_offset
+                    );
                     match rom.get_maximum_tileset_size() {
                         Ok((primary_lim, secondary_lim)) => {
                             if is_secondary {
-                                tilesets_data.insert(tileset_offset as usize, (secondary_lim, true));
+                                tilesets_data
+                                    .insert(tileset_offset as usize, (secondary_lim, true));
                             } else {
                                 tilesets_data.insert(tileset_offset as usize, (primary_lim, false));
                             }
