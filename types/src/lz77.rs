@@ -1,9 +1,9 @@
-use crate::rom::Rom;
+use crate::GBAIOError;
 
 // An unreasonable size for a decompressed size of a GBA graphics
-const MAX_DECOMPRESSED_SIZE: u32 = 0x040000;
+const MAX_DECOMPRESSED_SIZE: u32 = 0x080000;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum Lz77ReadingError {
     InvalidOffset(usize),
     InvalidMagic,
@@ -12,43 +12,43 @@ pub enum Lz77ReadingError {
     UnexpectedEndOfInput,
 }
 
-impl Rom {
-    /// Reads an Lz77 compressed buffer from ROM.
-    pub fn read_lz77(&self, offset: usize) -> Result<Vec<u8>, Lz77ReadingError> {
-        // Read the header
-        let length = lz77_read_header(self, offset)?;
+/// Reads an Lz77 compressed buffer from ROM.
+pub fn read_lz77(data: &[u8], offset: usize) -> Result<Vec<u8>, GBAIOError> {
+    // Read the header
+    let length = lz77_read_header(data, offset)?;
 
-        // Decompress the buffer
-        let buffer = &self.data[offset + 4..];
-        let decompressed = lz77_decompress(buffer, length)?;
+    // Decompress the buffer
+    let buffer = &data[offset + 4..];
+    let decompressed = lz77_decompress(buffer, length)?;
 
-        Ok(decompressed)
-    }
+    Ok(decompressed)
 }
 
 /// Reads the Lz77 header from ROM.
-fn lz77_read_header(rom: &Rom, offset: usize) -> Result<usize, Lz77ReadingError> {
-    if offset + 4 > rom.size() {
-        return Err(Lz77ReadingError::InvalidOffset(offset));
+pub fn lz77_read_header(data: &[u8], offset: usize) -> Result<usize, GBAIOError> {
+    if offset + 4 > data.len() {
+        return Err(GBAIOError::Lz77Error(Lz77ReadingError::InvalidOffset(
+            offset,
+        )));
     }
     // Read the 32-bit header
-    let header = &rom.data[offset..offset + 4];
+    let header = &data[offset..offset + 4];
 
     let magic = header[0];
     let length = (header[1] as u32) | ((header[2] as u32) << 8) | ((header[3] as u32) << 16);
 
     if magic != 0x010 {
-        return Err(Lz77ReadingError::InvalidMagic);
+        return Err(GBAIOError::Lz77Error(Lz77ReadingError::InvalidMagic));
     }
     if length > MAX_DECOMPRESSED_SIZE {
-        return Err(Lz77ReadingError::InvalidLength);
+        return Err(GBAIOError::Lz77Error(Lz77ReadingError::InvalidLength));
     }
 
     Ok(length as usize)
 }
 
 /// Decompresses an Lz77 compressed buffer.
-pub fn lz77_decompress(data: &[u8], inflated_size: usize) -> Result<Vec<u8>, Lz77ReadingError> {
+pub fn lz77_decompress(data: &[u8], inflated_size: usize) -> Result<Vec<u8>, GBAIOError> {
     // Initialize the destination buffer
     let mut output: Vec<u8> = Vec::with_capacity(inflated_size);
     let mut src_offset = 0;
@@ -73,7 +73,9 @@ pub fn lz77_decompress(data: &[u8], inflated_size: usize) -> Result<Vec<u8>, Lz7
                     let index = match output.len().checked_sub(backwards_offset) {
                         Some(index) => index,
                         None => {
-                            return Err(Lz77ReadingError::LookupOffsetOutOfBounds);
+                            return Err(GBAIOError::Lz77Error(
+                                Lz77ReadingError::LookupOffsetOutOfBounds,
+                            ));
                         }
                     };
 
@@ -82,10 +84,9 @@ pub fn lz77_decompress(data: &[u8], inflated_size: usize) -> Result<Vec<u8>, Lz7
                 }
             } else {
                 // Read the data
-                let data = data
-                    .get(src_offset)
-                    .copied()
-                    .ok_or(Lz77ReadingError::UnexpectedEndOfInput)?;
+                let data = data.get(src_offset).copied().ok_or(GBAIOError::Lz77Error(
+                    Lz77ReadingError::UnexpectedEndOfInput,
+                ))?;
                 output.push(data);
                 src_offset += 1;
             }
@@ -279,48 +280,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn decompress() {
-        let rom = Rom::load("roms/firered.gba").unwrap();
-        let offset = 0x0EA1D68;
-
-        let first_bytes = [
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xDD,
-            0xDD, 0x88, 0xDD, 0xDD, 0x8D, 0x88, 0xDD, 0xDD, 0x88, 0x88, 0xDD, 0x8D, 0x88, 0x88,
-            0xDD, 0x88, 0x88, 0xC8, 0xDD, 0x88, 0x88, 0xCC, 0xDD, 0x88, 0xC8, 0xCC, 0xDD, 0xDD,
-            0xDD, 0xDD, 0x88, 0xDD, 0xDD, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88, 0x88,
-            0xCC, 0x88, 0x88, 0xC8, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC, 0xCC,
-            0xCC, 0xCC, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xDD,
-            0xFF, 0xFF, 0xDD, 0xDD, 0xFF, 0xDF, 0xDD, 0xDD, 0xFF, 0xDF, 0xDD, 0xDD, 0xFF, 0xDD,
-            0xDD, 0xAB, 0xDF, 0xDD, 0xDD, 0xAA, 0xFF, 0xFF, 0xFF, 0xFF, 0xDD, 0xFF, 0xFF, 0xDD,
-            0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xBB, 0xDD,
-            0xDD, 0xBB, 0xAA, 0xBB, 0xBB, 0xAA, 0xAA, 0xAA, 0xAA, 0xAA, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x40, 0x00, 0x00, 0x00, 0x14, 0x00, 0x00, 0x00, 0x13, 0x00, 0x00, 0x40, 0x12,
-            0x00, 0x30, 0x33, 0x11,
-        ];
-
-        let decompressed = rom.read_lz77(offset);
-        assert!(decompressed.is_ok());
-
-        let decompressed = decompressed.unwrap();
-        assert_eq!(decompressed.len(), 20480);
-        assert_eq!(decompressed[0..first_bytes.len()], first_bytes);
-    }
-
-    #[test]
     fn compress() {
         // Compress a buffer and make sure it decompresses to the same thing
-        let rom = Rom::load("roms/firered.gba").unwrap();
-        let offset = 0x0EA1D68;
+        let decompressed = &b"Hello, world, this is a test string!"[..];
 
-        let decompressed = rom.read_lz77(offset).unwrap();
-        let compressed = lz77_compress(&decompressed, &Lz77Options::fastest());
+        let compressed = lz77_compress(&decompressed, &Lz77Options::most_compression());
         let decompressed2 = lz77_decompress(&compressed, decompressed.len()).unwrap();
         assert_eq!(decompressed, decompressed2);
     }

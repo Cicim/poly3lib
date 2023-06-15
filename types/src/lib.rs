@@ -1,5 +1,8 @@
 use std::fmt::{Display, Formatter};
 
+/// Provides support for the LZ77 compression algorithm.
+pub mod lz77;
+
 /// Provides reading and writing functions for the Rust array type
 /// which corresponds to a static-length array in a C-struct.
 pub mod arrays;
@@ -25,6 +28,7 @@ pub enum GBAIOError {
     MisalignedOffset(u32, u32),
     WritingInvalidPointer(u32),
     RepointingError,
+    Lz77Error(lz77::Lz77ReadingError),
 }
 
 pub trait GBAType: Sized + std::fmt::Debug {
@@ -49,6 +53,7 @@ impl Display for GBAIOError {
             ),
             WritingInvalidPointer(offset) => write!(f, "Writing invalid pointer: {:#010X}", offset),
             RepointingError => write!(f, "Repointing error"),
+            Lz77Error(e) => write!(f, "Lz77 error: {:?}", e),
         }
     }
 }

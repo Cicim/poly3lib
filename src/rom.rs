@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::{Read, Write};
 
+use gba_types::lz77::*;
 use gba_types::{GBAIOError, GBAType};
 
 use crate::refs::Refs;
@@ -215,5 +216,38 @@ impl Rom {
         new_size: usize,
     ) -> Option<usize> {
         gba_types::vectors::repoint_offset(&mut self.data, offset, old_size, new_size)
+    }
+
+    /// Read compressed data from the ROM at the given offset.
+    pub fn read_lz77(&self, offset: usize) -> Result<Vec<u8>, GBAIOError> {
+        gba_types::lz77::read_lz77(&self.data, offset)
+    }
+
+    /// Replaces the Lz77 data at the given offset with the given data.
+    /// Returns the offset of the new data (since it may have changed).
+    pub fn replace_lz77_data(&mut self, offset: usize, data: &[u8]) -> Result<usize, GBAIOError> {
+        // Read the header of the old compressed data
+        let inflated_size = lz77_read_header(&self.data, offset)?;
+        // Find the old compressed data's size
+        let old_size = lz77_get_deflated_size(&self.data, inflated_size);
+
+        // Compute the new size of the data
+        let data = lz77_compress(&data, &Lz77Options::fastest());
+        let new_size = data.len();
+
+        // Repoint the data if necessary (consider the header)
+        let new_offset = self
+            .repoint_offset(offset, old_size + 4, new_size + 4)
+            .ok_or_else(|| GBAIOError::RepointingError)?;
+
+        // Write the header
+        self.data[new_offset] = 0x10;
+        self.data[new_offset + 1] = (inflated_size & 0xFF) as u8;
+        self.data[new_offset + 2] = ((inflated_size >> 8) & 0xFF) as u8;
+        self.data[new_offset + 3] = ((inflated_size >> 16) & 0xFF) as u8;
+        // Write the data
+        self.data[new_offset + 4..new_offset + 4 + new_size].copy_from_slice(&data);
+
+        Ok(new_offset)
     }
 }
