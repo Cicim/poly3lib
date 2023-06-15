@@ -202,47 +202,18 @@ impl Rom {
 
     /// Find a free offset in the ROM of the given size.
     pub fn find_free_space(&self, size: usize, align: usize) -> Option<usize> {
-        let mut offset = 0x100000;
-        
-        if size % align != 0 {
-            println!("in Rom::find_free_space -- Size {} should be aligned to {}", size, align);
-            return None;
-        }
-        if size > self.size() - offset {
-            println!("in Rom::find_free_space -- Size {} is larger searchable ROM size {}", size, self.size());
-            return None;
-        }
-
-
-        'outer:
-        while offset < self.size() - size {
-            // If this was a possible free space, but the last bit was not 0xFF,
-            // then we need to skip ahead because no possible sub-window could
-            // be free.
-            if self.data[offset + size - 1] != 0xFF {
-                offset += size;
-                continue;
-            }
-
-            // The window ends with 0xFF
-            // Check if the window is free
-            for i in 0..size {
-                if self.data[offset + i] != 0xFF {
-                    // An 0xFF was found in the middle of the window
-                    // We can keep looking right after it (aligned)
-                    offset += align.max(i);
-                    if offset % align != 0 {
-                        offset += align - (offset % align);
-                    }
-                    continue 'outer;
-                }
-            }
-
-            return Some(offset);
-        }
-
-        Some(offset)
+        gba_types::vectors::find_free_space(&self.data, size, align)
     }
 
-
+    /// Discover if the data needs a new place in ROM and if so, find it.
+    /// Return the offset of the data in ROM, whether it changed or not.
+    /// In case everything succeeds, clear all the old data.
+    pub fn repoint_offset(
+        &mut self,
+        offset: usize,
+        old_size: usize,
+        new_size: usize,
+    ) -> Option<usize> {
+        gba_types::vectors::repoint_offset(&mut self.data, offset, old_size, new_size)
+    }
 }

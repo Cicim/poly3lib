@@ -92,6 +92,7 @@ enum StructFieldType {
     Array(Box<StructFieldType>, u32),
     Pointer(Box<StructFieldType>),
     Struct(String),
+    Vector(Box<StructFieldType>, TokenStream),
 }
 #[derive(Debug)]
 struct StructField {
@@ -153,7 +154,10 @@ fn parse_field(stream: &mut impl Iterator<Item = TokenTree>, start_token: Ident)
                 _ => abort!(token.span(), "expected struct name or body"),
             }
         }
-        "const" => abort!(start_token.span(), "const is not supported by design. Remove it when copying struct definitions from C."),
+        "const" => abort!(
+            start_token.span(),
+            "const is not supported by design. Remove it when copying struct definitions from C."
+        ),
         _ => abort!(
             start_token.span(),
             "unexpected token: expected type or end of struct"
@@ -254,8 +258,9 @@ fn parse_field(stream: &mut impl Iterator<Item = TokenTree>, start_token: Ident)
                 }
                 _ => abort!(punct.span(), "unexpected token"),
             },
-            TokenTree::Group(group) => {
-                if group.delimiter() == proc_macro::Delimiter::Bracket {
+            TokenTree::Group(group) => match group.delimiter() {
+                // Handle array
+                proc_macro::Delimiter::Bracket => {
                     let size = match group
                         .stream()
                         .into_iter()
@@ -274,10 +279,21 @@ fn parse_field(stream: &mut impl Iterator<Item = TokenTree>, start_token: Ident)
                     }
 
                     field_type = StructFieldType::Array(Box::new(field_type), size);
-                } else {
+                }
+                // Handle vector
+                proc_macro::Delimiter::Brace => {
+                    // If the current type is already a vector, abort
+                    if let StructFieldType::Vector(_, _) = field_type {
+                        abort!(group.span(), "nested vectors are not supported");
+                    }
+
+                    // Take the inner tokenstream as is and add it to the vector
+                    field_type = StructFieldType::Vector(Box::new(field_type), group.stream());
+                }
+                _ => {
                     abort!(group.span(), "unexpected token");
                 }
-            }
+            },
             _ => abort!(token.span(), "unexpected token"),
         }
 
@@ -315,6 +331,7 @@ enum AFieldType {
     Void,
     Int(IntegerType),
     Pointer(Box<AFieldType>),
+    Vector(Box<AFieldType>, String),
     Array(Box<AFieldType>, u32),
     Struct(String),
     // Vector contains (name, offset, size)
@@ -466,6 +483,7 @@ impl Into<AFieldType> for StructFieldType {
             Pointer(ty) => AFieldType::Pointer(Box::new((*ty).into())),
             Array(ty, size) => AFieldType::Array(Box::new((*ty).into()), size),
             Struct(name) => AFieldType::Struct(name),
+            Vector(ty, stream) => AFieldType::Vector(Box::new((*ty).into()), stream.to_string()),
             BitField(_, _) => {
                 unreachable!("bitfields should have been combined into a single field")
             }
@@ -479,7 +497,7 @@ impl StructFieldType {
         match self {
             Int(ty) => ty.0 >> 3,
             BitField(ty, _) => ty.0 >> 3,
-            Pointer(_) => 4,
+            Pointer(_) | Vector(_, _) => 4,
             Array(ty, _) => (*ty).align(),
             Struct(name) => {
                 let x = GBA_STRUCTS.lock().unwrap();
@@ -496,7 +514,7 @@ impl AFieldType {
         use AFieldType::*;
         match self {
             Int(ty) => ty.0 >> 3,
-            Pointer(_) => 4,
+            Pointer(_) | Vector(_, _) => 4,
             Array(ty, size) => (*ty).size() * size,
             Struct(name) => {
                 let x = GBA_STRUCTS.lock().unwrap();
@@ -522,6 +540,7 @@ impl Display for AFieldType {
             Void => write!(f, "void"),
             Int(ty) => write!(f, "{}", ty),
             Pointer(ty) => write!(f, "{}*", ty),
+            Vector(ty, stream) => write!(f, "{}{{{}}}", ty, stream),
             Array(ty, size) => write!(f, "{}[{}]", ty, size),
             Struct(name) => write!(f, "struct {}", name),
             BitFields(ty, fields) => {
@@ -588,7 +607,7 @@ fn build_body(name: &String, struct_: &AStruct) -> TokenStream2 {
     let name = format_ident!("{}", name);
     quote! {
         // TODO Add Serde support
-        #[derive(Debug, Default, Copy, Clone, PartialEq, Eq)]
+        #[derive(Debug, Default, Clone, PartialEq, Eq)]
         pub struct #name {
             #fields
         }
@@ -639,6 +658,10 @@ fn build_type(ty: &AFieldType) -> TokenStream2 {
             let name = format_ident!("{}", name);
             quote! { #name }
         }
+        Vector(ty, _) => {
+            let ty = build_type(ty);
+            quote! { gba_types::vectors::VectorData<#ty> }
+        }
         BitFields(_, _) => panic!("bitfields should have been handled as separate fields"),
     }
 }
@@ -670,8 +693,7 @@ fn build_read_from(name: &Ident2, struct_: &AStruct) -> TokenStream2 {
     let mut struct_innards = TokenStream2::new();
 
     for AStructField { name, ty, offset } in &struct_.fields {
-        read_fields.extend(build_read_field(name, ty, offset));
-
+        // Fill the struct innards for everything
         if let AFieldType::BitFields(_, fields) = ty {
             for (name, _, _) in fields {
                 let bindname = format_ident!("{}_value", name);
@@ -682,6 +704,19 @@ fn build_read_from(name: &Ident2, struct_: &AStruct) -> TokenStream2 {
             let bindname = format_ident!("{}_value", name);
             let name = format_ident!("{}", name);
             struct_innards.extend(quote! { #name: #bindname, });
+        }
+
+        // Call read for everyone now, then we'll handle the vectors later
+        if let AFieldType::Vector(_, _) = ty {
+            continue;
+        }
+        read_fields.extend(build_read_field(name, ty, offset));
+    }
+
+    // Read the vectors only at the end
+    for AStructField { name, ty, offset } in &struct_.fields {
+        if let AFieldType::Vector(_, _) = ty {
+            read_fields.extend(build_read_field(name, ty, offset));
         }
     }
 
@@ -730,6 +765,17 @@ fn build_read_field(name: &String, ty: &AFieldType, offset: &u32) -> TokenStream
             #bitfield_read
             #read_fields
         }
+    } else if let AFieldType::Vector(inner_ty, stream) = ty {
+        let ty = build_type(&ty);
+
+        // Parse the string into a token stream
+        let inner_ty = build_type(inner_ty);
+        let token_stream = stream.parse::<TokenStream2>().unwrap();
+        let output_stream = replace_identifiers(token_stream);
+
+        quote! {
+            let #name: #ty = gba_types::vectors::read_vector::<#inner_ty>(bytes, offset + #offset, { #output_stream } as usize)?;
+        }
     } else {
         let tty = build_type(&ty);
 
@@ -737,6 +783,46 @@ fn build_read_field(name: &String, ty: &AFieldType, offset: &u32) -> TokenStream
             let #name: #tty = gba_types::GBAType::read_from(bytes, offset + #offset)?;
         }
     }
+}
+
+fn replace_identifiers(input_stream: TokenStream2) -> TokenStream2 {
+    let mut output_stream = TokenStream2::new();
+    let mut replace_next = false;
+
+    // Replace each identifier with ident_value
+    for token in input_stream.into_iter() {
+        match token {
+            proc_macro2::TokenTree::Ident(ident) => {
+                if !replace_next {
+                    output_stream.extend(quote! { #ident });
+                    continue;
+                }
+                let ident: Ident2 = format_ident!("{}_value", ident);
+                output_stream.extend(quote! { #ident });
+                replace_next = false;
+            }
+            proc_macro2::TokenTree::Group(group) => {
+                replace_next = false;
+                let group_stream = replace_identifiers(group.stream());
+                let group = proc_macro2::Group::new(group.delimiter(), group_stream);
+                output_stream.extend(quote! { #group });
+            }
+            _ => {
+                // If the token is a $ sign, the next identifier will be replaced
+                if let proc_macro2::TokenTree::Punct(punct) = &token {
+                    if punct.as_char() == '$' {
+                        replace_next = true;
+                        continue;
+                    }
+                }
+
+                replace_next = false;
+                output_stream.extend(quote! { #token })
+            }
+        }
+    }
+
+    output_stream
 }
 
 fn build_write_to(struct_: &AStruct) -> TokenStream2 {
@@ -767,6 +853,11 @@ fn build_write_to(struct_: &AStruct) -> TokenStream2 {
 
             write_fields.extend(quote! {
                 gba_types::GBAType::write_to(&#fields_name, bytes, offset + #offset)?;
+            });
+        } else if let AFieldType::Vector(_, _) = ty {
+            let name = format_ident!("{}", name);
+            write_fields.extend(quote! {
+                gba_types::vectors::write_vector(bytes, offset + #offset, &self.#name)?;
             });
         } else {
             let name = format_ident!("{}", name);
