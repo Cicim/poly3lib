@@ -166,21 +166,19 @@ fn get_tilesets_data(
     rom: &Rom,
     layouts_table: &TablePointer,
 ) -> Result<HashMap<usize, (usize, bool)>, TableInitError> {
-    let mut tileset: HashSet<(u32, bool)> = HashSet::new();
+    let mut tileset: HashSet<u32> = HashSet::new();
 
-    println!("Layouts table size: {}", layouts_table.size);
-
-    // Read all the layouts to extrapolate all tileset numbers
+    // Read all the layouts to extrapolate all tileset offsets
     for i in 0..layouts_table.size {
         let offset = layouts_table.offset + i * 4;
         match rom.read_ptr(offset) {
             Ok(ptr) => {
                 let layout: MapLayout = rom.read(ptr).unwrap();
-                if let Some(primary) = layout.primary_tileset.offset() {
-                    tileset.insert((primary, false));
+                if let Some(offset) = layout.primary_tileset.offset() {
+                    tileset.insert(offset);
                 }
-                if let Some(secondary) = layout.secondary_tileset.offset() {
-                    tileset.insert((secondary, true));
+                if let Some(offset) = layout.secondary_tileset.offset() {
+                    tileset.insert(offset);
                 }
             }
             Err(_) => continue,
@@ -190,39 +188,21 @@ fn get_tilesets_data(
     let mut tilesets_data: HashMap<usize, (usize, bool)> = HashMap::new();
 
     // For each tileset you found
-    for (tileset_offset, is_secondary) in tileset {
+    for tileset_offset in tileset {
         // Read the tileset data
-        let tileset_data: TilesetHeader = rom
+        let tileset_header: TilesetHeader = rom
             .read(tileset_offset as usize)
             .map_err(|_| TableInitError::TableGoesOutOfBounds)?;
 
-        // Make sure both the blocks offset and the behaviors offset are valid
-        if let Some(blocks_offset) = tileset_data.metatiles.offset() {
-            if let Some(behaviors_offset) = tileset_data.behaviors.offset() {
-                // These should be adjacent to each other
-                let size = (behaviors_offset - blocks_offset) >> 4;
-
-                if size <= 0 {
-                    println!(
-                        "[Warning] Cannot compute tileset size for {:X}, using default",
-                        tileset_offset
-                    );
-                    match rom.get_maximum_tileset_size() {
-                        Ok((primary_lim, secondary_lim)) => {
-                            if is_secondary {
-                                tilesets_data
-                                    .insert(tileset_offset as usize, (secondary_lim, true));
-                            } else {
-                                tilesets_data.insert(tileset_offset as usize, (primary_lim, false));
-                            }
-                        }
-                        Err(_) => continue,
-                    }
-                } else {
-                    tilesets_data.insert(tileset_offset as usize, (size as usize, is_secondary));
-                }
-            }
-        }
+        tilesets_data.insert(
+            tileset_offset as usize,
+            (
+                // Size of the tileset in blocks
+                tileset_header.get_size(rom),
+                // If the tileset is a secondary tileset
+                tileset_header.is_secondary != 0,
+            ),
+        );
     }
 
     Ok(tilesets_data)

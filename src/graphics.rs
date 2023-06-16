@@ -87,8 +87,6 @@ impl Graphic {
         }
     }
 
-    /// A cute little function to print the whole graphic to the terminal
-    /// with the given palette (and optionally headers with each tile index)
     pub fn print_large(&self, col: usize, headers: bool, palette: &GBAPalette) {
         use colored::Colorize;
 
@@ -128,8 +126,7 @@ impl Graphic {
         }
     }
 
-    /// The same as [`print_large`], but prints each tile in a smaller version
-    pub fn print_small(&self, col: usize, borders: bool, palette: &GBAPalette) {
+    pub fn print_small(&self, col: usize, headers: bool, palette: &GBAPalette) {
         use colored::Colorize;
 
         let tiles = self.tiles.as_ref().unwrap();
@@ -140,7 +137,7 @@ impl Graphic {
             let last_index = std::cmp::min(index + col, tiles.len());
 
             for index in index..last_index {
-                if borders {
+                if headers {
                     let header = format!("Tile {:<03X} ", index);
                     print!("{}", header.truecolor(128, 128, 128));
                 }
@@ -158,7 +155,7 @@ impl Graphic {
                         let string = string.on_truecolor(r, g, b);
                         print!("{}", string);
                     }
-                    if borders {
+                    if headers {
                         print!(" ");
                     }
                 }
@@ -167,7 +164,7 @@ impl Graphic {
                 }
             }
 
-            if borders {
+            if headers {
                 println!();
             }
             index += col;

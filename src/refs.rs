@@ -149,5 +149,16 @@ impl Refs {
     pub fn get_tilesets_table(&self) -> Option<&HashMap<usize, (usize, bool)>> {
         self.tilesets_table.as_ref()
     }
+
+    /// Returns the size in blocks of the requested tileset
+    pub fn get_tileset_size(&self, tileset: usize) -> Option<usize> {
+        if let Some(table) = &self.tilesets_table {
+            if let Some((size, _)) = table.get(&tileset) {
+                return Some(*size);
+            }
+        }
+
+        None
+    }
 }
 
