@@ -1,15 +1,15 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::{
+    maps::layout::MapLayout,
     maps::tileset::TilesetHeader,
     refs::{TableInitError, TablePointer},
     rom::Rom,
 };
 
-use self::layout::MapLayout;
-
 pub mod header;
 pub mod layout;
+pub mod render;
 pub mod tileset;
 
 impl Rom {

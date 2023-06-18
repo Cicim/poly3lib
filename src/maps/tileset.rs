@@ -111,7 +111,7 @@ impl TilesetHeader {
 
         // In any other case, resort to using the default size
         println!("[Warning] Cannot determine tileset size for tileset, using default");
-        match rom.get_maximum_tileset_size() {
+        match rom.get_metatiles_count() {
             Ok((primary_size, secondary_size)) => {
                 if is_secondary {
                     secondary_size

@@ -9,8 +9,8 @@ pub enum ValueGrabError {
 }
 
 impl Rom {
-    /// Get the maximum size for a primary and a secondary tileset
-    pub fn get_maximum_tileset_size(&self) -> Result<(usize, usize), ValueGrabError> {
+    /// Get the maximum block size for a primary and a secondary tileset
+    pub fn get_metatiles_count(&self) -> Result<(usize, usize), ValueGrabError> {
         // ANCHOR Add support for other rom types
         // TODO This is wrong, read it from the correct place
         let (primary, secondary) = match self.rom_type {
@@ -20,6 +20,17 @@ impl Rom {
         };
 
         Ok((primary, secondary))
+    }
+
+    /// Get the maximum tile count for a primary and a secondary tileset
+    pub fn get_primary_tiles_count(&self) -> Result<usize, ValueGrabError> {
+        // ANCHOR Add support for other rom types
+        // TODO This is wrong, read it from the correct place
+        Ok(match self.rom_type {
+            RomType::FireRed | RomType::LeafGreen => 640,
+            RomType::Emerald | RomType::Ruby | RomType::Sapphire => 512,
+            RomType::Unknown => return Err(ValueGrabError::NotImplemented),
+        })
     }
 }
 

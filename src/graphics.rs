@@ -11,11 +11,13 @@ pub struct Graphic {
     /// The offset of the graphic in the ROM
     pub offset: usize,
     /// The tiles in the graphic (empty if you don't want to replace them)
-    pub tiles: Option<Vec<GraphicTile>>,
+    pub tiles: Vec<GraphicTile>,
     /// Whether the tileset is compressed or not
     pub compressed: bool,
     /// The number of tiles read when reading this from ROM.
     pub read_length: usize,
+    /// Whether to replace the tileset
+    pub replace: bool,
 }
 
 impl Graphic {
@@ -44,8 +46,9 @@ impl Graphic {
         Ok(Graphic {
             offset,
             read_length: tiles.len(),
-            tiles: Some(tiles),
+            tiles,
             compressed: size.is_none(),
+            replace: false,
         })
     }
 
@@ -57,11 +60,11 @@ impl Graphic {
         let offset = self.offset;
 
         // If the graphic did not change, only write the pointer
-        if self.tiles.is_none() {
+        if !self.replace {
             return Ok(offset);
         }
 
-        let tiles = self.tiles.as_ref().unwrap();
+        let tiles = &self.tiles;
 
         // Check if the graphics is compressed
         if self.compressed {
@@ -90,7 +93,7 @@ impl Graphic {
     pub fn print_large(&self, col: usize, headers: bool, palette: &GBAPalette) {
         use colored::Colorize;
 
-        let tiles = self.tiles.as_ref().unwrap();
+        let tiles = &self.tiles;
         let mut index = 0;
 
         // Print the headers
@@ -129,7 +132,7 @@ impl Graphic {
     pub fn print_small(&self, col: usize, headers: bool, palette: &GBAPalette) {
         use colored::Colorize;
 
-        let tiles = self.tiles.as_ref().unwrap();
+        let tiles = &self.tiles;
         let mut index = 0;
 
         // Print the headers
@@ -174,15 +177,12 @@ impl Graphic {
 
 impl Display for Graphic {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let tiles_len = match self.tiles {
-            Some(ref tiles) => format!("{}", tiles.len()),
-            None => "not passed".to_string(),
-        };
-
         write!(
             f,
             "{:#X} ({} tiles, read {})",
-            self.offset, tiles_len, self.read_length
+            self.offset,
+            self.tiles.len(),
+            self.read_length
         )
     }
 }
