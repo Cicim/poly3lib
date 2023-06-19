@@ -8,8 +8,12 @@ use super::{
     tileset::{TilesetData, TilesetReadingError},
 };
 
+/// This struct represents the rendered metatiles for a map.
+///
+/// The first component is the bottom layer of the metatile, and the second component is the top layer.
 pub struct RenderedMetatile(pub [[Rgba<u8>; 16]; 16], pub [[Rgba<u8>; 16]; 16]);
 
+/// This struct contains everything needed to render a tileset.
 pub struct TilesetsPair {
     /// The primary tileset
     pub primary: TilesetData,
@@ -72,7 +76,9 @@ impl TilesetsPair {
         })
     }
 
-    /// Get the tile information about a tile
+    /// Returns a list of [`RenderedMetatile`]s for both tilesets.
+    ///
+    /// Never fails, because the missing metatiles are replaced with transparent ones.
     pub fn render_tileset(&self) -> Vec<RenderedMetatile> {
         let mut tiles = Vec::with_capacity(self.metatile_count);
 

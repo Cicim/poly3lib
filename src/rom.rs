@@ -218,6 +218,15 @@ impl Rom {
         gba_types::vectors::repoint_offset(&mut self.data, offset, old_size, new_size)
     }
 
+    /// Clears the data in the ROM at the given offset.
+    pub fn clear(&mut self, offset: usize, size: usize) -> Result<(), GBAIOError> {
+        if offset + size > self.size() {
+            return Err(GBAIOError::InvalidOffset(0x08000000 + offset as u32));
+        }
+        self.data[offset..offset + size].fill(0xFF);
+        Ok(())
+    }
+
     /// Read compressed data from the ROM at the given offset.
     pub fn read_lz77(&self, offset: usize) -> Result<Vec<u8>, GBAIOError> {
         gba_types::lz77::read_lz77(&self.data, offset)

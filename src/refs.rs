@@ -1,10 +1,11 @@
-use std::{fmt::Display, collections::HashMap};
+use std::{collections::HashMap, fmt::Display};
 
+use gba_types::GBAIOError;
 use serde::{Deserialize, Serialize};
 
 use crate::rom::Rom;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TablePointer {
     /// The offset to the table in the ROM.
     pub offset: usize,
@@ -33,6 +34,28 @@ impl Display for TablePointer {
         }
 
         Ok(())
+    }
+}
+
+impl TablePointer {
+    /// Returns a new [`TablePointer`] with a new offset and size.
+    /// Overwrites the offset in all references in the given ROM.
+    pub fn update(
+        self,
+        rom: &mut Rom,
+        new_offset: usize,
+        new_size: usize,
+    ) -> Result<TablePointer, GBAIOError> {
+        let mut pointer = self.clone();
+        pointer.size = new_size;
+        pointer.offset = new_offset;
+
+        // Update the offset
+        for reference in &pointer.references {
+            rom.write_ptr(*reference, new_offset)?;
+        }
+
+        Ok(pointer)
     }
 }
 
@@ -161,4 +184,3 @@ impl Refs {
         None
     }
 }
-
