@@ -134,8 +134,7 @@ fn get_tilesets_data(
     // For each tileset you found
     for tileset_offset in tileset {
         // Read the tileset data
-        let tileset_header: TilesetHeader = rom
-            .read(tileset_offset as usize)
+        let tileset_header = TilesetHeader::read(rom, tileset_offset as usize)
             .map_err(|_| TableInitError::TableGoesOutOfBounds)?;
 
         tilesets_data.insert(

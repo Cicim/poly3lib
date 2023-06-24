@@ -4,9 +4,12 @@
  * diligently synchronize to keep them consistent. */
 use gba_macro::gba_struct;
 
-use gba_types::{colors::GBAPalette, tiles::MetaTile};
+use gba_types::{colors::GBAPalette, tiles::MetaTile, GBAIOError};
 
-use crate::{graphics::Graphic, rom::Rom};
+use crate::{
+    graphics::Graphic,
+    rom::{Rom, RomType},
+};
 
 const DEFAULT_TILESET_BLOCKS: usize = 256;
 
@@ -17,7 +20,7 @@ gba_struct!(TilesetHeader {
     void* palettes;
     void* metatiles;
     void* animations;
-    void* behaviors;
+    void* attributes;
 });
 
 /**************************************/
@@ -34,9 +37,10 @@ pub struct TilesetData {
     /// The tileset's palettes
     pub palettes: Vec<GBAPalette>,
 
-    /// The behavior bytes for each block
-    // Stored as u32 because they may be different sizes depending on the ROM type
-    pub behaviors: Vec<u32>,
+    /// The attribute bytes for each block
+    ///
+    /// Contains behavior, terrain, encounter and layer type information
+    pub attributes: Vec<u32>,
     /// The metatiles that make up the tileset
     pub metatiles: Vec<MetaTile>,
     // TODO Handle animations
@@ -46,7 +50,7 @@ pub struct TilesetData {
 pub enum TilesetReadingError {
     InvalidTilesetOffset,
     InvalidPaletteOffset,
-    InvalidBehaviorOffset,
+    InvalidAttributesOffset,
     InvalidGraphicsOffset,
     InvalidMetaTileOffset,
 }
@@ -54,8 +58,7 @@ pub enum TilesetReadingError {
 impl TilesetData {
     /// Reads the tileset's data from ROM.
     pub fn read(rom: &Rom, tileset_offset: usize) -> Result<TilesetData, TilesetReadingError> {
-        let header: TilesetHeader = rom
-            .read(tileset_offset)
+        let header = TilesetHeader::read(rom, tileset_offset)
             .map_err(|_| TilesetReadingError::InvalidTilesetOffset)?;
 
         let size = match rom.refs.get_tileset_size(tileset_offset) {
@@ -65,14 +68,14 @@ impl TilesetData {
 
         let graphics = header.get_graphics(rom)?;
         let palettes = header.get_palettes(rom)?;
-        let behaviors = header.get_behaviors(rom, size)?;
+        let attributes = header.get_attributes(rom, size)?;
         let metatiles = header.get_metatiles(rom, size)?;
 
         Ok(TilesetData {
             header,
             graphics,
             palettes,
-            behaviors,
+            attributes,
             metatiles,
         })
     }
@@ -88,8 +91,40 @@ impl TilesetData {
 }
 
 impl TilesetHeader {
+    /// Reads the tileset header with the correct format from ROM
+    pub fn read(rom: &Rom, offset: usize) -> Result<TilesetHeader, GBAIOError> {
+        let mut header: TilesetHeader = rom.read(offset)?;
+
+        // If you are Emerald, you are special
+        match rom.rom_type {
+            RomType::Emerald | RomType::Ruby | RomType::Sapphire => {
+                // Emerald has animations and attributes swapped
+                std::mem::swap(&mut header.animations, &mut header.attributes)
+            }
+            _ => {}
+        }
+
+        Ok(header)
+    }
+
+    /// Writes the tileset header with the correct format to ROM
+    pub fn write(&self, rom: &mut Rom, offset: usize) -> Result<(), GBAIOError> {
+        let mut header = self.clone();
+
+        // If you are Emerald, you are special
+        match rom.rom_type {
+            RomType::Emerald | RomType::Ruby | RomType::Sapphire => {
+                // Emerald has animations and attributes swapped
+                std::mem::swap(&mut header.animations, &mut header.attributes)
+            }
+            _ => {}
+        }
+
+        rom.write(offset, header)
+    }
+
     /// Returns the size in blocks of the tileset based on the adjacency
-    /// of the blocks and behaviors offsets.
+    /// of the blocks and attributes offsets.
     ///
     /// If that check fails, it uses the default size.
     ///
@@ -97,11 +132,11 @@ impl TilesetHeader {
     pub fn get_size(&self, rom: &Rom) -> usize {
         let is_secondary = self.is_secondary != 0;
 
-        // Make sure both the blocks offset and the behaviors offset are valid
+        // Make sure both the blocks offset and the attributes offset are valid
         if let Some(blocks_offset) = self.metatiles.offset() {
-            if let Some(behaviors_offset) = self.behaviors.offset() {
+            if let Some(attributes_offset) = self.attributes.offset() {
                 // These should be adjacent to each other
-                let size = (behaviors_offset - blocks_offset) / 16;
+                let size = (attributes_offset - blocks_offset) / 16;
 
                 if size > 0 {
                     return size as usize;
@@ -159,25 +194,25 @@ impl TilesetHeader {
         Ok(palettes)
     }
 
-    /// Reads this tileset's behaviors from ROM.
-    fn get_behaviors(&self, rom: &Rom, size: usize) -> Result<Vec<u32>, TilesetReadingError> {
-        let behaviors_offset =
-            self.behaviors
+    /// Reads this tileset's attributes from ROM.
+    fn get_attributes(&self, rom: &Rom, size: usize) -> Result<Vec<u32>, TilesetReadingError> {
+        let attributes_offset =
+            self.attributes
                 .offset()
-                .ok_or_else(|| TilesetReadingError::InvalidBehaviorOffset)? as usize;
+                .ok_or_else(|| TilesetReadingError::InvalidAttributesOffset)? as usize;
 
-        let mut behaviors = Vec::new();
+        let mut attributes = Vec::new();
 
         // TODO Check if they have are of a different size in Emerald
         for i in 0..size {
-            let behavior_offset = behaviors_offset + i * 4;
-            let behavior: u32 = rom
-                .read(behavior_offset)
-                .map_err(|_| TilesetReadingError::InvalidBehaviorOffset)?;
-            behaviors.push(behavior);
+            let attribute_offset = attributes_offset + i * 4;
+            let attribute: u32 = rom
+                .read(attribute_offset)
+                .map_err(|_| TilesetReadingError::InvalidAttributesOffset)?;
+            attributes.push(attribute);
         }
 
-        Ok(behaviors)
+        Ok(attributes)
     }
 
     /// Reads the tileset's metatiles from ROM.
