@@ -22,10 +22,18 @@ pub type MapData = Vec<Vec<u16>>;
 /// and the map and border data.
 #[derive(Debug)]
 pub struct MapLayoutData {
+    /// The index of the layout in the table.
     pub index: u16,
+    /// The `MapLayout` header.
     pub header: MapLayout,
+    /// The map data (blocks and permissions)
     pub map_data: MapData,
+    /// The border data (blocks and permissions)
     pub border_data: MapData,
+    /// The number of bits that are used to index a block in the tilesets
+    ///
+    /// `16 - tile_index_bits` = number of bits used for permission information
+    pub bits_per_block: u8,
 }
 
 /// Error type for map layout operations.
@@ -39,6 +47,7 @@ pub enum LayoutError {
 
     InvalidOffset(u32),
 
+    CannotGetBitsPerBlock,
     InvalidMap,
 
     CannotRepointTable,
@@ -195,6 +204,11 @@ impl<'rom> MapLayoutsTable<'rom> {
     pub fn read_data(&self, index: u16) -> Result<MapLayoutData, LayoutError> {
         let layout = self.read_header(index)?;
 
+        let bits_per_block = self
+            .rom
+            .get_block_index_bits()
+            .map_err(|_| LayoutError::CannotGetBitsPerBlock)?;
+
         let map_offset = layout
             .data
             .offset()
@@ -218,6 +232,7 @@ impl<'rom> MapLayoutsTable<'rom> {
             header: layout,
             map_data,
             border_data,
+            bits_per_block,
         })
     }
 
@@ -318,6 +333,14 @@ impl<'rom> MapLayoutsTable<'rom> {
                     .map_err(LayoutError::IoError)
             }
         }
+    }
+}
+
+impl Rom {
+    /// Returns the [`MapLayoutsTable`] struct for this ROM.
+    /// Returns an error if it is unable to initialize the table.
+    pub fn layouts(&mut self) -> Result<MapLayoutsTable, TableInitError> {
+        MapLayoutsTable::init(self)
     }
 }
 
@@ -461,7 +484,7 @@ mod tests {
     #[test]
     fn bad_layouts() {
         let mut rom = get_test_rom();
-        let table = MapLayoutsTable::init(&mut rom).unwrap();
+        let table = rom.layouts().unwrap();
 
         // Indices start at one
         assert!(matches!(

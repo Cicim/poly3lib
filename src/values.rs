@@ -32,6 +32,17 @@ impl Rom {
             RomType::Unknown => return Err(ValueGrabError::NotImplemented),
         })
     }
+
+    /// Get the number of bits to index a block in the tilesets for a map data.
+    pub fn get_block_index_bits(&self) -> Result<u8, ValueGrabError> {
+        // ANCHOR Add support for other rom types
+        // TODO This is wrong, read it from the correct place
+        Ok(match self.rom_type {
+            RomType::FireRed | RomType::LeafGreen => 10,
+            RomType::Emerald | RomType::Ruby | RomType::Sapphire => 10,
+            RomType::Unknown => return Err(ValueGrabError::NotImplemented),
+        })
+    }
 }
 
 impl Display for ValueGrabError {

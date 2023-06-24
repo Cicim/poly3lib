@@ -1,17 +1,47 @@
 use gba_types::pointers::PointedData;
-use image::Rgba;
+use image::{Rgb, RgbImage, Rgba, RgbaImage};
 
 use crate::rom::Rom;
 
 use super::{
-    layout::MapLayout,
+    layout::{MapLayout, MapLayoutData},
     tileset::{TilesetData, TilesetReadingError},
 };
 
 /// This struct represents the rendered metatiles for a map.
 ///
 /// The first component is the bottom layer of the metatile, and the second component is the top layer.
-pub struct RenderedMetatile(pub [[Rgba<u8>; 16]; 16], pub [[Rgba<u8>; 16]; 16]);
+pub struct RenderedMetatile(RgbaImage, RgbaImage);
+
+impl RenderedMetatile {
+    /// Returns a single color for the given pixel by putting
+    /// the top layer first and the bottom layer second.
+    fn merge_layers(&self, x: u32, y: u32) -> Rgb<u8> {
+        let bot = self.0[(x, y)];
+        let top = self.1[(x, y)];
+
+        if top[3] == 0 {
+            if bot[3] == 0 {
+                Rgb([0, 0, 0])
+            } else {
+                Rgb([bot[0], bot[1], bot[2]])
+            }
+        } else {
+            Rgb([top[0], top[1], top[2]])
+        }
+    }
+
+    /// Draws this metatile on the given image at the given coordinates.
+    /// The coordinates are in metatiles, not pixels.
+    fn draw(&self, image: &mut RgbImage, x: u32, y: u32) {
+        for i in 0..16 {
+            for j in 0..16 {
+                let color = self.merge_layers(i, j);
+                image.put_pixel(x * 16 + i, y * 16 + j, color);
+            }
+        }
+    }
+}
 
 /// This struct contains everything needed to render a tileset.
 pub struct TilesetsPair {
@@ -89,9 +119,10 @@ impl TilesetsPair {
         tiles
     }
 
+    // TODO Incorporate attributes for Cover Layer and Third Layer functionality
     pub fn render_metatile(&self, index: usize) -> RenderedMetatile {
-        let mut bottom_layer: [[Rgba<u8>; 16]; 16] = [[Rgba([0, 0, 0, 0]); 16]; 16];
-        let mut top_layer: [[Rgba<u8>; 16]; 16] = [[Rgba([0, 0, 0, 0]); 16]; 16];
+        let mut bottom_layer = RgbaImage::new(16, 16);
+        let mut top_layer = RgbaImage::new(16, 16);
 
         let metatile = if index < self.metatile_limit {
             if index >= self.primary.metatiles.len() {
@@ -123,17 +154,17 @@ impl TilesetsPair {
                 &self.secondary.graphics.tiles[tile_index - self.tile_limit]
             };
 
-            let xoff = (i % 2) * 8;
-            let yoff = (i / 2) * 8;
+            let xoff = (i as u32 % 2) * 8;
+            let yoff = (i as u32 / 2) * 8;
 
             let palette = tile.palette() as usize;
 
             for (y, row) in graphics.iter().enumerate() {
                 for (x, pixel) in row.iter().enumerate() {
-                    let x = if tile.hflip() { 7 - x } else { x };
-                    let y = if tile.vflip() { 7 - y } else { y };
+                    let x = if tile.hflip() { 7 - x } else { x } as u32;
+                    let y = if tile.vflip() { 7 - y } else { y } as u32;
 
-                    bottom_layer[y + yoff][x + xoff] = self.palettes[palette][*pixel as usize];
+                    bottom_layer[(x + xoff, y + yoff)] = self.palettes[palette][*pixel as usize];
                 }
             }
         }
@@ -154,21 +185,21 @@ impl TilesetsPair {
                 &self.secondary.graphics.tiles[tile_index - self.tile_limit]
             };
 
-            let xoff = (i % 2) * 8;
-            let yoff = (i / 2) * 8;
+            let xoff = (i as u32 % 2) * 8;
+            let yoff = (i as u32 / 2) * 8;
 
             let palette = tile.palette() as usize;
 
             for (y, row) in graphics.iter().enumerate() {
                 for (x, pixel) in row.iter().enumerate() {
-                    let x = if tile.hflip() { 7 - x } else { x };
-                    let y = if tile.vflip() { 7 - y } else { y };
+                    let x = if tile.hflip() { 7 - x } else { x } as u32;
+                    let y = if tile.vflip() { 7 - y } else { y } as u32;
 
                     // If the color is 0, it's transparent
                     if *pixel == 0 {
                         continue;
                     }
-                    top_layer[y + yoff][x + xoff] = self.palettes[palette][*pixel as usize];
+                    top_layer[(x + xoff, y + yoff)] = self.palettes[palette][*pixel as usize];
                 }
             }
         }
@@ -238,29 +269,13 @@ impl TilesetsPair {
 
     /// Helper method for printing a row of a metatile
     /// (useful for printing the whole tileset to terminal)
-    fn print_metatile_row(&self, metatile: &RenderedMetatile, y: usize) {
+    fn print_metatile_row(&self, metatile: &RenderedMetatile, y: u32) {
         use colored::Colorize;
 
-        for x in 0..16 {
-            // Get the two colors
-            let upper = if metatile.1[y][x][3] == 0 {
-                if metatile.0[y][x][3] == 0 {
-                    Rgba([0, 0, 0, 0])
-                } else {
-                    metatile.0[y][x]
-                }
-            } else {
-                metatile.1[y][x]
-            };
-            let lower = if metatile.1[y + 1][x][3] == 0 {
-                if metatile.0[y + 1][x][3] == 0 {
-                    Rgba([0, 0, 0, 0])
-                } else {
-                    metatile.0[y + 1][x]
-                }
-            } else {
-                metatile.1[y + 1][x]
-            };
+        for x in 0..16u32 {
+            // Get the color of the upper block half
+            let upper = metatile.merge_layers(x, y);
+            let lower = metatile.merge_layers(x, y + 1);
 
             print!(
                 "{}",
@@ -285,5 +300,34 @@ impl MapLayout {
         } as usize;
 
         TilesetsPair::new(rom, tileset_1, tileset_2)
+    }
+}
+
+impl MapLayoutData {
+    /// Return the tileset pair of the given layout
+    pub fn read_tilesets(&self, rom: &Rom) -> Result<TilesetsPair, TilesetReadingError> {
+        self.header.read_tilesets(rom)
+    }
+
+    /// Render the map from the given layout
+    pub fn render(&self, rendered_tp: &Vec<RenderedMetatile>) -> RgbImage {
+        let width = self.header.width as u32;
+        let height = self.header.height as u32;
+
+        // Create an image
+        let mut image = RgbImage::new(width * 16, height * 16);
+
+        let tile_mask = (1 << self.bits_per_block) - 1;
+
+        // Loop over the map data
+        for x in 0..width {
+            for y in 0..height {
+                let tile_index = self.map_data[y as usize][x as usize] & tile_mask;
+                let tile = &rendered_tp[tile_index as usize];
+                tile.draw(&mut image, x, y);
+            }
+        }
+
+        image
     }
 }
