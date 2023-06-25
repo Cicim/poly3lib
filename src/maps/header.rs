@@ -2,6 +2,25 @@ use gba_macro::gba_struct;
 
 use crate::rom::Rom;
 
+// gba_struct!(EmeraldMapHeader {
+//     void *map_layout;
+//     void *events;
+//     void *map_scripts;
+//     void *connections;
+//     u16 music;
+//     u16 map_layout_id;
+//     u8 region_map_section_id;
+//     u8 cave;
+//     u8 weather;
+//     u8 map_type;
+//     u8 filler[2];
+//     u8 allow_cycling:1;
+//     u8 allow_escaping:1;
+//     u8 allow_running:1;
+//     u8 show_map_name:5;
+//     u8 battle_type;
+// } PRIVATE);
+
 gba_struct!(MapHeader {
     void *map_layout;  // struct MapLayout *mapLayout;
     void *events;      // struct MapEvents *events;

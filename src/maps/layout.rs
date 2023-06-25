@@ -1,9 +1,18 @@
 use gba_macro::gba_struct;
 use gba_types::pointers::{Nothing, PointedData};
-use gba_types::GBAType;
+use gba_types::{GBAIOError, GBAType};
 
 use crate::refs::{TableInitError, TablePointer};
-use crate::rom::Rom;
+use crate::rom::{Rom, RomType};
+
+gba_struct!(EmeraldMapLayout {
+    i32 width;
+    i32 height;
+    void* border;
+    void* data;
+    void* primary_tileset;
+    void* secondary_tileset;
+} PRIVATE);
 
 gba_struct!(MapLayout {
     i32 width;
@@ -15,6 +24,58 @@ gba_struct!(MapLayout {
     u8 border_width;
     u8 border_height;
 });
+
+impl MapLayout {
+    /// Reads the [`MapLayout`] taking into account the game version.
+    /// And returning the most complete struct.
+    pub fn read(rom: &Rom, offset: usize) -> Result<Self, GBAIOError> {
+        let res = match rom.rom_type {
+            RomType::FireRed | RomType::LeafGreen => rom.read::<MapLayout>(offset)?,
+            RomType::Emerald | RomType::Ruby | RomType::Sapphire => {
+                let value = rom.read::<EmeraldMapLayout>(offset)?;
+                MapLayout {
+                    width: value.width,
+                    height: value.height,
+                    border: value.border,
+                    data: value.data,
+                    primary_tileset: value.primary_tileset,
+                    secondary_tileset: value.secondary_tileset,
+                    border_width: 2,
+                    border_height: 2,
+                }
+            }
+            _ => Err(GBAIOError::Unknown("Invalid ROM type"))?,
+        };
+
+        Ok(res)
+    }
+
+    /// Writes the [`MapLayout`] taking into account the game version.
+    pub fn write(self, rom: &mut Rom, offset: usize) -> Result<(), GBAIOError> {
+        match rom.rom_type {
+            RomType::FireRed | RomType::LeafGreen => rom.write(offset, self)?,
+            RomType::Emerald | RomType::Ruby | RomType::Sapphire => {
+                let value = EmeraldMapLayout {
+                    width: self.width,
+                    height: self.height,
+                    border: self.border,
+                    data: self.data,
+                    primary_tileset: self.primary_tileset,
+                    secondary_tileset: self.secondary_tileset,
+                };
+                rom.write::<EmeraldMapLayout>(offset, value)?;
+            }
+            _ => Err(GBAIOError::Unknown("Invalid ROM type"))?,
+        };
+
+        Ok(())
+    }
+
+    /// Clears the [`MapLayout`] taking into account the game version.
+    pub fn clear(rom: &mut Rom, offset: usize) -> Result<(), GBAIOError> {
+        rom.clear(offset as usize, layout_struct_size(rom))
+    }
+}
 
 pub type MapData = Vec<Vec<u16>>;
 
@@ -54,7 +115,7 @@ pub enum LayoutError {
     CannotRepointMap,
     CannotRepointHeader,
 
-    IoError(gba_types::GBAIOError),
+    IoError(GBAIOError),
 }
 
 /// Table of map layouts. Provides methods for editing the table.
@@ -89,18 +150,10 @@ impl<'rom> MapLayoutsTable<'rom> {
         self.write_offset_to_table(index, None)?;
 
         // Read the header, then delete it from ROM
-        let header = self
-            .rom
-            .read::<MapLayout>(header_offset)
-            .map_err(LayoutError::IoError)?;
-        self.rom
-            .clear(header_offset as usize, MapLayout::SIZE)
-            .map_err(LayoutError::IoError)?;
+        let header = MapLayout::read(self.rom, header_offset).map_err(LayoutError::IoError)?;
 
-        // Since the header is valid, delete it from ROM
-        self.rom
-            .clear(header_offset as usize, MapLayout::SIZE)
-            .map_err(LayoutError::IoError)?;
+        // Get the correct layout size
+        MapLayout::clear(self.rom, header_offset).map_err(LayoutError::IoError)?;
 
         // If the map data is valid, delete it
         if let Some(map_offset) = header.data.offset() {
@@ -184,7 +237,7 @@ impl<'rom> MapLayoutsTable<'rom> {
             // If the offset is invalid, find new space for the header
             Err(LayoutError::InvalidOffset(_)) => self
                 .rom
-                .find_free_space(MapLayout::SIZE, 4)
+                .find_free_space(layout_struct_size(self.rom), 4)
                 .ok_or_else(|| LayoutError::CannotRepointHeader)?,
             // Any other error is returned
             Err(err) => return Err(err),
@@ -194,9 +247,7 @@ impl<'rom> MapLayoutsTable<'rom> {
         self.write_offset_to_table(index, Some(offset))?;
 
         // Write the header itself
-        self.rom
-            .write::<MapLayout>(offset, header)
-            .map_err(LayoutError::IoError)
+        header.write(self.rom, offset).map_err(LayoutError::IoError)
     }
 
     /// Reads the map layout at the given index and returns the header
@@ -239,10 +290,7 @@ impl<'rom> MapLayoutsTable<'rom> {
     /// Reads the map layout header at the given index.
     fn read_header(&self, index: u16) -> Result<MapLayout, LayoutError> {
         let offset = self.get_header_offset(index)?;
-
-        self.rom
-            .read::<MapLayout>(offset)
-            .map_err(LayoutError::IoError)
+        MapLayout::read(self.rom, offset).map_err(LayoutError::IoError)
     }
 
     /// Returns the header offset given the index.
@@ -344,13 +392,22 @@ impl Rom {
     }
 }
 
+/// Return the size of the map layout struct for the given ROM
+/// for operations that require it, like allocation and deletion.
+fn layout_struct_size(rom: &Rom) -> usize {
+    match rom.rom_type {
+        RomType::FireRed | RomType::LeafGreen => MapLayout::SIZE,
+        RomType::Emerald | RomType::Ruby | RomType::Sapphire => EmeraldMapLayout::SIZE,
+        _ => panic!("Unsupported ROM type"),
+    }
+}
+
 /// Reads the [`TablePointer`] to the map layouts table.
 fn init_layouts_table(rom: &Rom) -> Result<TablePointer, TableInitError> {
-    use crate::rom::RomType;
-
     // TODO Replace static offset with a mask
     let base_offset: usize = match rom.rom_type {
         RomType::FireRed | RomType::LeafGreen => 0x55194,
+        RomType::Emerald | RomType::Ruby | RomType::Sapphire => 0x849CC,
         _ => return Err(TableInitError::NotImplemented),
     };
 
@@ -391,10 +448,11 @@ fn init_layouts_table(rom: &Rom) -> Result<TablePointer, TableInitError> {
         }
     }
 
+    // Find all references to the table
     Ok(TablePointer {
         offset: table_offset,
         size: table_size,
-        references: vec![base_offset],
+        references: rom.find_references(table_offset),
     })
 }
 

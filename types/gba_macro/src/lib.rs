@@ -6,6 +6,12 @@ use proc_macro2::{Ident as Ident2, TokenStream as TokenStream2};
 use proc_macro_error::{abort, proc_macro_error};
 use quote::{format_ident, quote};
 
+#[derive(Debug, Default)]
+struct StructOptions {
+    debug: bool,
+    private: bool,
+}
+
 lazy_static! {
     static ref GBA_STRUCTS: Mutex<HashMap<String, AStruct>> = {
         let m = HashMap::new();
@@ -17,14 +23,14 @@ lazy_static! {
 #[proc_macro_error]
 pub fn gba_struct(stream: TokenStream) -> TokenStream {
     // Extract the name and fields by parsing the struct's tokens
-    let (name, fields, debug) = parse_struct(stream);
+    let (name, fields, options) = parse_struct(stream);
     // Assemble the struct into an AStruct object that can be used
     // to build the necessary code to make it into a GBAType.
-    assemble_struct(&name, fields, debug);
+    assemble_struct(&name, fields, &options);
 
     // Build the struct's code. which then needs to be converted
     // from proc_macro2::TokenStream to proc_macro::TokenStream
-    build_struct_code(&name).into()
+    build_struct_code(&name, &options).into()
 }
 
 // +----------------------------------+ //
@@ -35,7 +41,7 @@ pub fn gba_struct(stream: TokenStream) -> TokenStream {
 /// Parses the struct definition and returns the name and fields
 /// - Stops if there a duplicate field name
 /// - Stops if there is an invalid field type
-fn parse_struct(stream: TokenStream) -> (String, Vec<StructField>, bool) {
+fn parse_struct(stream: TokenStream) -> (String, Vec<StructField>, StructOptions) {
     // Consume the first identifier
     let mut stream = stream.into_iter();
 
@@ -58,26 +64,31 @@ fn parse_struct(stream: TokenStream) -> (String, Vec<StructField>, bool) {
         _ => abort!(group.span(), "expected struct body"),
     };
 
-    // Consume the debug flag
-    let debug = match stream.next() {
-        Some(TokenTree::Ident(ident)) => {
-            if ident.to_string() == "DEBUG" {
-                true
-            } else {
-                abort!(ident.span(), "expected debug flag");
-            }
-        }
-        Some(_) => abort!(stream.next().unwrap().span(), "expected debug flag"),
-        None => false,
-    };
-
+    // Extract the fields
     let fields = consume_struct_body(&group);
     if fields.is_empty() {
         abort!(group.span(), "struct body cannot be empty");
     }
 
+    // Get the options
+    let mut options = StructOptions::default();
+    let next_token = stream.next();
+    while stream.next().is_some() {
+        match next_token {
+            Some(TokenTree::Ident(ref ident)) => match ident.to_string().as_str() {
+                "DEBUG" => options.debug = true,
+                "PRIVATE" => options.private = true,
+                _ => abort!(ident.span(), "expected valid flag"),
+            },
+            Some(token) => abort!(token.span(), "expected valid flag"),
+            None => unreachable!("Already excluded None"),
+        }
+
+        abort!(next_token.unwrap().span(), "unexpected token");
+    }
+
     // Consume the struct body
-    (name, fields, debug)
+    (name, fields, options)
 }
 
 /// Represents an integer type with a size and signedness
@@ -343,7 +354,9 @@ enum AFieldType {
 ///
 /// Does things like computing fields offsets combining bitfields,
 /// and computing the struct size and alignment.
-fn assemble_struct(name: &String, fields: Vec<StructField>, debug: bool) {
+fn assemble_struct(name: &String, fields: Vec<StructField>, options: &StructOptions) {
+    let debug = options.debug;
+
     use StructFieldType::*;
 
     // Loop over each field in the parsed ones
@@ -578,13 +591,13 @@ impl Display for AStruct {
 /// from the global list and returns the code necessary to make
 /// it into a GBAType, so it implements the Rust struct itself,
 /// then the GBAType trait.
-fn build_struct_code(name: &String) -> TokenStream2 {
+fn build_struct_code(name: &String, options: &StructOptions) -> TokenStream2 {
     // Get a reference to the struct to get its fields and their types
     let lock = GBA_STRUCTS.lock().unwrap();
     let struct_ = lock.get(name).unwrap();
 
     // Build the struct body itself
-    let body = build_body(name, struct_);
+    let body = build_body(name, struct_, options.private);
     let trait_ = build_trait(name, struct_);
 
     quote! {
@@ -593,7 +606,7 @@ fn build_struct_code(name: &String) -> TokenStream2 {
     }
 }
 
-fn build_body(name: &String, struct_: &AStruct) -> TokenStream2 {
+fn build_body(name: &String, struct_: &AStruct, is_private: bool) -> TokenStream2 {
     let mut fields = TokenStream2::new();
 
     // Extract the field names
@@ -604,11 +617,17 @@ fn build_body(name: &String, struct_: &AStruct) -> TokenStream2 {
         fields.extend(build_field(field_name, field_ty));
     }
 
+    // Add public only if private is not set
+    let pub_token = if is_private {
+        quote! {}
+    } else {
+        quote! { pub }
+    };
+
     let name = format_ident!("{}", name);
     quote! {
-        // TODO Add Serde support
         #[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-        pub struct #name {
+        #pub_token struct #name {
             #fields
         }
     }
