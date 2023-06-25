@@ -23,6 +23,49 @@ gba_struct!(TilesetHeader {
     void* attributes;
 });
 
+#[repr(u8)]
+#[derive(Debug, Default)]
+pub enum MetatileLayerType {
+    #[default]
+    /// Metatile uses middle and top bg layers
+    Normal = 0,
+    /// Metatile uses bottom and middle bg layers
+    Covered = 1,
+    /// Metatile uses bottom and top bg layers
+    Split = 2,
+
+    /// Metatile uses bottom, middle and top bg layers
+    /// and retrieves the top layer from the next tile
+    ///
+    /// Only available if the ROM is patched with
+    /// the "3 layers" patch
+    ThreeLayers = 3,
+}
+
+/// The attributes of a metatile organized into a struct
+/// for interoperability between versions.
+#[derive(Debug, Default)]
+pub struct MetatileAttributes {
+    /// Specifies the behavior of the tile
+    ///
+    /// Present in all versions
+    pub behavior: u16,
+    /// Specifies the terrain type of the tile
+    /// NORMAL, GRASS, WATER or WATERFALL
+    ///
+    /// Present only in FireRed
+    pub terrain: u8,
+    /// Specifies the encounter type of the tile
+    /// NONE, LAND or WATER
+    ///
+    /// Present only in FireRed
+    pub encounter_type: u8,
+    /// Specifies whether the player passed behind the top layer
+    ///
+    /// Present in all versions
+    pub layer_type: MetatileLayerType,
+}
+
 /**************************************/
 /* ANCHOR    Loading/saving functions */
 /**************************************/
@@ -37,10 +80,8 @@ pub struct TilesetData {
     /// The tileset's palettes
     pub palettes: Vec<GBAPalette>,
 
-    /// The attribute bytes for each block
-    ///
-    /// Contains behavior, terrain, encounter and layer type information
-    pub attributes: Vec<u32>,
+    /// The attributes for each metatile
+    pub attributes: Vec<MetatileAttributes>,
     /// The metatiles that make up the tileset
     pub metatiles: Vec<MetaTile>,
     // TODO Handle animations
@@ -66,10 +107,10 @@ impl TilesetData {
             None => header.get_size(rom),
         };
 
-        let graphics = header.get_graphics(rom)?;
-        let palettes = header.get_palettes(rom)?;
-        let attributes = header.get_attributes(rom, size)?;
-        let metatiles = header.get_metatiles(rom, size)?;
+        let graphics = header.read_graphics(rom)?;
+        let palettes = header.read_palettes(rom)?;
+        let attributes = header.read_attributes(rom, size)?;
+        let metatiles = header.read_metatiles(rom, size)?;
 
         Ok(TilesetData {
             header,
@@ -166,7 +207,7 @@ impl TilesetHeader {
     }
 
     /// Reads this tileset's graphics from ROM.
-    fn get_graphics(&self, rom: &Rom) -> Result<Graphic, TilesetReadingError> {
+    fn read_graphics(&self, rom: &Rom) -> Result<Graphic, TilesetReadingError> {
         let gfx_offset =
             self.graphics
                 .offset()
@@ -180,7 +221,7 @@ impl TilesetHeader {
     }
 
     /// Reads this tileset's palettes from ROM.
-    fn get_palettes(&self, rom: &Rom) -> Result<Vec<GBAPalette>, TilesetReadingError> {
+    fn read_palettes(&self, rom: &Rom) -> Result<Vec<GBAPalette>, TilesetReadingError> {
         let palette_offset =
             self.palettes
                 .offset()
@@ -195,7 +236,11 @@ impl TilesetHeader {
     }
 
     /// Reads this tileset's attributes from ROM.
-    fn get_attributes(&self, rom: &Rom, size: usize) -> Result<Vec<u32>, TilesetReadingError> {
+    fn read_attributes(
+        &self,
+        rom: &Rom,
+        size: usize,
+    ) -> Result<Vec<MetatileAttributes>, TilesetReadingError> {
         let attributes_offset =
             self.attributes
                 .offset()
@@ -203,20 +248,50 @@ impl TilesetHeader {
 
         let mut attributes = Vec::new();
 
-        // TODO Check if they have are of a different size in Emerald
+        // Check the Rom type
         for i in 0..size {
-            let attribute_offset = attributes_offset + i * 4;
-            let attribute: u32 = rom
-                .read(attribute_offset)
-                .map_err(|_| TilesetReadingError::InvalidAttributesOffset)?;
-            attributes.push(attribute);
+            let attr = match rom.rom_type {
+                RomType::FireRed | RomType::LeafGreen => {
+                    // The attribute is an u32
+                    let attribute: u32 = rom
+                        .read(attributes_offset + i * 4)
+                        .map_err(|_| TilesetReadingError::InvalidAttributesOffset)?;
+
+                    MetatileAttributes {
+                        behavior: (attribute & 0x000001ff) as u16,
+                        terrain: (attribute & 0x00003e00 >> 9) as u8,
+                        encounter_type: (0x07000000 >> 24) as u8,
+                        layer_type: ((0x60000000 >> 29) as u8).into(),
+                    }
+                }
+                RomType::Emerald | RomType::Ruby | RomType::Sapphire => {
+                    // The attribute is an u16
+                    let attribute: u16 = rom
+                        .read(attributes_offset + i * 2)
+                        .map_err(|_| TilesetReadingError::InvalidAttributesOffset)?;
+
+                    MetatileAttributes {
+                        behavior: (attribute & 0xff) as u16,
+                        terrain: 0,
+                        encounter_type: 0,
+                        layer_type: ((attribute & 0xf000 >> 12) as u8).into(),
+                    }
+                }
+
+                _ => {
+                    // If it's not one of the above, we don't know how to read the attributes
+                    return Err(TilesetReadingError::InvalidAttributesOffset);
+                }
+            };
+
+            attributes.push(attr);
         }
 
         Ok(attributes)
     }
 
     /// Reads the tileset's metatiles from ROM.
-    fn get_metatiles(&self, rom: &Rom, size: usize) -> Result<Vec<MetaTile>, TilesetReadingError> {
+    fn read_metatiles(&self, rom: &Rom, size: usize) -> Result<Vec<MetaTile>, TilesetReadingError> {
         let metatiles_offset =
             self.metatiles
                 .offset()
@@ -233,5 +308,17 @@ impl TilesetHeader {
         }
 
         Ok(metatiles)
+    }
+}
+
+impl Into<MetatileLayerType> for u8 {
+    fn into(self) -> MetatileLayerType {
+        match self % 4 {
+            0 => MetatileLayerType::Normal,
+            1 => MetatileLayerType::Covered,
+            2 => MetatileLayerType::Split,
+            3 => MetatileLayerType::ThreeLayers,
+            _ => unreachable!("The layer type compared after a modulo 4 operation"),
+        }
     }
 }
