@@ -607,7 +607,7 @@ fn build_body(name: &String, struct_: &AStruct) -> TokenStream2 {
     let name = format_ident!("{}", name);
     quote! {
         // TODO Add Serde support
-        #[derive(Debug, Default, Clone, PartialEq, Eq)]
+        #[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
         pub struct #name {
             #fields
         }

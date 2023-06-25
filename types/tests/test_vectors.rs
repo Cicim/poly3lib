@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod vector_tests {
     use gba_macro::gba_struct;
-    use gba_types::{vectors::VectorData, GBAType, GBAIOError};
+    use gba_types::{vectors::VectorData, GBAIOError, GBAType};
 
     gba_struct!(SimpleVector {
         u32 size;
@@ -211,7 +211,6 @@ mod vector_tests {
         assert_eq!(test, output);
     }
 
-
     #[test]
     fn not_enough_space() {
         let mut test = [0xFF; 16];
@@ -223,5 +222,49 @@ mod vector_tests {
         let res = vector.write_to(&mut test, 0);
         assert!(res.is_err());
         assert_eq!(res.unwrap_err(), GBAIOError::RepointingError);
+    }
+
+    #[test]
+    fn serde() {
+        gba_struct!(VectorsDemo {
+            u8 size1;
+            u8 new{$size1};
+            u8 size2;
+            u8 clear{$size2};
+            u8 size3;
+            u8 null{$size3};
+            u8 size4;
+            u8 invalid{$size4};
+            u8 size5;
+            u8 valid{$size5};
+        });
+
+        let mut demo = VectorsDemo::default();
+
+        demo.size1 = 3;
+        demo.new = VectorData::New(vec![0x00, 0x00, 0x00]);
+
+        demo.size2 = 0;
+        demo.clear = VectorData::Clear {
+            offset: 0xC1EA4,
+            read_length: 2,
+        };
+
+        demo.size3 = 1;
+        demo.null = VectorData::Null;
+
+        demo.size4 = 1;
+        demo.invalid = VectorData::Invalid(0x404E);
+
+        demo.size5 = 2;
+        demo.valid = VectorData::Valid {
+            offset: 0x4A71D,
+            data: vec![0x44, 0x45],
+            read_length: 1,
+        };
+
+        let json = serde_json::to_string_pretty(&demo).unwrap();
+        let deserialized = serde_json::from_str::<VectorsDemo>(&json).unwrap();
+        assert_eq!(demo, deserialized);
     }
 }

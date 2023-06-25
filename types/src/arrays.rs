@@ -1,6 +1,6 @@
 use crate::{GBAIOError, GBAType};
 
-impl <T: GBAType, const N: usize> GBAType for [T; N] {
+impl<T: GBAType, const N: usize> GBAType for [T; N] {
     const SIZE: usize = T::SIZE * N;
 
     fn read_from(bytes: &[u8], offset: usize) -> Result<Self, GBAIOError> {
@@ -8,10 +8,12 @@ impl <T: GBAType, const N: usize> GBAType for [T; N] {
         for i in 0..N {
             vec.push(T::read_from(bytes, offset + i * T::SIZE)?);
         }
-        let array  = vec.try_into();
+        let array = vec.try_into();
         match array {
             Ok(array) => Ok(array),
-            Err(_) => Err(GBAIOError::Unknown("Failed to convert vec to array when reading array")),
+            Err(_) => Err(GBAIOError::Unknown(
+                "Failed to convert vec to array when reading array",
+            )),
         }
     }
 
@@ -22,7 +24,6 @@ impl <T: GBAType, const N: usize> GBAType for [T; N] {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -49,5 +50,4 @@ mod tests {
         array.write_to(&mut bytes, 0).unwrap();
         assert_eq!(bytes, [0x01; 0x1000]);
     }
-
 }

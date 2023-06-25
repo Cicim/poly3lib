@@ -1,5 +1,7 @@
 use std::fmt::Formatter;
 
+use serde::{de, ser::SerializeStruct, Deserialize, Deserializer, Serialize};
+
 use crate::{GBAIOError, GBAType};
 
 pub type VoidPointer = PointedData<Nothing>;
@@ -14,14 +16,122 @@ pub enum PointedData<T: GBAType> {
     Valid(u32, T),
     /// When you have a valid offset to write, but you don't want to write
     /// any data to that offset, even though the pointer has a type.
-    /// 
+    ///
     /// Is never created by reading data
     NoData(u32),
     /// When the pointer was not rebased because it was not a valid offset,
     /// so no data can be read, but you may still want to see the result.
-    /// 
+    ///
     /// Throws an error when writing.
     Invalid(u32),
+}
+
+// Serialization rules:
+// - Any invalid pointer is serialized as a u32
+//   (so null is serialized as 0)
+// - Any valid pointer with data is serialized as a struct with two fields:
+//   - offset: u32
+//   - data: T
+impl<T: GBAType + Serialize> Serialize for PointedData<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            PointedData::Null => serializer.serialize_u32(0),
+            PointedData::Valid(offset, data) => {
+                let mut state = serializer.serialize_struct("Valid", 2)?;
+                state.serialize_field("offset", offset)?;
+                state.serialize_field("data", data)?;
+                state.end()
+            }
+            PointedData::NoData(offset) => {
+                let mut state = serializer.serialize_struct("Valid", 2)?;
+                state.serialize_field("offset", offset)?;
+                state.end()
+            }
+            PointedData::Invalid(pointer) => serializer.serialize_u32(*pointer),
+        }
+    }
+}
+
+impl<'de, T: GBAType> Deserialize<'de> for PointedData<T>
+where
+    T: for<'a> Deserialize<'a>,
+{
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        #[derive(Deserialize)]
+        #[serde(field_identifier, rename_all = "lowercase")]
+        enum Field {
+            Data,
+            Offset,
+        }
+
+        struct PointedDataVisitor<T: GBAType>(std::marker::PhantomData<T>);
+
+        // Visitor for PointedData
+        impl<'de, T: GBAType> serde::de::Visitor<'de> for PointedDataVisitor<T>
+        where
+            T: for<'a> Deserialize<'a>,
+        {
+            type Value = PointedData<T>;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("valid JSON representation of PointedData")
+            }
+
+            fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                if v == 0 {
+                    Ok(PointedData::Null)
+                } else {
+                    Ok(PointedData::Invalid(v as u32))
+                }
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::MapAccess<'de>,
+            {
+                let mut offset: Option<u32> = None;
+                let mut data: Option<T> = None;
+
+                while let Some(key) = map.next_key()? {
+                    match key {
+                        Field::Data => {
+                            if data.is_some() {
+                                return Err(serde::de::Error::duplicate_field("data"));
+                            }
+                            data = Some(map.next_value()?);
+                        }
+                        Field::Offset => {
+                            if offset.is_some() {
+                                return Err(serde::de::Error::duplicate_field("offset"));
+                            }
+                            offset = Some(map.next_value()?);
+                        }
+                    }
+                }
+
+                if let Some(offset) = offset {
+                    if let Some(data) = data {
+                        Ok(PointedData::Valid(offset, data))
+                    } else {
+                        Ok(PointedData::NoData(offset))
+                    }
+                } else {
+                    Err(serde::de::Error::missing_field("offset"))
+                }
+            }
+        }
+
+        deserializer.deserialize_any(PointedDataVisitor(std::marker::PhantomData))
+    }
 }
 
 impl<T: GBAType> GBAType for PointedData<T> {
@@ -71,12 +181,12 @@ impl<T: GBAType> GBAType for PointedData<T> {
                 data.write_to(bytes, *offset as usize)?;
 
                 *offset + 0x08000000
-            },
+            }
             // Write the pointer at the offset, but don't write any data.
             PointedData::NoData(offset) => *offset + 0x08000000,
             PointedData::Invalid(pointer) => {
                 return Err(GBAIOError::WritingInvalidPointer(*pointer))
-            },
+            }
         };
 
         let buf = pointer.to_le_bytes();
@@ -121,7 +231,10 @@ impl<T: GBAType> PointedData<T> {
     }
 }
 
-#[derive(Default, Clone, Debug, Copy, PartialEq, Eq, Hash)]
+/// Type representing absolutely nothing.
+///
+/// It is used to represent void pointers without needing to redefine the [`PointedData`] type.
+#[derive(Default, Clone, Debug, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Nothing;
 
 impl GBAType for Nothing {
@@ -135,7 +248,6 @@ impl GBAType for Nothing {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod tests {
