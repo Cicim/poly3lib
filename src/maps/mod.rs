@@ -15,15 +15,11 @@ pub mod tileset;
 impl Rom {
     /// Initializes the map groups table and the map groups list.
     pub fn init_map(&mut self) -> Result<(), TableInitError> {
-        if self.refs.map_groups.is_none() || self.refs.map_groups_list.is_none() {
-            let (map_groups_table, map_groups) = get_map_groups_table(self)?;
-            self.refs.map_groups = Some(map_groups_table);
-            self.refs.map_groups_list = Some(map_groups);
-        }
-
+        header::MapHeadersTable::init(self)?;
         layout::MapLayoutsTable::init(self)?;
 
         if self.refs.tilesets_table.is_none() {
+            // TODO Remove this unwrap
             let map_layouts_table = self.refs.map_layouts_table.as_ref().unwrap();
             let tilesets_data = get_tilesets_data(self, &map_layouts_table)?;
             self.refs.tilesets_table = Some(tilesets_data);
@@ -31,78 +27,6 @@ impl Rom {
 
         Ok(())
     }
-}
-
-/// Reads the table pointer to the map groups table
-/// and to each group of map headers.
-fn get_map_groups_table(rom: &Rom) -> Result<(TablePointer, Vec<TablePointer>), TableInitError> {
-    use crate::rom::RomType;
-
-    // ANCHOR Add support for other rom types
-    let base_offset: usize = match rom.rom_type {
-        RomType::FireRed | RomType::LeafGreen => 0x5524C,
-        _ => return Err(TableInitError::NotImplemented),
-    };
-
-    // Read the pointer at the base offset
-    let table_offset = rom
-        .read_ptr(base_offset)
-        .map_err(|_| TableInitError::InvalidTablePointer)?;
-
-    // Find all the map groups
-    let mut map_groups = vec![];
-
-    for i in 0..256 {
-        let offset = table_offset + i * 4;
-
-        if let Ok(ptr) = rom.read_ptr(offset) {
-            map_groups.push(TablePointer {
-                offset: ptr,
-                size: 0,
-                references: vec![offset],
-            })
-        } else {
-            break;
-        }
-    }
-
-    // Determine the size of each map group
-    for gid in 0..map_groups.len() {
-        let map_groups: &mut Vec<TablePointer> = &mut map_groups;
-        // Get the pointer to the start of i-th map group
-        let start_offset = map_groups[gid].offset;
-
-        for mid in 0..256 {
-            let curr_ptr_in_table = start_offset + mid * 4;
-
-            // If the current offset is the same as the start offset
-            // of any other map group *except* the current one,
-            // then we've reached the end of the current map group.
-            if map_groups
-                .iter()
-                .enumerate()
-                .any(|(gid2, other_group)| gid != gid2 && other_group.offset == curr_ptr_in_table)
-            {
-                break;
-            }
-
-            // Keep going as long as you read a valid pointer
-            if let Ok(_) = rom.read_ptr(curr_ptr_in_table) {
-                map_groups[gid].size += 1;
-            } else {
-                break;
-            }
-        }
-    }
-
-    // Create the table pointer
-    let table = TablePointer {
-        offset: table_offset,
-        size: map_groups.len(),
-        references: vec![base_offset],
-    };
-
-    Ok((table, map_groups))
 }
 
 /// Reads the tilesets data from the map layouts table.

@@ -118,18 +118,18 @@ impl Display for Refs {
 }
 
 impl Rom {
-    /// Look for all references to pointer in the ROM
-    /// and return the offsets to each one.
-    pub fn find_references(&self, pointer: usize) -> Vec<usize> {
+    /// Returns all offsets in the ROM that contain a reference
+    /// to the given `offset`.
+    pub fn find_references(&self, offset: usize) -> Vec<usize> {
         let mut references = Vec::new();
 
         // Make sure the pointer is valid
-        if pointer > self.size() {
+        if offset > self.size() {
             return references;
         }
 
         // Convert the given pointer to a bytearray
-        let pointer: u32 = pointer as u32 + 0x08000000;
+        let pointer: u32 = offset as u32 + 0x08000000;
         let pointer: [u8; 4] = pointer.to_le_bytes();
 
         // Search for the pointer in the ROM
