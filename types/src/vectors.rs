@@ -174,6 +174,8 @@ impl<T: GBAType> VectorData<T> {
         }
     }
 
+    /// Transforms this [`VectorData`] into another [`VectorData`]
+    /// that can be used to clear the vector.
     pub fn to_clear(&self) -> Option<VectorData<T>> {
         match self {
             VectorData::Valid {

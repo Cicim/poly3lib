@@ -229,13 +229,11 @@ impl<'rom> MapLayoutsTable<'rom> {
     /// Assumes the index location can be directly written to, because the table
     /// has already been extended if necessary.
     fn write_header(&mut self, index: u16, header: MapLayout) -> Result<(), LayoutError> {
-        let offset = self.get_header_offset(index);
-
         // Get the offset to which the header will be written
-        let offset = match offset {
+        let offset = match self.get_header_offset(index) {
             Ok(offset) => offset,
             // If the offset is invalid, find new space for the header
-            Err(LayoutError::InvalidOffset(_)) => self
+            Err(LayoutError::InvalidOffset(_)) | Err(LayoutError::MissingLayout) => self
                 .rom
                 .find_free_space(layout_struct_size(self.rom), 4)
                 .ok_or_else(|| LayoutError::CannotRepointHeader)?,

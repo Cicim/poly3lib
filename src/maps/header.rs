@@ -1,5 +1,5 @@
 use gba_macro::gba_struct;
-use gba_types::GBAIOError;
+use gba_types::{pointers::PointedData, GBAIOError, GBAType};
 
 use crate::{
     refs::{TableInitError, TablePointer},
@@ -76,6 +76,8 @@ impl MapHeader {
             _ => Err(GBAIOError::Unknown("Invalid ROM type"))?,
         };
 
+        //NOTE - We could check if the map layout offset and id match here
+
         Ok(res)
     }
 
@@ -109,6 +111,46 @@ impl MapHeader {
 
         Ok(())
     }
+
+    /// Clears the [`MapHeader`] and all its attached fields
+    /// (everything excluding the map layout), according to the game version.
+    pub fn clear(self, rom: &mut Rom, offset: usize) -> Result<(), GBAIOError> {
+        // Clear all fields one by one
+        if let PointedData::Valid(offset, mut data) = self.connections {
+            if let Some(clear_obj) = data.connections.to_clear() {
+                data.connections = clear_obj;
+                rom.write(offset as usize, data)?;
+            }
+        }
+
+        // Clear all the events
+        if let PointedData::Valid(offset, mut data) = self.events {
+            // Clear the background events if there are any
+            if let Some(clear_obj) = data.bg_events.to_clear() {
+                data.bg_events = clear_obj;
+            }
+            // Clear the warp events if there are any
+            if let Some(clear_obj) = data.warps.to_clear() {
+                data.warps = clear_obj;
+            }
+            // Clear the coord events if there are any
+            if let Some(clear_obj) = data.coord_events.to_clear() {
+                data.coord_events = clear_obj;
+            }
+            // Clear the object events if there are any
+            if let Some(clear_obj) = data.object_events.to_clear() {
+                data.object_events = clear_obj;
+            }
+            rom.write(offset as usize, data)?;
+        }
+
+        // TODO Clear the Map Scripts
+
+        // Clear the Map Header
+        rom.clear(offset, header_struct_size(rom))?;
+
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -118,7 +160,13 @@ pub enum MapError {
     InvalidIndex(u8, u8),
     InvalidOffset(u8, u8, u32),
 
+    InvalidResizeLength(usize),
+    InvalidGroupToResize(u8),
+    CannotRepointTable,
+    CannotRepointHeader,
+
     IoError(GBAIOError),
+    MissingHeader,
 }
 
 /// Table of map headers. Provides methods for editing the table.
@@ -138,8 +186,58 @@ impl<'rom> MapHeadersTable<'rom> {
         Ok(Self { rom })
     }
 
+    // ANCHOR Headers
     /// Read a [`MapHeader`] from the given offset.
     pub fn read_header(&self, group: u8, index: u8) -> Result<MapHeader, MapError> {
+        let header_offset = self.get_header_offset(group, index)?;
+        MapHeader::read(self.rom, header_offset).map_err(MapError::IoError)
+    }
+
+    /// Write a [`MapHeader`] to the given offset.
+    pub fn write_header(
+        &mut self,
+        group: u8,
+        index: u8,
+        header: MapHeader,
+    ) -> Result<(), MapError> {
+        // Increase the sizes as needed
+        self.resize_table(group as usize + 1)?;
+        self.resize_group(group, index as usize)?;
+
+        // Check what was there in the old place
+        let offset = match self.get_header_offset(group, index) {
+            // If there was already an header, overwrite it
+            Ok(offset) => offset,
+            // If there was an IOError related to the header, find a new place for it
+            Err(MapError::IoError(_)) | Err(MapError::MissingHeader) => self
+                .rom
+                .find_free_space(header_struct_size(self.rom), 4)
+                .ok_or_else(|| MapError::CannotRepointHeader)?,
+            Err(err) => return Err(err),
+        };
+
+        // Write everything
+        header.write(self.rom, offset).map_err(MapError::IoError)?;
+        self.write_offset_to_table(group, index, Some(offset))
+    }
+
+    /// Deletes the [`MapHeader`] at the given index along with all its attached fields.
+    pub fn delete_header(&mut self, group: u8, index: u8) -> Result<(), MapError> {
+        // If the header exists, clear it
+        if let Ok(header_offset) = self.get_header_offset(group, index) {
+            MapHeader::read(self.rom, header_offset)
+                .map_err(MapError::IoError)?
+                .clear(self.rom, header_offset)
+                .map_err(MapError::IoError)?;
+        }
+
+        // In any case, clear the header's offset from the table
+        self.write_offset_to_table(group, index, None)
+    }
+
+    // ANCHOR Header offset
+    /// Returns the offset to the [`MapHeader`]
+    fn get_header_offset(&self, group: u8, index: u8) -> Result<usize, MapError> {
         let group_table = self.get_group_table(group)?;
 
         if index as usize >= group_table.size {
@@ -147,16 +245,161 @@ impl<'rom> MapHeadersTable<'rom> {
         }
 
         let offset = group_table.offset + index as usize * 4;
+
+        // If there is a NULL pointer, return a MissingHeader error
+        if self.rom.read::<u32>(offset).map_err(MapError::IoError)? == 0 {
+            return Err(MapError::MissingHeader);
+        }
         let header_offset = self
             .rom
             .read_ptr(offset)
             .map_err(|_| MapError::InvalidOffset(group, index, offset as u32))?;
+        Ok(header_offset)
+    }
 
-        MapHeader::read(self.rom, header_offset).map_err(MapError::IoError)
+    /// Writes the given offset at the given location in the map groups table.
+    fn write_offset_to_table(
+        &mut self,
+        group: u8,
+        index: u8,
+        offset: Option<usize>,
+    ) -> Result<(), MapError> {
+        let group_table = self.get_group_table(group)?;
+        if index as usize >= group_table.size {
+            return Err(MapError::InvalidIndex(group, index));
+        }
+        let write_location = group_table.offset + index as usize * 4;
+
+        if let Some(offset) = offset {
+            self.rom
+                .write_ptr(write_location, offset)
+                .map_err(MapError::IoError)?;
+        } else {
+            self.rom
+                .write(write_location, 0u32)
+                .map_err(MapError::IoError)?;
+        }
+
+        Ok(())
+    }
+
+    // ANCHOR Whole table
+    /// Increases the size of the map groups table.
+    pub fn resize_table(&mut self, new_num: usize) -> Result<(), MapError> {
+        if new_num < 1 || new_num > 256 {
+            return Err(MapError::InvalidResizeLength(new_num));
+        }
+
+        let table = self.get_table()?.clone();
+
+        let old_offset = table.offset;
+        let old_num = table.size;
+
+        // Stop if the table is already big enough
+        if old_num >= new_num {
+            return Ok(());
+        }
+
+        // Copy the whole table
+        let copy = self.rom.data[old_offset..old_offset + old_num * 4].to_vec();
+        // Overwrite the current table
+        self.rom
+            .clear(old_offset, old_num * 4)
+            .map_err(MapError::IoError)?;
+
+        // Find an offset for the new table size
+        let new_offset = self
+            .rom
+            .find_free_space(new_num * 4, 4)
+            .ok_or_else(|| MapError::CannotRepointTable)?;
+        // Fill the new table with zeros
+        self.rom.data[new_offset..new_offset + new_num * 4].fill(0);
+        // Copy the first part of the table to the new spot
+        self.rom.data[new_offset..new_offset + old_num * 4].copy_from_slice(&copy);
+
+        // Update the table pointer
+        let updated_table = table
+            .update(&mut self.rom, new_offset, new_num)
+            .map_err(|_| MapError::CannotRepointTable)?;
+        // Update the map groups table pointer
+        self.rom.refs.map_groups = Some(updated_table);
+
+        // Update all the references to all the groups and all the oh my gosh is this a lot of work
+        let mut groups = self.rom.refs.map_groups_list.clone().unwrap();
+        for i in 0..old_num {
+            let new_reference = TablePointer {
+                references: vec![new_offset + i * 4],
+                ..groups[i]
+            };
+            groups[i] = new_reference;
+        }
+        for i in old_num..new_num {
+            let new_reference = TablePointer {
+                references: vec![new_offset + i * 4],
+                offset: 0,
+                size: 0,
+            };
+            groups.push(new_reference);
+        }
+        self.rom.refs.map_groups_list = Some(groups);
+
+        Ok(())
+    }
+
+    /// Increase the size of a single map group.
+    ///
+    /// You also have to call `increase_groups_number` if you
+    /// want to add a new group.
+    pub fn resize_group(&mut self, group: u8, new_size: usize) -> Result<(), MapError> {
+        // Make sure the new size is valid
+        if new_size < 1 || new_size > 256 {
+            return Err(MapError::InvalidResizeLength(new_size));
+        }
+        // If the group has not been initialized yet, fail
+        if group > self.get_table()?.size as u8 {
+            return Err(MapError::InvalidGroupToResize(group));
+        }
+
+        // Get the group you want to modify
+        let group_table = self.get_group_table(group)?.clone();
+
+        // Exit if the group is already big enough
+        if group_table.size >= new_size {
+            return Ok(());
+        }
+
+        // Copy the whole group
+        let copy =
+            self.rom.data[group_table.offset..group_table.offset + group_table.size * 4].to_vec();
+
+        // Overwrite the current group
+        self.rom
+            .clear(group_table.offset, group_table.size * 4)
+            .map_err(MapError::IoError)?;
+
+        // Find an offset for the new group size
+        let new_offset = self
+            .rom
+            .find_free_space(new_size * 4, 4)
+            .ok_or_else(|| MapError::CannotRepointTable)?;
+
+        // Fill the new group with zeros
+        self.rom.data[new_offset..new_offset + new_size * 4].fill(0);
+        // Copy the first part of the group to the new spot
+        self.rom.data[new_offset..new_offset + group_table.size * 4].copy_from_slice(&copy);
+
+        // Update the table pointer
+        let updated_table = group_table
+            .update(&mut self.rom, new_offset, new_size)
+            .map_err(|_| MapError::CannotRepointTable)?;
+        // Update the map groups table pointer
+        self.rom.refs.map_groups_list.as_mut().unwrap()[group as usize] = updated_table;
+
+        Ok(())
     }
 
     /// Returns the [`TablePointer`] for the map groups table.
-    pub fn get_table(&self) -> Result<&TablePointer, MapError> {
+    fn get_table(&self) -> Result<&TablePointer, MapError> {
         if let Some(table) = &self.rom.refs.map_groups {
             Ok(table)
         } else {
@@ -165,7 +408,7 @@ impl<'rom> MapHeadersTable<'rom> {
     }
 
     /// Returns the [`TablePointer`] for a specific map group.
-    pub fn get_group_table(&self, group: u8) -> Result<&TablePointer, MapError> {
+    fn get_group_table(&self, group: u8) -> Result<&TablePointer, MapError> {
         let table = self.get_table()?;
         if group as usize >= table.size {
             return Err(MapError::InvalidIndex(group, 0));
@@ -179,6 +422,15 @@ impl Rom {
     /// Return the [`MapHeadersTable`] for this ROM.
     pub fn map_headers(&mut self) -> Result<MapHeadersTable, TableInitError> {
         MapHeadersTable::init(self)
+    }
+}
+
+/// Return the size of a map header according to the ROM type.
+fn header_struct_size(rom: &Rom) -> usize {
+    match rom.rom_type {
+        RomType::FireRed | RomType::LeafGreen => MapHeader::SIZE,
+        RomType::Emerald | RomType::Ruby | RomType::Sapphire => EmeraldMapHeader::SIZE,
+        _ => panic!("Unsupported ROM type"),
     }
 }
 
