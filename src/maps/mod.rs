@@ -7,6 +7,8 @@ use crate::{
     rom::Rom,
 };
 
+pub mod connection;
+pub mod events;
 pub mod header;
 pub mod layout;
 pub mod render;

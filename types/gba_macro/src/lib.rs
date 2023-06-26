@@ -72,19 +72,19 @@ fn parse_struct(stream: TokenStream) -> (String, Vec<StructField>, StructOptions
 
     // Get the options
     let mut options = StructOptions::default();
-    let next_token = stream.next();
-    while stream.next().is_some() {
-        match next_token {
-            Some(TokenTree::Ident(ref ident)) => match ident.to_string().as_str() {
+    let mut next_token = stream.next();
+
+    while let Some(token) = next_token {
+        match token {
+            TokenTree::Ident(ref ident) => match ident.to_string().as_str() {
                 "DEBUG" => options.debug = true,
                 "PRIVATE" => options.private = true,
                 _ => abort!(ident.span(), "expected valid flag"),
             },
-            Some(token) => abort!(token.span(), "expected valid flag"),
-            None => unreachable!("Already excluded None"),
-        }
-
-        abort!(next_token.unwrap().span(), "unexpected token");
+            _ => abort!(token.span(), "expected valid flag"),
+        };
+        // Get the next token
+        next_token = stream.next();
     }
 
     // Consume the struct body

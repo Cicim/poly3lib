@@ -209,10 +209,10 @@ impl<T: GBAType> std::fmt::Debug for VectorData<T> {
                 data,
             } => write!(
                 f,
-                "valid offset 0x{:08X}, length {}, data {:?}",
+                "valid offset 0x{:08X}, length {}, data {:#?}",
                 offset, read_length, data
             ),
-            New(data) => write!(f, "new data {:?}", data),
+            New(data) => write!(f, "new data {:#?}", data),
         }?;
         write!(f, ")")
     }

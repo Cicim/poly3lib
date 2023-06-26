@@ -1,15 +1,19 @@
 use gba_macro::gba_struct;
+use gba_types::GBAIOError;
 
 use crate::{
     refs::{TableInitError, TablePointer},
-    rom::Rom,
+    rom::{Rom, RomType},
 };
+
+use super::connection::MapConnections;
+use super::events::MapEvents;
 
 gba_struct!(EmeraldMapHeader {
     void *map_layout;
-    void *events;
+    struct MapEvents *events;
     void *map_scripts;
-    void *connections;
+    struct MapConnections *connections;
     u16 music;
     u16 map_layout_id;
     u8 region_map_section_id;
@@ -25,10 +29,10 @@ gba_struct!(EmeraldMapHeader {
 } PRIVATE);
 
 gba_struct!(MapHeader {
-    void *map_layout;  // struct MapLayout *mapLayout;
-    void *events;      // struct MapEvents *events;
+    void *map_layout;
+    struct MapEvents *events;
     void *map_scripts;
-    void *connections; // struct MapConnections *connections;
+    struct MapConnections *connections;
     u16 music;
     u16 map_layout_id;        // Has to correspond with the map layout
     u8 region_map_section_id;
@@ -44,12 +48,66 @@ gba_struct!(MapHeader {
 });
 
 impl MapHeader {
-    pub fn read(rom: &Rom, offset: usize) -> Result<Self, gba_types::GBAIOError> {
-        rom.read(offset)
+    /// Reads the [`MapHeader`] taking into account the game version.
+    pub fn read(rom: &Rom, offset: usize) -> Result<Self, GBAIOError> {
+        let res = match rom.rom_type {
+            RomType::FireRed | RomType::LeafGreen => rom.read::<MapHeader>(offset)?,
+            RomType::Emerald | RomType::Ruby | RomType::Sapphire => {
+                let value = rom.read::<EmeraldMapHeader>(offset)?;
+                MapHeader {
+                    map_layout: value.map_layout,
+                    events: value.events,
+                    map_scripts: value.map_scripts,
+                    connections: value.connections,
+                    music: value.music,
+                    map_layout_id: value.map_layout_id,
+                    region_map_section_id: value.region_map_section_id,
+                    cave: value.cave,
+                    weather: value.weather,
+                    map_type: value.map_type,
+                    biking_allowed: value.allow_cycling,
+                    allow_escaping: value.allow_escaping,
+                    allow_running: value.allow_running,
+                    show_map_name: value.show_map_name,
+                    floor_num: 0,
+                    battle_type: value.battle_type,
+                }
+            }
+            _ => Err(GBAIOError::Unknown("Invalid ROM type"))?,
+        };
+
+        Ok(res)
     }
 
-    pub fn write(self, rom: &mut Rom, offset: usize) -> Result<(), gba_types::GBAIOError> {
-        rom.write(offset, self)
+    /// Writes the [`MapHeader`] taking into account the game version.
+    pub fn write(self, rom: &mut Rom, offset: usize) -> Result<(), GBAIOError> {
+        match rom.rom_type {
+            RomType::FireRed | RomType::LeafGreen => rom.write(offset, self)?,
+            RomType::Emerald | RomType::Ruby | RomType::Sapphire => {
+                let value = EmeraldMapHeader {
+                    map_layout: self.map_layout,
+                    events: self.events,
+                    map_scripts: self.map_scripts,
+                    connections: self.connections,
+                    music: self.music,
+                    map_layout_id: self.map_layout_id,
+                    region_map_section_id: self.region_map_section_id,
+                    cave: self.cave,
+                    weather: self.weather,
+                    map_type: self.map_type,
+                    allow_cycling: self.biking_allowed,
+                    allow_escaping: self.allow_escaping,
+                    allow_running: self.allow_running,
+                    show_map_name: self.show_map_name,
+                    battle_type: self.battle_type,
+                    filler: [0; 2],
+                };
+                rom.write::<EmeraldMapHeader>(offset, value)?;
+            }
+            _ => Err(GBAIOError::Unknown("Invalid ROM type"))?,
+        };
+
+        Ok(())
     }
 }
 
@@ -60,7 +118,7 @@ pub enum MapError {
     InvalidIndex(u8, u8),
     InvalidOffset(u8, u8, u32),
 
-    IoError(gba_types::GBAIOError),
+    IoError(GBAIOError),
 }
 
 /// Table of map headers. Provides methods for editing the table.
@@ -127,8 +185,6 @@ impl Rom {
 /// Reads the table pointer to the map groups table
 /// and to each group of map headers.
 fn get_map_groups_table(rom: &Rom) -> Result<(TablePointer, Vec<TablePointer>), TableInitError> {
-    use crate::rom::RomType;
-
     let base_offset: usize = match rom.rom_type {
         RomType::FireRed | RomType::LeafGreen => 0x5524C,
         RomType::Emerald | RomType::Ruby | RomType::Sapphire => 0x84AA4,

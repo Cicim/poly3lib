@@ -43,12 +43,14 @@ impl RenderedMetatile {
     }
 }
 
+#[derive(Debug)]
 /// This struct contains everything needed to render a tileset.
 pub struct TilesetsPair {
     /// The primary tileset
     pub primary: TilesetData,
     /// The secondary tileset
     pub secondary: TilesetData,
+    // TODO There are actually maximum 13 palettes, not 16
     /// The palettes combined from the two tilesets
     pub palettes: [[Rgba<u8>; 16]; 16],
     /// The index after which the secondary tileset starts
@@ -65,6 +67,8 @@ impl TilesetsPair {
         let primary = TilesetData::read(rom, tileset_1)?;
         let secondary = TilesetData::read(rom, tileset_2)?;
 
+        // TODO There is a difference in FR and Em as to how many palettes are from
+        // the primary tileset (7 in FR, 6 in Em) In Ruby the total is 12 instead of 13
         // Combine the two palettes
         let mut palettes = [[Rgba([0, 0, 0, 0]); 16]; 16];
         for (i, palette) in (&primary.palettes[0..8])
