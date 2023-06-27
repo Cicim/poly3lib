@@ -73,7 +73,16 @@ impl MapLayout {
 
     /// Clears the [`MapLayout`] taking into account the game version.
     pub fn clear(rom: &mut Rom, offset: usize) -> Result<(), GBAIOError> {
-        rom.clear(offset as usize, layout_struct_size(rom))
+        rom.clear(offset as usize, MapLayout::size(rom))
+    }
+
+    /// Returns the size of the [`MapLayout`] taking into account the game version.
+    fn size(rom: &Rom) -> usize {
+        match rom.rom_type {
+            RomType::FireRed | RomType::LeafGreen => MapLayout::SIZE,
+            RomType::Emerald | RomType::Ruby | RomType::Sapphire => EmeraldMapLayout::SIZE,
+            _ => panic!("Unsupported ROM type"),
+        }
     }
 }
 
@@ -141,6 +150,7 @@ impl<'rom> MapLayoutsTable<'rom> {
         self.rom.refs.map_layouts_table.as_ref().unwrap().size as u16
     }
 
+    // ANCHOR Layout Data
     /// Deletes a map layout from the table.
     pub fn delete_layout(&mut self, index: u16) -> Result<(), LayoutError> {
         // Make sure there is a pointer at that index in the table, then read it
@@ -224,30 +234,6 @@ impl<'rom> MapLayoutsTable<'rom> {
         self.write_header(data.index, data.header)
     }
 
-    /// Writes the map layout header at the given index.
-    ///
-    /// Assumes the index location can be directly written to, because the table
-    /// has already been extended if necessary.
-    fn write_header(&mut self, index: u16, header: MapLayout) -> Result<(), LayoutError> {
-        // Get the offset to which the header will be written
-        let offset = match self.get_header_offset(index) {
-            Ok(offset) => offset,
-            // If the offset is invalid, find new space for the header
-            Err(LayoutError::InvalidOffset(_)) | Err(LayoutError::MissingLayout) => self
-                .rom
-                .find_free_space(layout_struct_size(self.rom), 4)
-                .ok_or_else(|| LayoutError::CannotRepointHeader)?,
-            // Any other error is returned
-            Err(err) => return Err(err),
-        };
-
-        // Write the offset to the table
-        self.write_offset_to_table(index, Some(offset))?;
-
-        // Write the header itself
-        header.write(self.rom, offset).map_err(LayoutError::IoError)
-    }
-
     /// Reads the map layout at the given index and returns the header
     /// and the map and border data.
     pub fn read_data(&self, index: u16) -> Result<MapLayoutData, LayoutError> {
@@ -285,12 +271,38 @@ impl<'rom> MapLayoutsTable<'rom> {
         })
     }
 
+    // ANCHOR Headers
     /// Reads the map layout header at the given index.
     fn read_header(&self, index: u16) -> Result<MapLayout, LayoutError> {
         let offset = self.get_header_offset(index)?;
         MapLayout::read(self.rom, offset).map_err(LayoutError::IoError)
     }
 
+    /// Writes the map layout header at the given index.
+    ///
+    /// Assumes the index location can be directly written to, because the table
+    /// has already been extended if necessary.
+    fn write_header(&mut self, index: u16, header: MapLayout) -> Result<(), LayoutError> {
+        // Get the offset to which the header will be written
+        let offset = match self.get_header_offset(index) {
+            Ok(offset) => offset,
+            // If the offset is invalid, find new space for the header
+            Err(LayoutError::InvalidOffset(_)) | Err(LayoutError::MissingLayout) => self
+                .rom
+                .find_free_space(MapLayout::size(self.rom), 4)
+                .ok_or_else(|| LayoutError::CannotRepointHeader)?,
+            // Any other error is returned
+            Err(err) => return Err(err),
+        };
+
+        // Write the offset to the table
+        self.write_offset_to_table(index, Some(offset))?;
+
+        // Write the header itself
+        header.write(self.rom, offset).map_err(LayoutError::IoError)
+    }
+
+    // ANCHOR Header offset
     /// Returns the header offset given the index.
     fn get_header_offset(&self, index: u16) -> Result<usize, LayoutError> {
         if index == 0 {
@@ -384,19 +396,13 @@ impl<'rom> MapLayoutsTable<'rom> {
 
 impl Rom {
     /// Returns the [`MapLayoutsTable`] struct for this ROM.
-    /// Returns an error if it is unable to initialize the table.
-    pub fn layouts(&mut self) -> Result<MapLayoutsTable, TableInitError> {
-        MapLayoutsTable::init(self)
-    }
-}
-
-/// Return the size of the map layout struct for the given ROM
-/// for operations that require it, like allocation and deletion.
-fn layout_struct_size(rom: &Rom) -> usize {
-    match rom.rom_type {
-        RomType::FireRed | RomType::LeafGreen => MapLayout::SIZE,
-        RomType::Emerald | RomType::Ruby | RomType::Sapphire => EmeraldMapLayout::SIZE,
-        _ => panic!("Unsupported ROM type"),
+    ///
+    /// # Panics
+    /// If the map layouts table has not been initialized.
+    pub fn map_layouts(&mut self) -> MapLayoutsTable {
+        MapLayoutsTable::init(self).unwrap_or_else(|_| {
+            panic!("You have to initialize the map layouts table before calling rom.map_layouts()!")
+        })
     }
 }
 
@@ -534,13 +540,15 @@ mod tests {
 
     // All tests should be run against a clean copy of firered
     fn get_test_rom() -> Rom {
-        Rom::load("roms/firered.gba").unwrap()
+        let mut rom = Rom::load("roms/firered.gba").unwrap();
+        MapLayoutsTable::init(&mut rom).unwrap();
+        rom
     }
 
     #[test]
     fn bad_layouts() {
         let mut rom = get_test_rom();
-        let table = rom.layouts().unwrap();
+        let table = rom.map_layouts();
 
         // Indices start at one
         assert!(matches!(

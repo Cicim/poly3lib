@@ -147,9 +147,16 @@ impl MapHeader {
         // TODO Clear the Map Scripts
 
         // Clear the Map Header
-        rom.clear(offset, header_struct_size(rom))?;
+        rom.clear(offset, MapHeader::size(rom))
+    }
 
-        Ok(())
+    /// Return the size of the [`MapHeader`] struct according to the ROM type.
+    fn size(rom: &Rom) -> usize {
+        match rom.rom_type {
+            RomType::FireRed | RomType::LeafGreen => MapHeader::SIZE,
+            RomType::Emerald | RomType::Ruby | RomType::Sapphire => EmeraldMapHeader::SIZE,
+            _ => panic!("Unsupported ROM type"),
+        }
     }
 }
 
@@ -211,7 +218,7 @@ impl<'rom> MapHeadersTable<'rom> {
             // If there was an IOError related to the header, find a new place for it
             Err(MapError::IoError(_)) | Err(MapError::MissingHeader) => self
                 .rom
-                .find_free_space(header_struct_size(self.rom), 4)
+                .find_free_space(MapHeader::size(self.rom), 4)
                 .ok_or_else(|| MapError::CannotRepointHeader)?,
             Err(err) => return Err(err),
         };
@@ -420,17 +427,10 @@ impl<'rom> MapHeadersTable<'rom> {
 
 impl Rom {
     /// Return the [`MapHeadersTable`] for this ROM.
-    pub fn map_headers(&mut self) -> Result<MapHeadersTable, TableInitError> {
-        MapHeadersTable::init(self)
-    }
-}
-
-/// Return the size of a map header according to the ROM type.
-fn header_struct_size(rom: &Rom) -> usize {
-    match rom.rom_type {
-        RomType::FireRed | RomType::LeafGreen => MapHeader::SIZE,
-        RomType::Emerald | RomType::Ruby | RomType::Sapphire => EmeraldMapHeader::SIZE,
-        _ => panic!("Unsupported ROM type"),
+    pub fn map_headers(&mut self) -> MapHeadersTable {
+        MapHeadersTable::init(self).unwrap_or_else(|_| {
+            panic!("You have to initialize the map headers table before calling rom.map_headers()!")
+        })
     }
 }
 
