@@ -160,27 +160,6 @@ pub enum TableInitError {
 }
 
 impl Refs {
-    /// Return the map and map groups vectors if present.
-    pub fn get_map_groups(&self) -> Option<(&TablePointer, &Vec<TablePointer>)> {
-        if let Some(map_groups) = &self.map_groups {
-            if let Some(groups_list) = &self.map_groups_list {
-                return Some((map_groups, groups_list));
-            }
-        }
-
-        None
-    }
-
-    /// Return the map layouts table if present.
-    pub fn get_map_layouts_table(&self) -> Option<&TablePointer> {
-        self.map_layouts_table.as_ref()
-    }
-
-    /// Return the tilesets table if present.
-    pub fn get_tilesets_table(&self) -> Option<&HashMap<usize, (usize, bool)>> {
-        self.tilesets_table.as_ref()
-    }
-
     /// Returns the size in blocks of the requested tileset
     pub fn get_tileset_size(&self, tileset: usize) -> Option<usize> {
         if let Some(table) = &self.tilesets_table {

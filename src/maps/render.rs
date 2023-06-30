@@ -1,5 +1,9 @@
+use std::io::Cursor;
+
+use base64::{engine::general_purpose, Engine};
 use gba_types::pointers::PointedData;
-use image::{Rgb, RgbImage, Rgba, RgbaImage};
+use image::{ImageFormat, Rgb, RgbImage, Rgba, RgbaImage};
+use serde::{ser::SerializeTuple, Serialize};
 
 use crate::rom::Rom;
 
@@ -12,6 +16,21 @@ use super::{
 ///
 /// The first component is the bottom layer of the metatile, and the second component is the top layer.
 pub struct RenderedMetatile(RgbaImage, RgbaImage);
+
+impl Serialize for RenderedMetatile {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let bottom = rgba_image_to_base64(&self.0);
+        let top = rgba_image_to_base64(&self.1);
+
+        let mut state = serializer.serialize_tuple(2)?;
+        state.serialize_element(&bottom)?;
+        state.serialize_element(&top)?;
+        state.end()
+    }
+}
 
 impl RenderedMetatile {
     /// Returns a single color for the given pixel by putting
@@ -113,7 +132,7 @@ impl TilesetsPair {
     /// Returns a list of [`RenderedMetatile`]s for both tilesets.
     ///
     /// Never fails, because the missing metatiles are replaced with transparent ones.
-    pub fn render_tileset(&self) -> Vec<RenderedMetatile> {
+    pub fn render(&self) -> Vec<RenderedMetatile> {
         let mut tiles = Vec::with_capacity(self.metatile_count);
 
         for i in 0..self.metatile_count {
@@ -334,4 +353,26 @@ impl MapLayoutData {
 
         image
     }
+}
+
+/// Serializes a [`RgbaImage`] to a base64 string for use in HTML.
+pub fn rgba_image_to_base64(image: &RgbaImage) -> String {
+    // Create a buffer that looks like a file (a cursor over a vector)
+    let mut buffer = Cursor::new(Vec::new());
+    // Write the image as png to that buffer
+    image.write_to(&mut buffer, ImageFormat::Png).unwrap();
+    // Encode the buffer as base64
+    let b64 = general_purpose::STANDARD.encode(&buffer.into_inner());
+
+    // Return the base64 string with the header
+    format!("data:image/png;base64,{}", b64)
+}
+
+/// Serializes a [`RgbImage`] to a base64 string for use in HTML.
+pub fn rgb_image_to_base64(image: &RgbImage) -> String {
+    // Same as above
+    let mut buffer = Cursor::new(Vec::new());
+    image.write_to(&mut buffer, ImageFormat::Png).unwrap();
+    let b64 = general_purpose::STANDARD.encode(&buffer.into_inner());
+    format!("data:image/png;base64,{}", b64)
 }
