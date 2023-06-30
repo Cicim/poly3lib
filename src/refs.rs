@@ -69,8 +69,17 @@ pub struct Refs {
     pub map_layouts_table: Option<TablePointer>,
     /// Tilesets table with the relative size and whether it is secondary.
     pub tilesets_table: Option<HashMap<usize, (usize, bool)>>,
+    /// The table of map section names.
+    pub mapsec_name_table: Option<TablePointer>,
 }
 
+macro_rules! write_field {
+    ($name:ident, $f:ident, $value:expr) => {
+        if let Some(table) = &$value {
+            writeln!($f, "  {}: {}", stringify!($name), table)?;
+        }
+    };
+}
 impl Display for Refs {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use colored::Colorize;
@@ -91,9 +100,8 @@ impl Display for Refs {
             }
         }
 
-        if let Some(table) = &self.map_layouts_table {
-            writeln!(f, "  map_layouts_table: {}", table)?;
-        }
+        write_field!(map_layouts_table, f, self.map_layouts_table);
+        write_field!(mapsec_name_table, f, self.mapsec_name_table);
 
         if let Some(table) = &self.tilesets_table {
             writeln!(f, "  tilesets_table:")?;

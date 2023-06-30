@@ -1,7 +1,8 @@
+pub mod graphics;
 pub mod refs;
 pub mod rom;
+pub mod text;
 pub mod values;
-pub mod graphics;
 
 // Modules in refs
 pub mod maps;

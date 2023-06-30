@@ -11,6 +11,7 @@ pub mod connection;
 pub mod events;
 pub mod header;
 pub mod layout;
+pub mod mapsec;
 pub mod render;
 pub mod tileset;
 
@@ -19,6 +20,7 @@ impl Rom {
     pub fn init_map(&mut self) -> Result<(), TableInitError> {
         header::MapHeadersTable::init(self)?;
         layout::MapLayoutsTable::init(self)?;
+        mapsec::MapSectionTable::init(self)?;
 
         if self.refs.tilesets_table.is_none() {
             // TODO Remove this unwrap

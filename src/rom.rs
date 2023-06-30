@@ -172,8 +172,25 @@ impl Rom {
         value.write_to(&mut self.data, offset)
     }
 
+    /// Returns whether a pointer is a valid offset into the ROM.
     pub fn is_pointer_valid(&self, pointer: u32) -> bool {
         pointer >= 0x08000000 && pointer < 0x08000000 + self.size() as u32
+    }
+
+    /// Returns the byte read from the ROM at the given offset, assuming the offset is valid.
+    ///
+    /// # Examples
+    /// Read a byte from the ROM at offset 0.
+    /// ```
+    /// use poly3lib::rom::Rom;
+    /// let rom = Rom::load("roms/firered.gba").unwrap();
+    /// assert_eq!(rom.read_byte(0), 127);
+    /// ```
+    ///
+    /// # Panics
+    /// Panics if the offset is not valid.
+    pub fn read_byte(&self, offset: usize) -> u8 {
+        self.data[offset]
     }
 
     /// Read a pointer from the ROM at the given offset.
