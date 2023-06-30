@@ -159,6 +159,22 @@ pub enum TableInitError {
     TableGoesOutOfBounds,
 }
 
+impl Display for TableInitError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use TableInitError::*;
+
+        write!(
+            f,
+            "{}",
+            match self {
+                NotImplemented => "Not implemented",
+                InvalidTablePointer => "Invalid table pointer",
+                TableGoesOutOfBounds => "Table goes out of bounds",
+            },
+        )
+    }
+}
+
 impl Refs {
     /// Returns the size in blocks of the requested tileset
     pub fn get_tileset_size(&self, tileset: usize) -> Option<usize> {
