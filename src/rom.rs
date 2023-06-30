@@ -86,8 +86,6 @@ impl Display for RomError {
 
 impl Rom {
     /// Loads the ROM into memory.
-    ///
-    /// Returns an error if the ROM is invalid or if there is an IO error.
     pub fn load(path: &str) -> Result<Self, RomError> {
         // Open the file
         let mut file = File::open(path).map_err(RomError::IoError)?;
@@ -138,15 +136,20 @@ impl Rom {
     }
 
     /// Saves the ROM to the given path.
-    ///
-    /// Returns an error if there is an IO error.
     pub fn save(&self, path: &str) -> Result<(), RomError> {
         // Open the file
         let mut file = File::create(path).map_err(RomError::IoError)?;
 
         // Write the ROM to the file
         file.write_all(&self.data).map_err(RomError::IoError)?;
+        // Write the references to the file
+        self.save_refs(path)?;
 
+        Ok(())
+    }
+
+    /// Saves the references to the `path.refs.json` file
+    pub fn save_refs(&self, path: &str) -> Result<(), RomError> {
         // Serialize and write the refs to the file
         let refs_path = format!("{}.refs.json", path);
         let mut file = File::create(refs_path).map_err(RomError::IoError)?;
