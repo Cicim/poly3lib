@@ -276,12 +276,10 @@ impl TilesetHeader {
                         encounter_type: 0,
                         layer_type: ((attribute & 0xf000 >> 12) as u8).into(),
                     }
-                }
-
-                _ => {
-                    // If it's not one of the above, we don't know how to read the attributes
-                    return Err(TilesetReadingError::InvalidAttributesOffset);
-                }
+                } // _ => {
+                  //     // If it's not one of the above, we don't know how to read the attributes
+                  //     return Err(TilesetReadingError::InvalidAttributesOffset);
+                  // }
             };
 
             attributes.push(attr);

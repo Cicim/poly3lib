@@ -72,8 +72,7 @@ impl MapHeader {
                     floor_num: 0,
                     battle_type: value.battle_type,
                 }
-            }
-            _ => Err(GBAIOError::Unknown("Invalid ROM type"))?,
+            } // _ => Err(GBAIOError::Unknown("Invalid ROM type"))?,
         };
 
         //NOTE - We could check if the map layout offset and id match here
@@ -105,8 +104,7 @@ impl MapHeader {
                     filler: [0; 2],
                 };
                 rom.write::<EmeraldMapHeader>(offset, value)?;
-            }
-            _ => Err(GBAIOError::Unknown("Invalid ROM type"))?,
+            } // _ => Err(GBAIOError::Unknown("Invalid ROM type"))?,
         };
 
         Ok(())
@@ -155,7 +153,7 @@ impl MapHeader {
         match rom.rom_type {
             RomType::FireRed | RomType::LeafGreen => MapHeader::SIZE,
             RomType::Emerald | RomType::Ruby | RomType::Sapphire => EmeraldMapHeader::SIZE,
-            _ => panic!("Unsupported ROM type"),
+            // _ => panic!("Unsupported ROM type"),
         }
     }
 }
@@ -440,7 +438,7 @@ fn get_map_groups_table(rom: &Rom) -> Result<(TablePointer, Vec<TablePointer>), 
     let base_offset: usize = match rom.rom_type {
         RomType::FireRed | RomType::LeafGreen => 0x5524C,
         RomType::Emerald | RomType::Ruby | RomType::Sapphire => 0x84AA4,
-        _ => return Err(TableInitError::NotImplemented),
+        // _ => return Err(TableInitError::NotImplemented),
     };
 
     // Read the pointer at the base offset

@@ -16,7 +16,7 @@ impl Rom {
         let (primary, secondary) = match self.rom_type {
             RomType::FireRed | RomType::LeafGreen => (640, 384),
             RomType::Emerald | RomType::Ruby | RomType::Sapphire => (512, 512),
-            RomType::Unknown => return Err(ValueGrabError::NotImplemented),
+            // _ => return Err(ValueGrabError::NotImplemented),
         };
 
         Ok((primary, secondary))
@@ -29,7 +29,7 @@ impl Rom {
         Ok(match self.rom_type {
             RomType::FireRed | RomType::LeafGreen => 640,
             RomType::Emerald | RomType::Ruby | RomType::Sapphire => 512,
-            RomType::Unknown => return Err(ValueGrabError::NotImplemented),
+            // _ => return Err(ValueGrabError::NotImplemented),
         })
     }
 
@@ -40,7 +40,7 @@ impl Rom {
         Ok(match self.rom_type {
             RomType::FireRed | RomType::LeafGreen => 10,
             RomType::Emerald | RomType::Ruby | RomType::Sapphire => 10,
-            RomType::Unknown => return Err(ValueGrabError::NotImplemented),
+            // _ => return Err(ValueGrabError::NotImplemented),
         })
     }
 }

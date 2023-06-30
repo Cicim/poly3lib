@@ -43,8 +43,7 @@ impl MapLayout {
                     border_width: 2,
                     border_height: 2,
                 }
-            }
-            _ => Err(GBAIOError::Unknown("Invalid ROM type"))?,
+            } // _ => Err(GBAIOError::Unknown("Invalid ROM type"))?,
         };
 
         Ok(res)
@@ -64,8 +63,7 @@ impl MapLayout {
                     secondary_tileset: self.secondary_tileset,
                 };
                 rom.write::<EmeraldMapLayout>(offset, value)?;
-            }
-            _ => Err(GBAIOError::Unknown("Invalid ROM type"))?,
+            } // _ => Err(GBAIOError::Unknown("Invalid ROM type"))?,
         };
 
         Ok(())
@@ -81,7 +79,7 @@ impl MapLayout {
         match rom.rom_type {
             RomType::FireRed | RomType::LeafGreen => MapLayout::SIZE,
             RomType::Emerald | RomType::Ruby | RomType::Sapphire => EmeraldMapLayout::SIZE,
-            _ => panic!("Unsupported ROM type"),
+            // _ => panic!("Unsupported ROM type"),
         }
     }
 }
@@ -412,7 +410,7 @@ fn init_layouts_table(rom: &Rom) -> Result<TablePointer, TableInitError> {
     let base_offset: usize = match rom.rom_type {
         RomType::FireRed | RomType::LeafGreen => 0x55194,
         RomType::Emerald | RomType::Ruby | RomType::Sapphire => 0x849CC,
-        _ => return Err(TableInitError::NotImplemented),
+        // _ => return Err(TableInitError::NotImplemented),
     };
 
     // Read the pointer at the base offset

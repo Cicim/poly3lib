@@ -91,7 +91,7 @@ impl<'rom> MapSectionTable<'rom> {
         match self.rom.rom_type {
             RomType::FireRed | RomType::LeafGreen => Ok((0, 4)),
             RomType::Ruby | RomType::Sapphire | RomType::Emerald => Ok((4, 8)),
-            _ => Err(MapSectionError::NoShiftAndScale),
+            // _ => Err(MapSectionError::NoShiftAndScale),
         }
     }
 
@@ -119,7 +119,7 @@ fn init_mapsec_table(rom: &Rom) -> Result<TablePointer, TableInitError> {
     let offset = match rom.rom_type {
         RomType::FireRed | RomType::LeafGreen => 0x3F1CAC,
         RomType::Ruby | RomType::Sapphire | RomType::Emerald => 0x5A147C,
-        _ => return Err(TableInitError::NotImplemented),
+        // _ => return Err(TableInitError::NotImplemented),
     };
 
     let size = get_mapsec_none(rom).ok_or(TableInitError::NotImplemented)?
@@ -137,7 +137,7 @@ fn get_mapsec_start(rom: &Rom) -> Option<usize> {
     Some(match rom.rom_type {
         RomType::FireRed | RomType::LeafGreen => rom.read_byte(0xC3CA0) as usize,
         RomType::Ruby | RomType::Sapphire | RomType::Emerald => 0x00,
-        _ => None?,
+        // _ => None?,
     })
 }
 
@@ -145,6 +145,6 @@ fn get_mapsec_none(rom: &Rom) -> Option<usize> {
     Some(match rom.rom_type {
         RomType::FireRed | RomType::LeafGreen => rom.read_byte(0xC0BE6) as usize,
         RomType::Ruby | RomType::Sapphire | RomType::Emerald => rom.read_byte(0x124584) as usize,
-        _ => None?,
+        // _ => None?,
     })
 }

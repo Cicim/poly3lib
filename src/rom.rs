@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::fs::File;
 use std::io::{Read, Write};
 
@@ -15,7 +16,23 @@ pub enum RomType {
     Ruby,
     Sapphire,
     Emerald,
-    Unknown,
+}
+
+impl Display for RomType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use RomType::*;
+        write!(
+            f,
+            "{}",
+            match self {
+                FireRed => "Fire Red",
+                LeafGreen => "Leaf Green",
+                Ruby => "Ruby",
+                Sapphire => "Sapphire",
+                Emerald => "Emerald",
+            }
+        )
+    }
 }
 
 /// Represents a game ROM.
@@ -32,19 +49,38 @@ pub struct Rom {
 #[derive(Debug)]
 pub enum RomError {
     IoError(std::io::Error),
-    InvalidRom,
+    InvalidType([u8; 4]),
+    InvalidSize(usize),
+}
+
+impl Display for RomError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        use RomError::*;
+        match self {
+            IoError(e) => write!(f, "IO error: {}", e),
+            InvalidType(code) => {
+                let a = code[0] as char;
+                let b = code[1] as char;
+                let c = code[2] as char;
+                let d = code[3] as char;
+
+                // If none of them is an uppercase letter
+                if !a.is_ascii_uppercase()
+                    || !b.is_ascii_uppercase()
+                    || !c.is_ascii_uppercase()
+                    || !d.is_ascii_uppercase()
+                {
+                    return write!(f, "The file is not a ROM: the identifier is invalid");
+                }
+
+                write!(f, "'{}{}{}{}' is not a supported ROM type", a, b, c, d)
+            }
+            InvalidSize(size) => write!(f, "{} bytes is not a valid ROM size", size),
+        }
+    }
 }
 
 impl Rom {
-    /// Create a new ROM from the given buffer.
-    pub fn new(data: Vec<u8>) -> Self {
-        Rom {
-            data,
-            rom_type: RomType::Unknown,
-            refs: Refs::default(),
-        }
-    }
-
     /// Loads the ROM into memory.
     ///
     /// Returns an error if the ROM is invalid or if there is an IO error.
@@ -57,8 +93,8 @@ impl Rom {
         file.read_to_end(&mut data).map_err(RomError::IoError)?;
 
         // Make sure you can perform the next check
-        if data.len() < 0xB0 {
-            return Err(RomError::InvalidRom);
+        if data.len() < 0xB0 || data.len() > MAX_ROM_SIZE {
+            return Err(RomError::InvalidSize(data.len()));
         }
 
         // Determine the ROM type
@@ -68,7 +104,7 @@ impl Rom {
             b"BPRE" => RomType::FireRed,
             b"BPGE" => RomType::LeafGreen,
             b"BPEE" => RomType::Emerald,
-            _ => return Err(RomError::InvalidRom),
+            code => return Err(RomError::InvalidType(code.try_into().unwrap())),
         };
 
         // Check if the reference file exists
