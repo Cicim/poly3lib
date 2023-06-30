@@ -75,7 +75,11 @@ impl Display for RomError {
 
                 write!(f, "'{}{}{}{}' is not a supported ROM type", a, b, c, d)
             }
-            InvalidSize(size) => write!(f, "{} bytes is not a valid ROM size", size),
+            InvalidSize(size) => {
+                let bytes = byte_unit::Byte::from_bytes(*size as u64);
+                let bytes = bytes.get_appropriate_unit(true);
+                write!(f, "{} is not a valid ROM size", bytes)
+            }
         }
     }
 }
@@ -90,12 +94,14 @@ impl Rom {
 
         // Read the up to 32MB of the ROM into memory
         let mut data = Vec::with_capacity(MAX_ROM_SIZE);
-        file.read_to_end(&mut data).map_err(RomError::IoError)?;
 
         // Make sure you can perform the next check
-        if data.len() < 0xB0 || data.len() > MAX_ROM_SIZE {
-            return Err(RomError::InvalidSize(data.len()));
+        let len = file.metadata().unwrap().len() as usize;
+        if len < 0xB0 || len > MAX_ROM_SIZE {
+            return Err(RomError::InvalidSize(len as usize));
         }
+
+        file.read_to_end(&mut data).map_err(RomError::IoError)?;
 
         // Determine the ROM type
         let rom_type = match &data[0xAC..0xB0] {
