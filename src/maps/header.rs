@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use gba_macro::gba_struct;
 use gba_types::{GBAIOError, GBAType};
 use serde::Serialize;
@@ -148,6 +150,35 @@ pub enum MapError {
 
     IoError(GBAIOError),
     MissingHeader,
+}
+
+impl Display for MapError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MapError::MapTableNotInitialized => write!(f, "Map table not initialized"),
+
+            MapError::InvalidIndex(group, index) => {
+                write!(f, "{}.{} is not a valid map", group, index)
+            }
+            MapError::InvalidOffset(group, index, offset) => write!(
+                f,
+                "{}.{} has an invalid offset: ${:06X}",
+                group, index, offset
+            ),
+
+            MapError::InvalidResizeLength(len) => {
+                write!(f, "Invalid length to resize map table: {}", len)
+            }
+            MapError::InvalidGroupToResize(group) => {
+                write!(f, "Invalid group to resize: {}", group)
+            }
+            MapError::CannotRepointTable => write!(f, "Cannot repoint map table"),
+            MapError::CannotRepointHeader => write!(f, "Cannot repoint map header"),
+
+            MapError::IoError(err) => write!(f, "IO error: {}", err),
+            MapError::MissingHeader => write!(f, "Missing map header"),
+        }
+    }
 }
 
 /// Table of map headers. Provides methods for editing the table.
