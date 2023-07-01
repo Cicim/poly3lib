@@ -1,19 +1,17 @@
 use gba_macro::gba_struct;
-use gba_types::{pointers::PointedData, GBAIOError, GBAType};
+use gba_types::{GBAIOError, GBAType};
+use serde::Serialize;
 
 use crate::{
     refs::{TableInitError, TablePointer},
     rom::{Rom, RomType},
 };
 
-use super::connection::MapConnections;
-use super::events::MapEvents;
-
 gba_struct!(EmeraldMapHeader {
     void *map_layout;
-    struct MapEvents *events;
+    void *events;
     void *map_scripts;
-    struct MapConnections *connections;
+    void *connections;
     u16 music;
     u16 map_layout_id;
     u8 region_map_section_id;
@@ -30,9 +28,9 @@ gba_struct!(EmeraldMapHeader {
 
 gba_struct!(MapHeader {
     void *map_layout;
-    struct MapEvents *events;
+    void *events;
     void *map_scripts;
-    struct MapConnections *connections;
+    void *connections;
     u16 music;
     u16 map_layout_id;        // Has to correspond with the map layout
     u8 region_map_section_id;
@@ -112,40 +110,9 @@ impl MapHeader {
 
     /// Clears the [`MapHeader`] and all its attached fields
     /// (everything excluding the map layout), according to the game version.
-    pub fn clear(self, rom: &mut Rom, offset: usize) -> Result<(), GBAIOError> {
-        // Clear all fields one by one
-        if let PointedData::Valid(offset, mut data) = self.connections {
-            if let Some(clear_obj) = data.connections.to_clear() {
-                data.connections = clear_obj;
-                rom.write(offset as usize, data)?;
-            }
-        }
-
-        // Clear all the events
-        if let PointedData::Valid(offset, mut data) = self.events {
-            // Clear the background events if there are any
-            if let Some(clear_obj) = data.bg_events.to_clear() {
-                data.bg_events = clear_obj;
-            }
-            // Clear the warp events if there are any
-            if let Some(clear_obj) = data.warps.to_clear() {
-                data.warps = clear_obj;
-            }
-            // Clear the coord events if there are any
-            if let Some(clear_obj) = data.coord_events.to_clear() {
-                data.coord_events = clear_obj;
-            }
-            // Clear the object events if there are any
-            if let Some(clear_obj) = data.object_events.to_clear() {
-                data.object_events = clear_obj;
-            }
-            rom.write(offset as usize, data)?;
-        }
-
-        // TODO Clear the Map Scripts
-
-        // Clear the Map Header
-        rom.clear(offset, MapHeader::size(rom))
+    pub fn clear(self, _rom: &mut Rom, _offset: usize) -> Result<(), GBAIOError> {
+        // rom.clear(offset, MapHeader::size(rom))
+        todo!("Implement clear for MapHeader")
     }
 
     /// Return the size of the [`MapHeader`] struct according to the ROM type.
@@ -156,6 +123,15 @@ impl MapHeader {
             // _ => panic!("Unsupported ROM type"),
         }
     }
+}
+
+#[derive(Serialize)]
+/// A [`MapHeader`] with its group, index and offset.
+pub struct MapHeaderDump {
+    pub group: u8,
+    pub index: u8,
+    pub offset: u32,
+    pub header: MapHeader,
 }
 
 #[derive(Debug)]
@@ -189,6 +165,47 @@ impl<'rom> MapHeadersTable<'rom> {
         }
 
         Ok(Self { rom })
+    }
+
+    /// Returns a vector [`MapHeaderDump`] structs, which contain
+    /// the group, index, offset and header itself.
+    pub fn dump_headers(&self) -> Result<Vec<MapHeaderDump>, MapError> {
+        // Get the map groups table
+        let table = self.get_table()?;
+        let mut res = vec![];
+
+        // Iterate over the groups
+        for group in 0u8..table.size as u8 {
+            // Get the group
+            let groups_table = match self.get_group_table(group) {
+                Ok(table) => table,
+                Err(_) => continue,
+            };
+
+            // Iterate over the headers
+            for index in 0u8..groups_table.size as u8 {
+                // Get the offset if it is valid
+                let offset = match self.get_header_offset(group, index) {
+                    Ok(offset) => offset as u32,
+                    Err(_) => continue,
+                };
+                // Get the header if it is valid
+                let header = match self.read_header(group, index) {
+                    Ok(header) => header,
+                    Err(_) => continue,
+                };
+
+                // Add the header to the result
+                res.push(MapHeaderDump {
+                    group,
+                    index,
+                    offset,
+                    header,
+                });
+            }
+        }
+
+        Ok(res)
     }
 
     // ANCHOR Headers

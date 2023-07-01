@@ -155,10 +155,10 @@ impl<T: GBAType> GBAType for PointedData<T> {
         }
 
         // Transform the pointer into an offset.
-        let offset: i32 = pointer as i32 - 0x08000000;
-        if offset < 0 || offset as usize >= bytes.len() {
+        if pointer < 0x08000000 || pointer as usize >= 0x08000000 + bytes.len() {
             return Ok(PointedData::Invalid(pointer));
         }
+        let offset = pointer - 0x08000000;
 
         // Try to read the data at the offset.
         let data = T::read_from(bytes, offset as usize)?;
