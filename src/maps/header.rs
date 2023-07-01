@@ -128,12 +128,14 @@ impl MapHeader {
 }
 
 #[derive(Serialize)]
-/// A [`MapHeader`] with its group, index and offset.
+/// A [`MapHeader`] with its group, index and offset and layout's tilesets.
 pub struct MapHeaderDump {
     pub group: u8,
     pub index: u8,
-    pub offset: u32,
+    pub offset: usize,
     pub header: MapHeader,
+    pub tileset1: Option<usize>,
+    pub tileset2: Option<usize>,
 }
 
 #[derive(Debug)]
@@ -221,11 +223,23 @@ impl<'rom> MapHeadersTable<'rom> {
                 let offset = match self.get_header_offset(group, index) {
                     Ok(offset) => offset as u32,
                     Err(_) => continue,
-                };
+                } as usize;
                 // Get the header if it is valid
                 let header = match self.read_header(group, index) {
                     Ok(header) => header,
                     Err(_) => continue,
+                };
+
+                // Only if possible, read the tilesets' offsets
+                let (tileset1, tileset2) = match header.map_layout.offset() {
+                    Some(layout_offset) => {
+                        let layout_offset: usize = layout_offset as usize;
+                        // Reads directly from the bytes of the MapLayout struct for performance reasons
+                        let tileset1 = self.rom.read_ptr(layout_offset + 16).ok();
+                        let tileset2 = self.rom.read_ptr(layout_offset + 20).ok();
+                        (tileset1, tileset2)
+                    }
+                    None => (None, None),
                 };
 
                 // Add the header to the result
@@ -234,6 +248,8 @@ impl<'rom> MapHeadersTable<'rom> {
                     index,
                     offset,
                     header,
+                    tileset1,
+                    tileset2,
                 });
             }
         }
