@@ -154,29 +154,31 @@ pub enum MapError {
 
 impl Display for MapError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            MapError::MapTableNotInitialized => write!(f, "Map table not initialized"),
+        use MapError::*;
 
-            MapError::InvalidIndex(group, index) => {
+        match self {
+            MapTableNotInitialized => write!(f, "Map table not initialized"),
+
+            InvalidIndex(group, index) => {
                 write!(f, "{}.{} is not a valid map", group, index)
             }
-            MapError::InvalidOffset(group, index, offset) => write!(
+            InvalidOffset(group, index, offset) => write!(
                 f,
                 "{}.{} has an invalid offset: ${:06X}",
                 group, index, offset
             ),
 
-            MapError::InvalidResizeLength(len) => {
+            InvalidResizeLength(len) => {
                 write!(f, "Invalid length to resize map table: {}", len)
             }
-            MapError::InvalidGroupToResize(group) => {
+            InvalidGroupToResize(group) => {
                 write!(f, "Invalid group to resize: {}", group)
             }
-            MapError::CannotRepointTable => write!(f, "Cannot repoint map table"),
-            MapError::CannotRepointHeader => write!(f, "Cannot repoint map header"),
+            CannotRepointTable => write!(f, "Cannot repoint map table"),
+            CannotRepointHeader => write!(f, "Cannot repoint map header"),
 
-            MapError::IoError(err) => write!(f, "IO error: {}", err),
-            MapError::MissingHeader => write!(f, "Missing map header"),
+            IoError(err) => write!(f, "IO error: {}", err),
+            MissingHeader => write!(f, "Missing map header"),
         }
     }
 }

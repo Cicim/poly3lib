@@ -42,6 +42,18 @@ pub enum MapSectionError {
     NoShiftAndScale,
 }
 
+impl Display for MapSectionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use MapSectionError::*;
+
+        match self {
+            NotInitialized => write!(f, "Map section table not initialized"),
+            NoMapsecBounds => write!(f, "No map section bounds found"),
+            NoShiftAndScale => write!(f, "No shift and scale found"),
+        }
+    }
+}
+
 pub struct MapSectionTable<'rom> {
     pub rom: &'rom Rom,
 }
