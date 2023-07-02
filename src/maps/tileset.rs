@@ -94,6 +94,8 @@ pub enum TilesetReadingError {
     InvalidAttributesOffset,
     InvalidGraphicsOffset,
     InvalidMetaTileOffset,
+
+    CannotReadRomValue,
 }
 
 impl TilesetData {

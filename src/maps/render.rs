@@ -1,7 +1,7 @@
 use std::io::Cursor;
 
 use base64::{engine::general_purpose, Engine};
-use gba_types::pointers::PointedData;
+use gba_types::{colors::GBAPalette, pointers::PointedData};
 use image::{ImageFormat, Rgb, RgbImage, Rgba, RgbaImage};
 use serde::{ser::SerializeTuple, Serialize};
 
@@ -11,6 +11,9 @@ use super::{
     layout::{MapLayout, MapLayoutData},
     tileset::{TilesetData, TilesetReadingError},
 };
+
+/// Palette of colors converted to RGBA.
+type RgbaPalette = [Rgba<u8>; 16];
 
 /// This struct represents the rendered metatiles for a map.
 ///
@@ -69,9 +72,8 @@ pub struct TilesetsPair {
     pub primary: TilesetData,
     /// The secondary tileset
     pub secondary: TilesetData,
-    // TODO There are actually maximum 13 palettes, not 16
     /// The palettes combined from the two tilesets
-    pub palettes: [[Rgba<u8>; 16]; 16],
+    pub palettes: Vec<RgbaPalette>,
     /// The index after which the secondary tileset starts
     pub tile_limit: usize,
     /// The index after which the secondary metatileset starts
@@ -86,32 +88,39 @@ impl TilesetsPair {
         let primary = TilesetData::read(rom, tileset_1)?;
         let secondary = TilesetData::read(rom, tileset_2)?;
 
-        // TODO There is a difference in FR and Em as to how many palettes are from
-        // the primary tileset (7 in FR, 6 in Em) In Ruby the total is 12 instead of 13
+        // Read the number of palettes in the primary tileset and the total number of palettes
+        let pals_in_primary =
+            rom.get_primary_palettes_count()
+                .map_err(|_| TilesetReadingError::CannotReadRomValue)? as usize;
+        let total_pals =
+            rom.get_palettes_count()
+                .map_err(|_| TilesetReadingError::CannotReadRomValue)? as usize;
+
         // Combine the two palettes
-        let mut palettes = [[Rgba([0, 0, 0, 0]); 16]; 16];
-        for (i, palette) in (&primary.palettes[0..8])
-            .iter()
-            .chain(&secondary.palettes[8..16])
-            .enumerate()
-        {
-            for j in 0..16 {
-                let color = palette.get(j);
-                let color = color.to_rgb888();
-                let color = Rgba::<u8>([color.0, color.1, color.2, 255]);
-                palettes[i][j] = color;
-            }
+        let mut palettes: Vec<RgbaPalette> = Vec::with_capacity(16);
+        // Read the palettes from the primary tileset
+        for i in 0..pals_in_primary {
+            let pals = convert_pal_to_rgba(primary.palettes[i]);
+            palettes.push(pals);
+        }
+        for i in pals_in_primary..total_pals {
+            let pals = convert_pal_to_rgba(secondary.palettes[i]);
+            palettes.push(pals);
+        }
+        // Fill the rest with an impossible color
+        for _ in total_pals..16 {
+            palettes.push([Rgba([255, 255, 255, 128]); 16]);
         }
 
         // Read the number of tiles after which the secondary tileset starts
-        let tile_limit =
-            rom.get_primary_tiles_count()
-                .map_err(|_w| TilesetReadingError::InvalidTilesetOffset)? as usize;
+        let tile_limit = rom
+            .get_primary_tiles_count()
+            .map_err(|_| TilesetReadingError::CannotReadRomValue)?;
 
         // Read primary and secondary tileset max sizes
         let (metatile_limit, metatile_count) = rom
             .get_metatiles_count()
-            .map_err(|_w| TilesetReadingError::InvalidTilesetOffset)?;
+            .map_err(|_| TilesetReadingError::CannotReadRomValue)?;
 
         // Read the number of metatiles after which the secondary tileset starts
         let metatile_limit = metatile_limit as usize;
@@ -360,6 +369,22 @@ impl MapLayoutData {
         let image = self.render(rendered_tp);
         rgb_image_to_base64(&image)
     }
+}
+
+fn convert_pal_to_rgba(pal: GBAPalette) -> RgbaPalette {
+    let mut rgba: RgbaPalette = [Rgba::from([0, 0, 0, 0]); 16];
+
+    for (i, color) in pal.iter().enumerate() {
+        // Convert the color to RGBA
+        let (r, g, b) = color.to_rgb888();
+        let a = 255;
+        let rgba_color = Rgba::from([r, g, b, a]);
+
+        // Insert the color into the palette
+        rgba[i] = rgba_color;
+    }
+
+    rgba
 }
 
 /// Serializes a [`RgbaImage`] to a base64 string for use in HTML.

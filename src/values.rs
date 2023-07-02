@@ -43,6 +43,22 @@ impl Rom {
             // _ => return Err(ValueGrabError::NotImplemented),
         })
     }
+
+    /// Get the number of palettes in the primary tileset
+    pub fn get_primary_palettes_count(&self) -> Result<usize, ValueGrabError> {
+        Ok(match self.rom_type {
+            RomType::FireRed | RomType::LeafGreen => 7,
+            RomType::Emerald | RomType::Ruby | RomType::Sapphire => 6,
+        })
+    }
+
+    /// Get the total number of palettes
+    pub fn get_palettes_count(&self) -> Result<usize, ValueGrabError> {
+        Ok(match self.rom_type {
+            RomType::FireRed | RomType::LeafGreen | RomType::Emerald => 13,
+            RomType::Ruby | RomType::Sapphire => 12,
+        })
+    }
 }
 
 impl Display for ValueGrabError {
