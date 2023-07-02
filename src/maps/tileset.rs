@@ -215,8 +215,20 @@ impl TilesetHeader {
                 .offset()
                 .ok_or_else(|| TilesetReadingError::InvalidGraphicsOffset)? as usize;
 
-        // TODO Handle uncompressed graphics
-        let graphics = Graphic::read(rom, gfx_offset, None)
+        // Handle compressed and uncompressed graphics
+        let size = if self.is_compressed != 0 {
+            None
+        } else {
+            // This 1024 should be stable
+            let num_tiles_in_secondary_gfx = 1024
+                - rom
+                    .get_primary_tiles_count()
+                    .map_err(|_| TilesetReadingError::CannotReadRomValue)?;
+
+            Some(num_tiles_in_secondary_gfx)
+        };
+
+        let graphics = Graphic::read(rom, gfx_offset, size)
             .map_err(|_| TilesetReadingError::InvalidGraphicsOffset)?;
 
         Ok(graphics)
