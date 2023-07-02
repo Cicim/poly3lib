@@ -1,3 +1,7 @@
+use std::fmt::Display;
+
+use serde::Serialize;
+
 use gba_macro::gba_struct;
 use gba_types::pointers::{Nothing, PointedData};
 use gba_types::{GBAIOError, GBAType};
@@ -88,7 +92,7 @@ pub type MapData = Vec<Vec<u16>>;
 
 /// Struct for passing around the map layout header
 /// and the map and border data.
-#[derive(Debug)]
+#[derive(Serialize, Debug)]
 pub struct MapLayoutData {
     /// The index of the layout in the table.
     pub index: u16,
@@ -123,6 +127,26 @@ pub enum LayoutError {
     CannotRepointHeader,
 
     IoError(GBAIOError),
+}
+
+impl Display for LayoutError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use LayoutError::*;
+
+        match self {
+            LayoutTableNotInitialized => write!(f, "Layout table not initialized"),
+            IndicesStartAtOne => write!(f, "Layout indices start at 1"),
+            MissingLayout => write!(f, "Missing layout"),
+            IndexOutOfBounds(id) => write!(f, "Layout index {} is out of bounds", id),
+            InvalidOffset(offset) => write!(f, "Invalid layout offset: ${:#08X}", offset),
+            CannotGetBitsPerBlock => write!(f, "Cannot retrieve the number of bits per block"),
+            InvalidMap => write!(f, "Invalid map"),
+            CannotRepointTable => write!(f, "Cannot repoint the layout table"),
+            CannotRepointMap => write!(f, "Cannot repoint the map data"),
+            CannotRepointHeader => write!(f, "Cannot repoint the layout header"),
+            IoError(err) => write!(f, "IO error: {}", err),
+        }
+    }
 }
 
 /// Table of map layouts. Provides methods for editing the table.
