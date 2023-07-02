@@ -353,6 +353,13 @@ impl MapLayoutData {
 
         image
     }
+
+    /// Render the map from the given layout and return it as a base64 string
+    /// for use in HTML.
+    pub fn render_to_base64(&self, rendered_tp: &Vec<RenderedMetatile>) -> String {
+        let image = self.render(rendered_tp);
+        rgb_image_to_base64(&image)
+    }
 }
 
 /// Serializes a [`RgbaImage`] to a base64 string for use in HTML.
