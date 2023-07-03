@@ -47,10 +47,10 @@ fn get_tilesets_data(
             Ok(ptr) => {
                 let layout: MapLayout = rom.read(ptr).unwrap();
                 if let Some(offset) = layout.primary_tileset.offset() {
-                    tileset.insert(offset);
+                    tileset.insert(offset as u32);
                 }
                 if let Some(offset) = layout.secondary_tileset.offset() {
-                    tileset.insert(offset);
+                    tileset.insert(offset as u32);
                 }
             }
             Err(_) => continue,

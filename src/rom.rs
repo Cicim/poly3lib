@@ -238,6 +238,32 @@ impl Rom {
         self.data[offset]
     }
 
+    /// Reads an halfword (u16) from the ROM, ignoring the alignment.
+    pub fn read_unaligned_halfword(&self, offset: usize) -> Result<u16, GBAIOError> {
+        let byte1 = self.read::<u8>(offset)?;
+        let byte2 = self.read::<u8>(offset + 1)?;
+
+        Ok((byte1 as u16) | ((byte2 as u16) << 8))
+    }
+
+    /// Read a pointer from the ROM ignoring the alignment.
+    pub fn read_unaligned_offset(&self, offset: usize) -> Result<u32, GBAIOError> {
+        let byte1 = self.read::<u8>(offset)?;
+        let byte2 = self.read::<u8>(offset + 1)?;
+        let byte3 = self.read::<u8>(offset + 2)?;
+        let byte4 = self.read::<u8>(offset + 3)?;
+
+        let pointer = (byte1 as u32)
+            | ((byte2 as u32) << 8)
+            | ((byte3 as u32) << 16)
+            | ((byte4 as u32) << 24);
+
+        match self.is_pointer_valid(pointer) {
+            true => Ok(pointer - 0x08000000),
+            false => Err(GBAIOError::InvalidOffset(pointer)),
+        }
+    }
+
     /// Read a pointer from the ROM at the given offset.
     ///
     /// Converts it from a 0x08000000 base address to a 0x00000000 base address

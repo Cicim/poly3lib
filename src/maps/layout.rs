@@ -548,7 +548,7 @@ fn write_new_map_data(rom: &mut Rom, map: &MapData) -> Result<usize, LayoutError
 /// Gets the old and new size of a map and decides whether to repoint it or not.
 fn write_over_map_data(
     rom: &mut Rom,
-    old_offset: Option<u32>,
+    old_offset: Option<usize>,
     old_size: usize,
     map: &MapData,
 ) -> Result<usize, LayoutError> {

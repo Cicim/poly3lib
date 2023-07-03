@@ -9,7 +9,11 @@ use crate::{
     rom::{Rom, RomType},
 };
 
-use super::layout::MapLayout;
+use super::{
+    connection::MapConnections,
+    events::{MapEvents, MapScripts},
+    layout::MapLayout,
+};
 
 gba_struct!(EmeraldMapHeader {
     void *map_layout;
@@ -74,7 +78,7 @@ impl MapHeader {
                     floor_num: 0,
                     battle_type: value.battle_type,
                 }
-            } // _ => Err(GBAIOError::Unknown("Invalid ROM type"))?,
+            }
         };
 
         //NOTE - We could check if the map layout offset and id match here
@@ -106,7 +110,7 @@ impl MapHeader {
                     filler: [0; 2],
                 };
                 rom.write::<EmeraldMapHeader>(offset, value)?;
-            } // _ => Err(GBAIOError::Unknown("Invalid ROM type"))?,
+            }
         };
 
         Ok(())
@@ -114,9 +118,28 @@ impl MapHeader {
 
     /// Clears the [`MapHeader`] and all its attached fields
     /// (everything excluding the map layout), according to the game version.
-    pub fn clear(self, _rom: &mut Rom, _offset: usize) -> Result<(), GBAIOError> {
-        // rom.clear(offset, MapHeader::size(rom))
-        todo!("Implement clear for MapHeader")
+    pub fn clear(self, rom: &mut Rom, offset: usize) -> Result<(), GBAIOError> {
+        // Clear the connections if present
+        if let Some(connections_offset) = self.connections.offset() {
+            let mut conn = rom.read::<MapConnections>(connections_offset)?;
+            conn.connections.to_clear();
+            rom.clear(connections_offset, MapConnections::SIZE)?;
+        }
+
+        // Clear the events if present
+        if let Some(events_offset) = self.events.offset() {
+            let mut events = rom.read::<MapEvents>(events_offset)?;
+            events.bg_events.to_clear();
+            events.object_events.to_clear();
+            events.coord_events.to_clear();
+            events.warps.to_clear();
+            rom.clear(events_offset, MapEvents::SIZE)?;
+        }
+
+        // TODO Clear the Map Scripts
+
+        // Clear the header
+        rom.clear(offset, MapHeader::size(rom))
     }
 
     /// Return the size of the [`MapHeader`] struct according to the ROM type.
@@ -126,6 +149,11 @@ impl MapHeader {
             RomType::Emerald | RomType::Ruby | RomType::Sapphire => EmeraldMapHeader::SIZE,
             // _ => panic!("Unsupported ROM type"),
         }
+    }
+
+    pub fn read_map_scripts(&self, rom: &Rom) -> Result<MapScripts, GBAIOError> {
+        let offset = self.map_scripts.offset().unwrap();
+        MapScripts::read(rom, offset)
     }
 
     /// Checks if the [`MapHeader`] is valid.
@@ -235,57 +263,30 @@ impl<'rom> MapHeadersTable<'rom> {
 
     /// Returns a vector [`MapHeaderDump`] structs, which contain
     /// the group, index, offset and header itself.
-    pub fn dump_headers(&self) -> Result<Vec<MapHeaderDump>, MapError> {
-        // Get the map groups table
-        let table = self.get_table()?;
-        let mut res = vec![];
-
-        // Iterate over the groups
-        for group in 0u8..table.size as u8 {
-            // Get the group
-            let groups_table = match self.get_group_table(group) {
-                Ok(table) => table,
-                Err(_) => continue,
+    pub fn dump_headers(&mut self) -> Result<Vec<MapHeaderDump>, MapError> {
+        self.collect(|group, index, offset, header| {
+            // Only if possible, read the tilesets' offsets
+            let (tileset1, tileset2) = match header.map_layout.offset() {
+                Some(layout_offset) => {
+                    let layout_offset = layout_offset as usize;
+                    // Reads directly from the bytes of the MapLayout struct for performance reasons
+                    let tileset1 = self.rom.read_ptr(layout_offset + 16).ok();
+                    let tileset2 = self.rom.read_ptr(layout_offset + 20).ok();
+                    (tileset1, tileset2)
+                }
+                None => (None, None),
             };
 
-            // Iterate over the headers
-            for index in 0u8..groups_table.size as u8 {
-                // Get the offset if it is valid
-                let offset = match self.get_header_offset(group, index) {
-                    Ok(offset) => offset as u32,
-                    Err(_) => continue,
-                } as usize;
-                // Get the header if it is valid
-                let header = match self.read_header(group, index) {
-                    Ok(header) => header,
-                    Err(_) => continue,
-                };
-
-                // Only if possible, read the tilesets' offsets
-                let (tileset1, tileset2) = match header.map_layout.offset() {
-                    Some(layout_offset) => {
-                        let layout_offset: usize = layout_offset as usize;
-                        // Reads directly from the bytes of the MapLayout struct for performance reasons
-                        let tileset1 = self.rom.read_ptr(layout_offset + 16).ok();
-                        let tileset2 = self.rom.read_ptr(layout_offset + 20).ok();
-                        (tileset1, tileset2)
-                    }
-                    None => (None, None),
-                };
-
-                // Add the header to the result
-                res.push(MapHeaderDump {
-                    group,
-                    index,
-                    offset,
-                    header,
-                    tileset1,
-                    tileset2,
-                });
-            }
-        }
-
-        Ok(res)
+            // Add the header to the result
+            Some(MapHeaderDump {
+                group,
+                index,
+                offset,
+                header,
+                tileset1,
+                tileset2,
+            })
+        })
     }
 
     // ANCHOR Headers
@@ -335,6 +336,64 @@ impl<'rom> MapHeadersTable<'rom> {
 
         // In any case, clear the header's offset from the table
         self.write_offset_to_table(group, index, None)
+    }
+
+    /// Collects all map headers after applying a function to them.
+    ///
+    /// The function will receive the group, index, offset and header of each map.
+    ///
+    /// The function must return an [`Option`] of the type to collect.
+    /// If the function returns [`None`], the header is skipped.
+    ///
+    /// # Example
+    /// To get the list of maps with no layout
+    /// ```no_run
+    /// let maps_with_no_layout = rom.map_headers().collect(|group, index, offset, header| {
+    ///     if header.map_layout.id == 0 {
+    ///        Some((group, index))
+    ///     } else {
+    ///        None
+    ///     }
+    /// });
+    /// ```
+    pub fn collect<T>(
+        &self,
+        transform: impl Fn(u8, u8, usize, MapHeader) -> Option<T>,
+    ) -> Result<Vec<T>, MapError> {
+        // Create the collection
+        let mut collection = vec![];
+        // Get the map groups table
+        let table = self.get_table()?;
+
+        // Iterate over the groups
+        for group in 0u8..table.size as u8 {
+            // Get the group
+            let groups_table = match self.get_group_table(group) {
+                Ok(table) => table,
+                Err(_) => continue,
+            };
+
+            // Iterate over the headers
+            for index in 0u8..groups_table.size as u8 {
+                // Get the offset if it is valid
+                let offset = match self.get_header_offset(group, index) {
+                    Ok(offset) => offset as usize,
+                    Err(_) => continue,
+                };
+                // Get the header if it is valid
+                let header = match self.read_header(group, index) {
+                    Ok(header) => header,
+                    Err(_) => continue,
+                };
+
+                // Call the function on the header
+                if let Some(res) = transform(group, index, offset, header) {
+                    collection.push(res);
+                }
+            }
+        }
+
+        Ok(collection)
     }
 
     // ANCHOR Header offset

@@ -209,11 +209,11 @@ impl<T: GBAType> std::fmt::Debug for PointedData<T> {
 
 impl<T: GBAType> PointedData<T> {
     /// Returns the offset of the data if it points to something
-    pub fn offset(&self) -> Option<u32> {
+    pub fn offset(&self) -> Option<usize> {
         match self {
             PointedData::Null => None,
-            PointedData::Valid(offset, _) => Some(*offset),
-            PointedData::NoData(offset) => Some(*offset),
+            PointedData::Valid(offset, _) => Some(*offset as usize),
+            PointedData::NoData(offset) => Some(*offset as usize),
             PointedData::Invalid(_) => None,
         }
     }
@@ -229,7 +229,7 @@ impl<T: GBAType> PointedData<T> {
     }
 
     /// Same as [`PointedData::offset`], but panics if the pointer is invalid
-    pub fn offset_unchecked(&self) -> u32 {
+    pub fn offset_unchecked(&self) -> usize {
         self.offset().unwrap()
     }
 

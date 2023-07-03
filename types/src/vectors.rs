@@ -175,18 +175,29 @@ impl<T: GBAType> VectorData<T> {
     }
 
     /// Transforms this [`VectorData`] into another [`VectorData`]
-    /// that can be used to clear the vector.
-    pub fn to_clear(&self) -> Option<VectorData<T>> {
-        match self {
-            VectorData::Valid {
+    /// that can be used to clear the vector when writing to ROM.
+    ///
+    /// If this [`VectorData`] was not writable, it simply returns `None`.
+    pub fn to_clear(&mut self) {
+        use VectorData::*;
+
+        *self = match self {
+            // For Valids, just remove the data
+            Valid {
                 offset,
                 read_length,
                 ..
-            } => Some(VectorData::Clear {
+            }
+            | Clear {
+                offset,
+                read_length,
+            } => Clear {
                 offset: *offset,
                 read_length: *read_length,
-            }),
-            _ => None,
+            },
+            // Everything else, ignore the dereferencing and just
+            // consider it a NULL pointer
+            _ => Null,
         }
     }
 }
