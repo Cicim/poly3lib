@@ -86,6 +86,21 @@ impl MapLayout {
             // _ => panic!("Unsupported ROM type"),
         }
     }
+
+    /// Checks if the [`MapLayout`] is valid
+    pub(crate) fn is_valid(&self) -> bool {
+        // For a layout to be valid, it must pass the following checks:
+        //  1. The width and height must be greater than 0
+        self.width > 0 && self.height > 0
+        //  2. The product of the width and height must be less than or equal to 0x400
+            && self.width < 0x2800 && self.height < 0x2800 && self.width * self.height <= 0x2800
+        //  3. The border size must be greater than 0
+            && self.border_width > 0 && self.border_height > 0
+        //  4. The border and data pointers must be valid
+            && self.border.is_writable() && self.data.is_writable()
+        //  5. The tileset pointers must be valid
+            && self.primary_tileset.is_writable() && self.secondary_tileset.is_writable()
+    }
 }
 
 pub type MapData = Vec<Vec<u16>>;
@@ -445,6 +460,9 @@ fn init_layouts_table(rom: &Rom) -> Result<TablePointer, TableInitError> {
     // Find the size of the table
     let mut table_size = 0;
     let mut consecutive_nulls = 0;
+
+    // TODO Check if there will ever be the need to check each
+    // layout's integrity.
 
     for i in 0..65536 {
         let offset = table_offset + i * 4;

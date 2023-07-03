@@ -9,6 +9,8 @@ use crate::{
     rom::{Rom, RomType},
 };
 
+use super::layout::MapLayout;
+
 gba_struct!(EmeraldMapHeader {
     void *map_layout;
     void *events;
@@ -123,6 +125,35 @@ impl MapHeader {
             RomType::FireRed | RomType::LeafGreen => MapHeader::SIZE,
             RomType::Emerald | RomType::Ruby | RomType::Sapphire => EmeraldMapHeader::SIZE,
             // _ => panic!("Unsupported ROM type"),
+        }
+    }
+
+    /// Checks if the [`MapHeader`] is valid.
+    pub(crate) fn is_valid(&self, rom: &Rom) -> bool {
+        // For a MapHeader to be real it has to pass the following checks:
+        if !(
+            //  1. All pointers must be writable
+            self.connections.is_writable()
+            && self.events.is_writable()
+            && self.map_scripts.is_writable()
+            //  2. There must be a valid layout id
+            && self.map_layout_id > 0
+            //  3. The music should be a reasonable value
+            && (self.music & 0x7FFF == 0x7FFF || self.music < 2000)
+            // ...
+        ) {
+            return false;
+        }
+
+        //  3. There must be a valid layout offset
+        let layout_offset = match self.map_layout.offset() {
+            Some(offset) => offset as usize,
+            None => return false,
+        };
+        //  4. The used map layout must be valid
+        match MapLayout::read(rom, layout_offset) {
+            Ok(layout) => layout.is_valid(),
+            Err(_) => false,
         }
     }
 }
@@ -554,6 +585,35 @@ fn get_map_groups_table(rom: &Rom) -> Result<(TablePointer, Vec<TablePointer>), 
                 map_groups[gid].size += 1;
             } else {
                 break;
+            }
+        }
+    }
+
+    // Update the size for each map group by
+    // making sure that the loaded headers are
+    // actually valid
+    for group in map_groups.iter_mut() {
+        // Visit the headers in the group backwards
+        for i in (0..group.size).rev() {
+            let offset = group.offset + i * 4;
+            let header_offset = match rom.read_ptr(offset) {
+                Ok(ptr) => ptr,
+                Err(_) => {
+                    group.size -= 1;
+                    continue;
+                }
+            };
+
+            // Decide whether this is a true header or not
+            let real = match MapHeader::read(rom, header_offset) {
+                Err(_) => true,
+                Ok(header) => header.is_valid(rom),
+            };
+
+            if real {
+                break;
+            } else {
+                group.size -= 1;
             }
         }
     }

@@ -208,6 +208,7 @@ impl<T: GBAType> std::fmt::Debug for PointedData<T> {
 }
 
 impl<T: GBAType> PointedData<T> {
+    /// Returns the offset of the data if it points to something
     pub fn offset(&self) -> Option<u32> {
         match self {
             PointedData::Null => None,
@@ -217,6 +218,7 @@ impl<T: GBAType> PointedData<T> {
         }
     }
 
+    /// Returns the data pointed to by the pointer
     pub fn data(&self) -> Option<&T> {
         match self {
             PointedData::Null => None,
@@ -226,8 +228,19 @@ impl<T: GBAType> PointedData<T> {
         }
     }
 
+    /// Same as [`PointedData::offset`], but panics if the pointer is invalid
     pub fn offset_unchecked(&self) -> u32 {
         self.offset().unwrap()
+    }
+
+    /// Returns true if the pointer can be written to ROM
+    pub fn is_writable(&self) -> bool {
+        match self {
+            PointedData::Null => true,
+            PointedData::Valid(_, _) => true,
+            PointedData::NoData(_) => false,
+            PointedData::Invalid(_) => false,
+        }
     }
 }
 
