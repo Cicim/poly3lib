@@ -59,7 +59,7 @@ impl TablePointer {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct Refs {
     /// The table containing each group of map headers.
     pub map_groups: Option<TablePointer>,

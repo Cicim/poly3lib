@@ -9,7 +9,7 @@ use crate::refs::Refs;
 
 const MAX_ROM_SIZE: usize = 1 << 25;
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum RomType {
     FireRed,
     LeafGreen,
@@ -36,7 +36,7 @@ impl Display for RomType {
 }
 
 /// Represents a game ROM.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Rom {
     /// The actual ROM data.
     pub data: Vec<u8>,
