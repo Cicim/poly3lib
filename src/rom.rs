@@ -222,6 +222,7 @@ impl Rom {
         pointer >= 0x08000000 && pointer < 0x08000000 + self.size() as u32
     }
 
+    #[inline(always)]
     /// Returns the byte read from the ROM at the given offset, assuming the offset is valid.
     ///
     /// # Examples
@@ -291,7 +292,7 @@ impl Rom {
 
     /// Find a free offset in the ROM of the given size.
     pub fn find_free_space(&self, size: usize, align: usize) -> Option<usize> {
-        gba_types::vectors::find_free_space(&self.data, size, align)
+        fast_ops::find_free_space(&self.data, size, align)
     }
 
     /// Discover if the data needs a new place in ROM and if so, find it.
@@ -303,7 +304,7 @@ impl Rom {
         old_size: usize,
         new_size: usize,
     ) -> Option<usize> {
-        gba_types::vectors::repoint_offset(&mut self.data, offset, old_size, new_size)
+        fast_ops::repoint_offset(&mut self.data, offset, old_size, new_size)
     }
 
     /// Clears the data in the ROM at the given offset.

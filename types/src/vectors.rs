@@ -1,3 +1,4 @@
+use fast_ops::{find_free_space, repoint_offset};
 use serde::{de, ser::SerializeStruct, Deserialize, Serialize};
 
 use crate::{GBAIOError, GBAType};
@@ -231,6 +232,11 @@ impl<T: GBAType> std::fmt::Debug for VectorData<T> {
     }
 }
 
+/// Reads a [`VectorData`] from of the given length starting from
+/// the given offset in the bytes.
+///
+/// This function is called internally by all structs constructed
+/// using `gba_struct!` that contain a vector field.
 pub fn read_vector<T: GBAType>(
     bytes: &[u8],
     offset: usize,
@@ -264,6 +270,10 @@ pub fn read_vector<T: GBAType>(
     })
 }
 
+/// Writes a [`VectorData`] to the given bytes at the given offset.
+///
+/// This function is called internally by all structs constructed
+/// using `gba_struct!` that contain a vector field.
 pub fn write_vector<T: GBAType>(
     bytes: &mut [u8],
     offset: usize,
@@ -333,67 +343,4 @@ pub fn write_vector<T: GBAType>(
     }
 
     Ok(())
-}
-
-/// Find a free offset in the ROM of the given size.
-pub fn find_free_space(data: &[u8], size: usize, align: usize) -> Option<usize> {
-    let mut offset = 0;
-
-    if size - offset >= data.len() {
-        return None;
-    }
-
-    'outer: while offset < data.len() - size {
-        // If this was a possible free space, but the last bit was not 0xFF,
-        // then we need to skip ahead because no possible sub-window could
-        // be free.
-        if data[offset + size - 1] != 0xFF {
-            offset += size;
-            continue;
-        }
-
-        // The window ends with 0xFF
-        // Check if the window is free
-        for i in 0..size {
-            if data[offset + i] != 0xFF {
-                // An 0xFF was found in the middle of the window
-                // We can keep looking right after it (aligned)
-                offset += align.max(i);
-                if offset % align != 0 {
-                    offset += align - (offset % align);
-                }
-                continue 'outer;
-            }
-        }
-
-        return Some(offset);
-    }
-
-    None
-}
-
-/// Discover if the data needs a new place in ROM and if so, find it.
-/// Return the offset of the data in ROM, whether it changed or not.
-/// In case everything succeeds, clear all the old data.
-pub fn repoint_offset(
-    data: &mut [u8],
-    offset: usize,
-    old_size: usize,
-    new_size: usize,
-) -> Option<usize> {
-    if old_size == new_size {
-        // We can just overwrite it
-        return Some(offset);
-    }
-
-    // If the data is smaller clear everything, then we can just overwrite it
-    if old_size > new_size {
-        data[offset + new_size..offset + old_size].fill(0xFF);
-        return Some(offset);
-    }
-
-    // The data is larger, so we need to find a new place for it
-    data[offset..offset + old_size].fill(0xFF);
-    let new_offset = find_free_space(&data, new_size, 4)?;
-    Some(new_offset)
 }

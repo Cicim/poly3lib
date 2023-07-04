@@ -6,6 +6,8 @@ use serde::Serialize;
 
 use crate::rom::Rom;
 
+use super::scripts::clear_if_safe;
+
 /* In FireRed, there is a peculiarity in this struct: it needs an union to
  * represent the different types of events. In Emerald, this is not the case.
  *  union {
@@ -100,6 +102,7 @@ gba_struct!(MapEvents {
     struct BgEvent bg_events{$bg_event_count};
 });
 
+// ANCHOR Map Scripts
 #[derive(Serialize, Debug)]
 /// The variables to be compared to execute a script.
 struct ConditionalScript {
@@ -242,6 +245,45 @@ impl MapScripts {
             read_size,
             scripts: res,
         })
+    }
+
+    pub fn clear(&self, rom: &mut Rom, offset: usize) -> Result<(), GBAIOError> {
+        // Clear the direct scripts
+        macro_rules! clear_script {
+            ($field:ident) => {
+                if let Some(offset) = self.$field {
+                    clear_if_safe(rom, offset as usize)?;
+                }
+            };
+        }
+        clear_script!(on_load);
+        clear_script!(on_transition);
+        clear_script!(on_resume);
+        clear_script!(on_dive_warp);
+        clear_script!(on_return_to_field);
+
+        // Clear the conditional scripts
+        if let Some(table) = &self.on_frame_table {
+            MapScripts::clear_conditional_script(rom, table)?;
+        }
+        if let Some(table) = &self.on_warp_into_map_table {
+            MapScripts::clear_conditional_script(rom, table)?;
+        }
+
+        // Clear the table itself
+        rom.clear(offset as usize, self.read_size as usize)
+    }
+
+    fn clear_conditional_script(
+        rom: &mut Rom,
+        table: &ConditionalScriptTable,
+    ) -> Result<(), GBAIOError> {
+        for script in table.scripts.iter() {
+            clear_if_safe(rom, script.script as usize)?;
+        }
+
+        // Clear the table itself
+        rom.clear(table.offset as usize, table.read_size as usize)
     }
 }
 

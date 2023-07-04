@@ -129,26 +129,13 @@ impl Rom {
     /// Returns all offsets in the ROM that contain a reference
     /// to the given `offset`.
     pub fn find_references(&self, offset: usize) -> Vec<usize> {
-        let mut references = Vec::new();
+        fast_ops::find_references(&self.data, offset, 4)
+    }
 
-        // Make sure the pointer is valid
-        if offset > self.size() {
-            return references;
-        }
-
-        // Convert the given pointer to a bytearray
-        let pointer: u32 = offset as u32 + 0x08000000;
-        let pointer: [u8; 4] = pointer.to_le_bytes();
-
-        // Search for the pointer in the ROM
-        // They are always 4 bytes aligned
-        for i in (0..self.size()).step_by(4) {
-            if self.data[i..i + 4] == pointer {
-                references.push(i);
-            }
-        }
-
-        references
+    /// Returns all offsets in the ROM that contain a reference
+    /// to the given `offset`, ignoring alignment.
+    pub fn find_references_unaligned(&self, offset: usize) -> Vec<usize> {
+        fast_ops::find_references(&self.data, offset, 1)
     }
 }
 

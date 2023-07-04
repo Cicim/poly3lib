@@ -197,7 +197,7 @@ mod vector_tests {
             }
         );
 
-        vector.data = vector.data.to_clear().unwrap();
+        vector.data.to_clear();
 
         let output = [
             0x02u8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
