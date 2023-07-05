@@ -122,8 +122,22 @@ fn delete_script_resource(rom: &mut Rom, res: ScriptResource) -> bool {
                 false
             }
         }
-        TrainerBattle(_) => todo!(),
-        Products(_) => todo!(),
+        Products(offset) => {
+            let offset = offset as usize;
+            let mut size = 0;
+
+            // Read the products until you find a 0x00
+            loop {
+                let half = rom.read_unaligned_halfword(offset + size);
+                size += 2;
+                match half {
+                    Err(_) => return false,
+                    // After ITEM_NONE, clear the end and release (that are there for some reason)
+                    Ok(0x0000) => return rom.clear(offset, size + 2).is_ok(),
+                    _ => (),
+                }
+            }
+        }
         InvalidPointer(_) => return false,
     }
 }

@@ -15,7 +15,6 @@ pub enum ScriptResource {
     Script(u32),
     Text(u32),
     Movement(u32),
-    TrainerBattle(u32),
     Products(u32),
 
     InvalidPointer(u32),
@@ -27,7 +26,6 @@ impl ScriptResource {
             Script(offset) => *offset,
             Text(offset) => *offset,
             Movement(offset) => *offset,
-            TrainerBattle(offset) => *offset,
             Products(offset) => *offset,
 
             InvalidPointer(offset) => *offset,
@@ -40,7 +38,6 @@ impl ScriptResource {
             Script(_) => "Script",
             Text(_) => "Text",
             Movement(_) => "Movement",
-            TrainerBattle(_) => "TrainerBattle",
             Products(_) => "Products",
 
             InvalidPointer(_) => "InvalidPointer",
@@ -149,10 +146,10 @@ fn find_script_references(
     offset: usize,
 ) -> Result<Vec<ScriptResource>, ScriptVisitError> {
     // Run a new visit in which you collect the offsets of the resources
-    visit_script(rom, offset, |code, bytes| {
+    let v = visit_script(rom, offset, |code, bytes| {
         use ScriptResource::*;
 
-        Some(match code {
+        Some(vec![match code {
             // > Other Scripts
             // call and goto
             0x04 | 0x05 => ScriptResource::from_bytes(rom, bytes, Script),
@@ -176,10 +173,52 @@ fn find_script_references(
             // pokemart, pokemartdecoration, pokemartdecoration2
             0x86 | 0x87 | 0x88 => ScriptResource::from_bytes(rom, bytes, Products),
 
+            // A special case for trainerbattle
+            0x5C => {
+                let battle_type = bytes[0];
+                // The first 5 bytes are arguments unrelated to the resources
+
+                let mut resources = vec![];
+                // If the first argument is there, it is a text
+                if bytes.len() >= 9 {
+                    resources.push(ScriptResource::from_bytes(rom, &bytes[5..9], Text));
+                }
+                // If the second argument is there, it is a text
+                if bytes.len() >= 13 {
+                    resources.push(ScriptResource::from_bytes(rom, &bytes[9..13], Text));
+                }
+                // If the third argument is there, check what it should be
+                if bytes.len() >= 17 {
+                    resources.push(ScriptResource::from_bytes(
+                        rom,
+                        &bytes[17..21],
+                        match battle_type {
+                            TRAINER_BATTLE_CONTINUE_SCRIPT_NO_MUSIC
+                            | TRAINER_BATTLE_CONTINUE_SCRIPT => Script,
+                            _ => Text,
+                        },
+                    ));
+                }
+                // If the fourth argument is there, it is always a script
+                if bytes.len() >= 21 {
+                    resources.push(ScriptResource::from_bytes(rom, &bytes[21..25], Script));
+                }
+
+                return Some(resources);
+            }
+
             // Commands that do not reference any offset
             _ => return None,
-        })
-    })
+        }])
+    })?;
+
+    // Compact the result
+    let mut output: Vec<ScriptResource> = vec![];
+    for vector in v {
+        output.extend(vector);
+    }
+
+    Ok(output)
 }
 
 impl Display for ScriptTree {
@@ -227,6 +266,20 @@ pub enum ScriptVisitError {
     UnknownCommand(u8),
 }
 
+const TRAINER_BATTLE_SINGLE: u8 = 0;
+const TRAINER_BATTLE_CONTINUE_SCRIPT_NO_MUSIC: u8 = 1;
+const TRAINER_BATTLE_CONTINUE_SCRIPT: u8 = 2;
+const TRAINER_BATTLE_SINGLE_NO_INTRO_TEXT: u8 = 3;
+const TRAINER_BATTLE_DOUBLE: u8 = 4;
+const TRAINER_BATTLE_REMATCH: u8 = 5;
+const TRAINER_BATTLE_CONTINUE_SCRIPT_DOUBLE: u8 = 6;
+const TRAINER_BATTLE_REMATCH_DOUBLE: u8 = 7;
+const TRAINER_BATTLE_CONTINUE_SCRIPT_DOUBLE_NO_MUSIC: u8 = 8;
+const TRAINER_BATTLE_PYRAMID: u8 = 9;
+const TRAINER_BATTLE_SET_TRAINER_A: u8 = 10;
+const TRAINER_BATTLE_SET_TRAINER_B: u8 = 11;
+const TRAINER_BATTLE_HILL: u8 = 12;
+
 /// Generic function for visiting a script.
 ///
 /// Takes a callback that is called for each command in the script,
@@ -252,7 +305,28 @@ pub fn visit_script<T>(
 
         // Get the number of bytes to read after this one
         let skip = if byte == 0x5C {
-            todo!("Implement skip of trainerbattle")
+            // Read the type byte
+            let battle_type = *rom
+                .data
+                .get(offset + bytes_read)
+                .ok_or(ScriptVisitError::ReadOutOfBounds(offset))?;
+
+            5 + match battle_type {
+                TRAINER_BATTLE_SINGLE => 8,
+                TRAINER_BATTLE_CONTINUE_SCRIPT_NO_MUSIC => 12,
+                TRAINER_BATTLE_CONTINUE_SCRIPT => 12,
+                TRAINER_BATTLE_SINGLE_NO_INTRO_TEXT => 4,
+                TRAINER_BATTLE_DOUBLE => 12,
+                TRAINER_BATTLE_REMATCH => 8,
+                TRAINER_BATTLE_CONTINUE_SCRIPT_DOUBLE => 16,
+                TRAINER_BATTLE_REMATCH_DOUBLE => 12,
+                TRAINER_BATTLE_CONTINUE_SCRIPT_DOUBLE_NO_MUSIC => 16,
+                TRAINER_BATTLE_PYRAMID => 8,
+                TRAINER_BATTLE_SET_TRAINER_A => 8,
+                TRAINER_BATTLE_SET_TRAINER_B => 8,
+                TRAINER_BATTLE_HILL => 8,
+                _ => 0,
+            }
         } else if byte >= 0xE2 {
             return Err(ScriptVisitError::UnknownCommand(byte));
         } else {
