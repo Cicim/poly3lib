@@ -25,8 +25,9 @@ pub fn find_all_offsets(data: &[u8]) -> HashMap<u32, u32> {
             let ptr = u32::from_le_bytes(ptr_bytes);
 
             if ptr >= ROM && ptr <= ROM + data.len() as u32 {
+                let offset = ptr - ROM;
                 // Increse the counter for that offset after subtr
-                let counter = map.entry(ptr).or_insert(0);
+                let counter = map.entry(offset).or_insert(0);
                 *counter += 1;
             }
         }
@@ -125,6 +126,16 @@ pub fn repoint_offset(data: &mut [u8], offset: usize, old: usize, new: usize) ->
     data[offset..offset + old].fill(0xFF);
     let new_offset = find_free_space(&data, new, 4)?;
     Some(new_offset)
+}
+
+/// Find the next occurrence of a byte after the given offset.
+pub fn find_byte_after(data: &[u8], offset: usize, byte: u8) -> Option<usize> {
+    for i in offset..data.len() {
+        if data[i] == byte {
+            return Some(i);
+        }
+    }
+    None
 }
 
 // TODO Move lz77 functions to this module

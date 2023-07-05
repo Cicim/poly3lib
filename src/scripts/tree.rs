@@ -55,6 +55,39 @@ impl std::fmt::Debug for ScriptResource {
     }
 }
 
+impl Display for ScriptResource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use colored::Colorize;
+
+        let name = self.name()[0..1].to_lowercase().red();
+        let offset = format!("${:X}", self.offset());
+
+        let offset_with_color = if let ScriptResource::Script(_) = self {
+            // Find the color of the hash
+            let mut hasher = DefaultHasher::new();
+            self.hash(&mut hasher);
+            let hash = hasher.finish();
+
+            // Get a random color using the hash
+            let r: u8 = ((hash >> 16) & 0xFF) as u8;
+            let g: u8 = ((hash >> 8) & 0xFF) as u8;
+            let b: u8 = (hash & 0xFF) as u8;
+
+            let bg = offset.on_truecolor(r, g, b);
+            let luma = r as f32 * 0.299 + g as f32 * 0.587 + b as f32 * 0.114;
+            if luma > 179.0 {
+                bg.truecolor(0, 0, 0).to_string()
+            } else {
+                bg.truecolor(255, 255, 255).to_string()
+            }
+        } else {
+            offset
+        };
+
+        write!(f, "{}:{}", name, offset_with_color)
+    }
+}
+
 impl PartialOrd for ScriptResource {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.offset().cmp(&other.offset()))
@@ -62,12 +95,22 @@ impl PartialOrd for ScriptResource {
 }
 
 #[derive(Debug)]
-pub struct ScriptTree(HashMap<ScriptResource, Vec<ScriptResource>>);
+pub struct ScriptTree {
+    pub(crate) map: HashMap<ScriptResource, Vec<ScriptResource>>,
+    pub(crate) roots: Vec<ScriptResource>,
+}
 
 impl ScriptTree {
-    pub fn read(rom: &Rom, offset: Vec<usize>) -> Self {
+    pub fn read(rom: &Rom, offsets: Vec<usize>) -> Self {
+        // Save the roots for later
+        let roots = offsets
+            .clone()
+            .into_iter()
+            .map(|offset| ScriptResource::Script(offset as u32))
+            .collect();
+
         // Keep a queue of offsets to visit
-        let mut queue = offset;
+        let mut queue = offsets;
         // Keep track of the scripts you've already expanded
         let mut map: HashMap<ScriptResource, Vec<ScriptResource>> = HashMap::new();
 
@@ -95,7 +138,7 @@ impl ScriptTree {
             map.insert(ScriptResource::Script(script_offset as u32), resources);
         }
 
-        ScriptTree(map)
+        ScriptTree { map, roots }
     }
 }
 
@@ -142,59 +185,40 @@ fn find_script_references(
 impl Display for ScriptTree {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Sort the keys by offset
-        let mut keys: Vec<&ScriptResource> = self.0.keys().collect();
+        let mut keys: Vec<&ScriptResource> = self.map.keys().collect();
         keys.sort();
 
         // Loop through all the resources
         writeln!(f, "Script Tree:")?;
+        write!(f, " Roots:")?;
+        for key in &self.roots {
+            write!(f, " {}", key)?;
+        }
+        writeln!(f)?;
 
+        writeln!(f, " Dependency relations:")?;
         for key in keys {
             if let ScriptResource::Script(_) = key {
                 // For scripts, also print the referenced resources
-                let vec = self.0.get(key).unwrap();
+                let vec = self.map.get(key).unwrap();
 
-                write!(f, "  {} -> [ ", short_print_resource(key))?;
+                // If this is a root
+                if self.roots.contains(key) {
+                    write!(f, "  r{} -> [ ", key)?;
+                } else {
+                    write!(f, "  {} -> [ ", key)?;
+                }
                 for res in vec {
-                    write!(f, "{} ", short_print_resource(&res))?;
+                    write!(f, "{} ", res)?;
                 }
                 writeln!(f, "]")?;
             } else {
-                writeln!(f, "  {}", short_print_resource(key))?;
+                writeln!(f, "  {}", key)?;
             }
         }
 
         Ok(())
     }
-}
-
-fn short_print_resource(res: &ScriptResource) -> String {
-    use colored::Colorize;
-
-    let name = res.name()[0..1].to_lowercase().red();
-    let offset = format!("${:X}", res.offset());
-
-    let bg = if let ScriptResource::Script(_) = res {
-        // Find the color of the hash
-        let mut hasher = DefaultHasher::new();
-        res.hash(&mut hasher);
-        let hash = hasher.finish();
-
-        // Get a random color using the hash
-        let r: u8 = ((hash >> 16) & 0xFF) as u8;
-        let g: u8 = ((hash >> 8) & 0xFF) as u8;
-        let b: u8 = (hash & 0xFF) as u8;
-
-        let bg = offset.truecolor(r, g, b);
-        if r as u32 + g as u32 + b as u32 > 0x80 * 3 {
-            bg.on_black().to_string()
-        } else {
-            bg.on_white().to_string()
-        }
-    } else {
-        offset
-    };
-
-    format!("{}:{}", name, bg)
 }
 
 #[derive(Debug)]
@@ -209,10 +233,11 @@ pub enum ScriptVisitError {
 /// and receives the command code and the bytes that follow it.
 ///
 /// It builds a vector of the results of the callback (ignoring `None`s).
-pub fn visit_script<T, F>(rom: &Rom, offset: usize, f: F) -> Result<Vec<T>, ScriptVisitError>
-where
-    F: Fn(u8, &[u8]) -> Option<T>,
-{
+pub fn visit_script<T>(
+    rom: &Rom,
+    offset: usize,
+    f: impl Fn(u8, &[u8]) -> Option<T>,
+) -> Result<Vec<T>, ScriptVisitError> {
     let mut results = vec![];
     let mut bytes_read = 0;
 

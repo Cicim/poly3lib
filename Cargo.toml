@@ -16,6 +16,9 @@ image = "0.24.6"
 base64 = "0.21.2"
 byte-unit = { version = "4.0.19", default-features = false }
 
+[features]
+debug_scripts_clear = []
+
 [profile.dev.package.fast_ops]
 opt-level = 3
 debug = false

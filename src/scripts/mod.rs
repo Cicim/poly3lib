@@ -1,4 +1,7 @@
+mod clear;
 mod consts;
-pub mod print;
-mod scripts;
-pub mod visit;
+mod print;
+mod tree;
+
+// Reexport the public stuff
+pub use tree::{ScriptResource, ScriptTree};

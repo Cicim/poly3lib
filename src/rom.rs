@@ -309,6 +309,11 @@ impl Rom {
         fast_ops::find_all_offsets(&self.data)
     }
 
+    /// Finds the first occurrence of a byte starting from the given offset.
+    pub fn find_byte_after(&self, offset: usize, byte: u8) -> Option<usize> {
+        fast_ops::find_byte_after(&self.data, offset, byte)
+    }
+
     /// Clears the data in the ROM at the given offset.
     pub fn clear(&mut self, offset: usize, size: usize) -> Result<(), GBAIOError> {
         if offset + size > self.size() {

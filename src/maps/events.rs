@@ -4,7 +4,7 @@ use gba_macro::gba_struct;
 use gba_types::GBAIOError;
 use serde::Serialize;
 
-use crate::rom::Rom;
+use crate::{rom::Rom, scripts::ScriptTree};
 
 /* In FireRed, there is a peculiarity in this struct: it needs an union to
  * represent the different types of events. In Emerald, this is not the case.
@@ -274,7 +274,7 @@ impl MapScripts {
         rom.clear(offset as usize, self.read_size as usize)?;
 
         // TODO Clear the scripts themselves
-        println!("{:#X?}", scripts_to_clear);
+        ScriptTree::clean_clear(rom, scripts_to_clear);
         Ok(())
     }
 
