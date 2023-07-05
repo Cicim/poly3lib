@@ -9,11 +9,7 @@ use crate::{
     rom::{Rom, RomType},
 };
 
-use super::{
-    connection::MapConnections,
-    events::{MapEvents, MapScripts},
-    layout::MapLayout,
-};
+use super::{connection::MapConnections, events::MapScripts, layout::MapLayout};
 
 gba_struct!(EmeraldMapHeader {
     void *map_layout;
@@ -118,7 +114,11 @@ impl MapHeader {
 
     /// Clears the [`MapHeader`] and all its attached fields
     /// (everything excluding the map layout), according to the game version.
-    pub fn clear(self, rom: &mut Rom, offset: usize) -> Result<(), GBAIOError> {
+    ///
+    /// Returns a list of scripts to clear.
+    pub fn clear(self, rom: &mut Rom, offset: usize) -> Result<Vec<usize>, GBAIOError> {
+        let mut scripts_to_clear = Vec::new();
+
         // Clear the connections if present
         if let Some(connections_offset) = self.connections.offset() {
             let mut conn = rom.read::<MapConnections>(connections_offset)?;
@@ -128,22 +128,37 @@ impl MapHeader {
 
         // Clear the events if present
         if let Some(events_offset) = self.events.offset() {
+            use super::events::*;
             let mut events = rom.read::<MapEvents>(events_offset)?;
+
+            // Extract the script offsets from each of these tables.
+            scripts_to_clear.extend(get_bg_event_scripts(rom, &events.bg_events));
             events.bg_events.to_clear();
+            scripts_to_clear.extend(get_object_event_scripts(&events.object_events));
             events.object_events.to_clear();
+            scripts_to_clear.extend(get_coord_event_scripts(&events.coord_events));
             events.coord_events.to_clear();
+            // Warps have no scripts
             events.warps.to_clear();
+
+            // Write them so that the clearing takes effect
+            rom.write(events_offset, events)?;
+
             rom.clear(events_offset, MapEvents::SIZE)?;
         }
 
-        // TODO Clear the Map Scripts
+        // Clear the Map Scripts
         if let Some(map_scripts_offset) = self.map_scripts.offset() {
             let map_scripts = MapScripts::read(rom, map_scripts_offset)?;
-            map_scripts.clear(rom, map_scripts_offset)?;
+            let map_scripts_to_clear = map_scripts.clear(rom, map_scripts_offset)?;
+            scripts_to_clear.extend(map_scripts_to_clear);
         }
 
         // Clear the header
-        rom.clear(offset, MapHeader::size(rom))
+        rom.clear(offset, MapHeader::size(rom))?;
+
+        // The scripts will be cleared by the caller
+        Ok(scripts_to_clear)
     }
 
     /// Return the size of the [`MapHeader`] struct according to the ROM type.
@@ -329,17 +344,27 @@ impl<'rom> MapHeadersTable<'rom> {
     }
 
     /// Deletes the [`MapHeader`] at the given index along with all its attached fields.
-    pub fn delete_header(&mut self, group: u8, index: u8) -> Result<(), MapError> {
+    ///
+    /// Returns the scripts whose references were deleted which need to be cleared.
+    ///
+    /// The decision as to whether to clear them or not is left to the caller.
+    pub fn delete_header(&mut self, group: u8, index: u8) -> Result<Vec<usize>, MapError> {
         // If the header exists, clear it
         if let Ok(header_offset) = self.get_header_offset(group, index) {
-            MapHeader::read(self.rom, header_offset)
+            let scripts_to_clear = MapHeader::read(self.rom, header_offset)
                 .map_err(MapError::IoError)?
                 .clear(self.rom, header_offset)
                 .map_err(MapError::IoError)?;
+
+            // In any case, clear the header's offset from the table
+            self.write_offset_to_table(group, index, None)?;
+
+            return Ok(scripts_to_clear);
         }
 
         // In any case, clear the header's offset from the table
         self.write_offset_to_table(group, index, None)
+            .map(|_| vec![])
     }
 
     /// Collects all map headers after applying a function to them.

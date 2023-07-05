@@ -232,7 +232,7 @@ pub static BYTES_TO_SKIP: [u32; 0x100] = [
 ];
 
 /// Names of each command
-pub static SCRIPT_NAMES: [&str; 0x100] = [
+pub static _SCRIPT_NAMES: [&str; 0x100] = [
     /*0x00*/ "nop",
     /*0x01*/ "nop1",
     /*0x02*/ "end",

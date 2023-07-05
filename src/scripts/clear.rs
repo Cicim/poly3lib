@@ -3,14 +3,6 @@ use crate::{rom::Rom, scripts::tree::visit_script};
 use super::{ScriptResource, ScriptTree};
 
 impl ScriptTree {
-    /// Takes a list of offsets, assuming the places they've been taken
-    /// from have been cleared, and finds, then deletes all the resources
-    /// and scripts that are exclusively referenced by them.
-    pub fn clean_clear(rom: &mut Rom, offsets: Vec<usize>) {
-        let tree = Self::read(rom, offsets);
-        tree.clear_internal(rom, false)
-    }
-
     /// Clears a script forest previously read from ROM starting at some root offsets.
     fn clear_internal(self, rom: &mut Rom, roots_references_cleared: bool) {
         // Find all the offsets in the ROM
@@ -84,6 +76,17 @@ impl ScriptTree {
     }
 }
 
+impl Rom {
+    /// Takes a list of offsets, assuming the places they've been taken
+    /// from have been cleared, and finds, then deletes all the resources
+    /// and scripts that are exclusively referenced by them.
+    pub fn clear_scripts(&mut self, offsets: Vec<usize>) {
+        let offsets = offsets;
+        let tree = ScriptTree::read(self, offsets);
+        tree.clear_internal(self, false)
+    }
+}
+
 fn delete_script_resource(rom: &mut Rom, res: ScriptResource) -> bool {
     use ScriptResource::*;
 
@@ -101,7 +104,7 @@ fn delete_script_resource(rom: &mut Rom, res: ScriptResource) -> bool {
                 Err(_) => return false,
             }
         }
-        Text(_) => todo!(),
+        Text(offset) => rom.clear_text(offset as usize).is_ok(),
         Movement(offset) => {
             // Find the first 0xFE after this
             let offset = offset as usize;

@@ -1,3 +1,5 @@
+use gba_types::GBAIOError;
+
 use crate::rom::Rom;
 
 const ___: &'static str = "�";
@@ -61,6 +63,8 @@ impl Text {
     }
 }
 
+const MAX_TEXT_LENGTH: usize = 0x400;
+
 impl Rom {
     /// Reads a [`Text`] from the ROM.
     pub fn read_text(&self, offset: usize) -> Result<Text, TextError> {
@@ -68,7 +72,7 @@ impl Rom {
         let mut i = 0;
 
         // TODO Is 256 bytes enough?
-        while i < 256 {
+        while i < MAX_TEXT_LENGTH {
             let byte: u8 = self
                 .read(offset + i)
                 .map_err(|_| TextError::InvalidOffset)?;
@@ -83,5 +87,24 @@ impl Rom {
         }
 
         Ok(res)
+    }
+
+    /// Clears the content of the text at the given offset.
+    ///
+    /// It is not its responsibility to make sure this string
+    /// is not used by anyone.
+    pub fn clear_text(&mut self, offset: usize) -> Result<(), GBAIOError> {
+        let end = self.find_byte_after(offset, 0xFF);
+        if let Some(end) = end {
+            if end - offset > MAX_TEXT_LENGTH {
+                return Err(GBAIOError::Unknown(
+                    "Trying to delete a text that is too long",
+                ));
+            }
+
+            self.clear(offset, end - offset)?;
+        }
+
+        Ok(())
     }
 }

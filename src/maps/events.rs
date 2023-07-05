@@ -1,11 +1,12 @@
 use std::fmt::{self, Display, Formatter};
 
 use gba_macro::gba_struct;
-use gba_types::GBAIOError;
+use gba_types::{vectors::VectorData, GBAIOError};
 use serde::Serialize;
 
-use crate::{rom::Rom, scripts::ScriptTree};
+use crate::rom::Rom;
 
+// ANCHOR Events
 /* In FireRed, there is a peculiarity in this struct: it needs an union to
  * represent the different types of events. In Emerald, this is not the case.
  *  union {
@@ -99,6 +100,57 @@ gba_struct!(MapEvents {
     struct CoordEvent coord_events{$coord_event_count};
     struct BgEvent bg_events{$bg_event_count};
 });
+
+// ANCHOR Finding script offsets
+pub(super) fn get_coord_event_scripts(vec: &VectorData<CoordEvent>) -> Vec<usize> {
+    let mut res = vec![];
+
+    // Extract the script offsets if possible.
+    if let Some(events) = vec.get_data() {
+        for event in events {
+            if let Some(valid_offset) = event.script.offset() {
+                res.push(valid_offset);
+            }
+        }
+    }
+
+    res
+}
+
+pub(super) fn get_object_event_scripts(vec: &VectorData<ObjectEventTemplate>) -> Vec<usize> {
+    let mut res = vec![];
+
+    // Extract the script offsets if possible.
+    if let Some(events) = vec.get_data() {
+        for event in events {
+            if let Some(valid_offset) = event.script.offset() {
+                res.push(valid_offset);
+            }
+        }
+    }
+
+    res
+}
+
+pub(super) fn get_bg_event_scripts(rom: &Rom, vec: &VectorData<BgEvent>) -> Vec<usize> {
+    let mut res = vec![];
+
+    // Extract the script offsets if possible.
+    if let Some(events) = vec.get_data() {
+        for event in events {
+            // If the event is an event with a script associate to it
+            // see BG_EVENT_PLAYER_FACING_{ANY, NORTH, SOUTH, EAST, WEST}
+            if event.kind <= 4 {
+                // Interpret event.data as a pointer to a script.
+                if rom.is_pointer_valid(event.data) {
+                    res.push(event.data as usize - 0x08000000);
+                }
+            }
+        }
+    }
+
+    res
+}
 
 // ANCHOR Map Scripts
 #[derive(Serialize, Debug)]
@@ -245,7 +297,10 @@ impl MapScripts {
         })
     }
 
-    pub fn clear(&self, rom: &mut Rom, offset: usize) -> Result<(), GBAIOError> {
+    /// Clears this map scripts table from the ROM.
+    ///
+    /// Returns a vector of the offsets of the scripts that still need clearing.
+    pub fn clear(&self, rom: &mut Rom, offset: usize) -> Result<Vec<usize>, GBAIOError> {
         let mut scripts_to_clear = vec![];
 
         // Clear the direct scripts
@@ -273,9 +328,8 @@ impl MapScripts {
         // Clear the table itself
         rom.clear(offset as usize, self.read_size as usize)?;
 
-        // TODO Clear the scripts themselves
-        ScriptTree::clean_clear(rom, scripts_to_clear);
-        Ok(())
+        // The scripts will be cleared later
+        Ok(scripts_to_clear)
     }
 
     fn clear_conditional_script(
