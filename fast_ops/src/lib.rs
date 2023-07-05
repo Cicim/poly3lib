@@ -106,7 +106,7 @@ pub fn find_free_space(data: &[u8], size: usize, align: usize) -> Option<usize> 
     None
 }
 
-/// Discover if the data needs a new place in ROM and if so, find it.
+/// Find out if the data needs a new place in ROM and if so, find it.
 /// Return the offset of the data in ROM, whether it changed or not.
 /// In case everything succeeds, clear all the old data.
 pub fn repoint_offset(data: &mut [u8], offset: usize, old: usize, new: usize) -> Option<usize> {

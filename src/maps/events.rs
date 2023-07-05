@@ -6,8 +6,6 @@ use serde::Serialize;
 
 use crate::rom::Rom;
 
-use super::scripts::clear_if_safe;
-
 /* In FireRed, there is a peculiarity in this struct: it needs an union to
  * represent the different types of events. In Emerald, this is not the case.
  *  union {
@@ -248,11 +246,13 @@ impl MapScripts {
     }
 
     pub fn clear(&self, rom: &mut Rom, offset: usize) -> Result<(), GBAIOError> {
+        let mut scripts_to_clear = vec![];
+
         // Clear the direct scripts
         macro_rules! clear_script {
             ($field:ident) => {
                 if let Some(offset) = self.$field {
-                    clear_if_safe(rom, offset as usize)?;
+                    scripts_to_clear.push(offset as usize);
                 }
             };
         }
@@ -264,26 +264,35 @@ impl MapScripts {
 
         // Clear the conditional scripts
         if let Some(table) = &self.on_frame_table {
-            MapScripts::clear_conditional_script(rom, table)?;
+            scripts_to_clear.extend(MapScripts::clear_conditional_script(rom, table)?);
         }
         if let Some(table) = &self.on_warp_into_map_table {
-            MapScripts::clear_conditional_script(rom, table)?;
+            scripts_to_clear.extend(MapScripts::clear_conditional_script(rom, table)?);
         }
 
         // Clear the table itself
-        rom.clear(offset as usize, self.read_size as usize)
+        rom.clear(offset as usize, self.read_size as usize)?;
+
+        // TODO Clear the scripts themselves
+        println!("{:#X?}", scripts_to_clear);
+        Ok(())
     }
 
     fn clear_conditional_script(
         rom: &mut Rom,
         table: &ConditionalScriptTable,
-    ) -> Result<(), GBAIOError> {
+    ) -> Result<Vec<usize>, GBAIOError> {
+        // Save the scripts to clear
+        let mut scripts = vec![];
+
         for script in table.scripts.iter() {
-            clear_if_safe(rom, script.script as usize)?;
+            scripts.push(script.script as usize);
         }
 
         // Clear the table itself
-        rom.clear(table.offset as usize, table.read_size as usize)
+        rom.clear(table.offset as usize, table.read_size as usize)?;
+
+        Ok(scripts)
     }
 }
 

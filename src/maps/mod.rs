@@ -13,7 +13,6 @@ pub mod header;
 pub mod layout;
 pub mod mapsec;
 pub mod render;
-pub mod scripts;
 pub mod tileset;
 
 impl Rom {

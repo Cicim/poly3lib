@@ -137,6 +137,10 @@ impl MapHeader {
         }
 
         // TODO Clear the Map Scripts
+        if let Some(map_scripts_offset) = self.map_scripts.offset() {
+            let map_scripts = MapScripts::read(rom, map_scripts_offset)?;
+            map_scripts.clear(rom, map_scripts_offset)?;
+        }
 
         // Clear the header
         rom.clear(offset, MapHeader::size(rom))
@@ -346,15 +350,21 @@ impl<'rom> MapHeadersTable<'rom> {
     /// If the function returns [`None`], the header is skipped.
     ///
     /// # Example
-    /// To get the list of maps with no layout
-    /// ```no_run
+    /// To get the list of maps with a certain layout
+    /// ```
+    /// use poly3lib::rom::Rom;
+    /// let mut rom = Rom::load("roms/firered.gba").expect("Rom not found");
+    ///
     /// let maps_with_no_layout = rom.map_headers().collect(|group, index, offset, header| {
-    ///     if header.map_layout.id == 0 {
+    ///     // Only collect the maps with layout 10
+    ///     if header.map_layout_id == 10 {
     ///        Some((group, index))
     ///     } else {
     ///        None
     ///     }
-    /// });
+    /// }).unwrap();
+    ///
+    /// assert_eq!(maps_with_no_layout.len(), 12);
     /// ```
     pub fn collect<T>(
         &self,

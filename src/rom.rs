@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::Display;
 use std::fs::File;
 use std::io::{Read, Write};
@@ -295,16 +296,17 @@ impl Rom {
         fast_ops::find_free_space(&self.data, size, align)
     }
 
-    /// Discover if the data needs a new place in ROM and if so, find it.
+    /// Find out if the data needs a new place in ROM and if so, find it.
     /// Return the offset of the data in ROM, whether it changed or not.
     /// In case everything succeeds, clear all the old data.
-    pub fn repoint_offset(
-        &mut self,
-        offset: usize,
-        old_size: usize,
-        new_size: usize,
-    ) -> Option<usize> {
-        fast_ops::repoint_offset(&mut self.data, offset, old_size, new_size)
+    pub fn repoint_offset(&mut self, offset: usize, old: usize, new: usize) -> Option<usize> {
+        fast_ops::repoint_offset(&mut self.data, offset, old, new)
+    }
+
+    /// Returns everything that might be a valid offset in this ROM
+    /// together with the number of times it appears.
+    pub fn find_all_offsets(&self) -> HashMap<u32, u32> {
+        fast_ops::find_all_offsets(&self.data)
     }
 
     /// Clears the data in the ROM at the given offset.
