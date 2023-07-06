@@ -15,8 +15,8 @@ macro_rules! output {
 }
 
 impl ScriptTree {
-    pub fn print(&self, rom: &Rom, color: bool) {
-        let mut res = OutputBuffer::new(color);
+    pub fn print(&self, rom: &Rom, color: bool, show_offset: bool) {
+        let mut res = OutputBuffer::new(color, show_offset);
 
         // Loop through all the resources
         for (resource, _) in self.map.iter() {
@@ -107,11 +107,11 @@ struct OutputBuffer {
 }
 
 impl OutputBuffer {
-    fn new(color: bool) -> Self {
+    fn new(color: bool, show_offset: bool) -> Self {
         Self {
             string: String::new(),
             color,
-            show_offset: true,
+            show_offset,
         }
     }
 
