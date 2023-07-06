@@ -341,7 +341,7 @@ impl<'rom> MapLayoutsTable<'rom> {
 
     // ANCHOR Header offset
     /// Returns the header offset given the index.
-    fn get_header_offset(&self, index: u16) -> Result<usize, LayoutError> {
+    pub fn get_header_offset(&self, index: u16) -> Result<usize, LayoutError> {
         if index == 0 {
             return Err(LayoutError::IndicesStartAtOne);
         }
