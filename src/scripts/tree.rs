@@ -162,8 +162,8 @@ fn find_script_references(
             0x67 | 0x78 | 0x9B | 0xBD | 0xBE | 0xC8 | 0xDB | 0xDF => {
                 ScriptResource::from_bytes(rom, bytes, Text)
             }
-            // bufferstring, vbufferstring
-            0x85 | 0xBF => ScriptResource::from_bytes(rom, &bytes[1..5], Text),
+            // loadword(!), bufferstring, vbufferstring
+            0x0F | 0x85 | 0xBF => ScriptResource::from_bytes(rom, &bytes[1..5], Text),
 
             // > Movement
             // applymovement
