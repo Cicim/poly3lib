@@ -4,7 +4,7 @@ use gba_macro::gba_struct;
 use gba_types::{vectors::VectorData, GBAIOError};
 use serde::Serialize;
 
-use crate::rom::Rom;
+use crate::{rom::Rom, scripts::ScriptResource};
 
 // ANCHOR Events
 /* In FireRed, there is a peculiarity in this struct: it needs an union to
@@ -102,14 +102,14 @@ gba_struct!(MapEvents {
 });
 
 // ANCHOR Finding script offsets
-pub(super) fn get_coord_event_scripts(vec: &VectorData<CoordEvent>) -> Vec<usize> {
+pub(super) fn get_coord_event_scripts(vec: &VectorData<CoordEvent>) -> Vec<ScriptResource> {
     let mut res = vec![];
 
     // Extract the script offsets if possible.
     if let Some(events) = vec.get_data() {
         for event in events {
             if let Some(valid_offset) = event.script.offset() {
-                res.push(valid_offset);
+                res.push(ScriptResource::Script(valid_offset));
             }
         }
     }
@@ -117,14 +117,16 @@ pub(super) fn get_coord_event_scripts(vec: &VectorData<CoordEvent>) -> Vec<usize
     res
 }
 
-pub(super) fn get_object_event_scripts(vec: &VectorData<ObjectEventTemplate>) -> Vec<usize> {
+pub(super) fn get_object_event_scripts(
+    vec: &VectorData<ObjectEventTemplate>,
+) -> Vec<ScriptResource> {
     let mut res = vec![];
 
     // Extract the script offsets if possible.
     if let Some(events) = vec.get_data() {
         for event in events {
             if let Some(valid_offset) = event.script.offset() {
-                res.push(valid_offset);
+                res.push(ScriptResource::Script(valid_offset));
             }
         }
     }
@@ -132,7 +134,7 @@ pub(super) fn get_object_event_scripts(vec: &VectorData<ObjectEventTemplate>) ->
     res
 }
 
-pub(super) fn get_bg_event_scripts(rom: &Rom, vec: &VectorData<BgEvent>) -> Vec<usize> {
+pub(super) fn get_bg_event_scripts(rom: &Rom, vec: &VectorData<BgEvent>) -> Vec<ScriptResource> {
     let mut res = vec![];
 
     // Extract the script offsets if possible.
@@ -143,7 +145,7 @@ pub(super) fn get_bg_event_scripts(rom: &Rom, vec: &VectorData<BgEvent>) -> Vec<
             if event.kind <= 4 {
                 // Interpret event.data as a pointer to a script.
                 if rom.is_pointer_valid(event.data) {
-                    res.push(event.data as usize - 0x08000000);
+                    res.push(ScriptResource::Script(event.data as usize - 0x08000000));
                 }
             }
         }
@@ -300,14 +302,14 @@ impl MapScripts {
     /// Clears this map scripts table from the ROM.
     ///
     /// Returns a vector of the offsets of the scripts that still need clearing.
-    pub fn clear(&self, rom: &mut Rom, offset: usize) -> Result<Vec<usize>, GBAIOError> {
+    pub fn clear(&self, rom: &mut Rom, offset: usize) -> Result<Vec<ScriptResource>, GBAIOError> {
         let mut scripts_to_clear = vec![];
 
         // Clear the direct scripts
         macro_rules! clear_script {
             ($field:ident) => {
                 if let Some(offset) = self.$field {
-                    scripts_to_clear.push(offset as usize);
+                    scripts_to_clear.push(ScriptResource::Script(offset as usize));
                 }
             };
         }
@@ -319,10 +321,10 @@ impl MapScripts {
 
         // Clear the conditional scripts
         if let Some(table) = &self.on_frame_table {
-            scripts_to_clear.extend(MapScripts::clear_conditional_script(rom, table)?);
+            scripts_to_clear.push(ScriptResource::MapScriptsTable(table.offset as usize));
         }
         if let Some(table) = &self.on_warp_into_map_table {
-            scripts_to_clear.extend(MapScripts::clear_conditional_script(rom, table)?);
+            scripts_to_clear.push(ScriptResource::MapScriptsTable(table.offset as usize));
         }
 
         // Clear the table itself
@@ -330,23 +332,6 @@ impl MapScripts {
 
         // The scripts will be cleared later
         Ok(scripts_to_clear)
-    }
-
-    fn clear_conditional_script(
-        rom: &mut Rom,
-        table: &ConditionalScriptTable,
-    ) -> Result<Vec<usize>, GBAIOError> {
-        // Save the scripts to clear
-        let mut scripts = vec![];
-
-        for script in table.scripts.iter() {
-            scripts.push(script.script as usize);
-        }
-
-        // Clear the table itself
-        rom.clear(table.offset as usize, table.read_size as usize)?;
-
-        Ok(scripts)
     }
 }
 

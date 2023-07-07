@@ -2,3 +2,7 @@
 /Cargo.lock
 /roms/
 /src/main.rs
+
+# Include only some of VsCodes's configuration files
+.vscode/*
+!.vscode/launch.json

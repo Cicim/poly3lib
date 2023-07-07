@@ -15,7 +15,7 @@ impl ScriptTree {
             // For each root script, decrease its offset from the offsets
             for root in self.roots.iter() {
                 let offset = root.offset();
-                if let Some(reference) = offsets.get_mut(&offset) {
+                if let Some(reference) = offsets.get_mut(&(offset as u32)) {
                     *reference -= 1;
                 } else {
                     println!("It is highly weird that a root offset does not appear in ROM");
@@ -25,7 +25,7 @@ impl ScriptTree {
 
         #[cfg(feature = "debug_scripts_clear")]
         for root in self.roots.iter() {
-            let counts = offsets.get(&root.offset()).unwrap_or(&0);
+            let counts = offsets.get(&(root.offset() as u32)).unwrap_or(&0);
             println!("[ROOT COUNT] {} = {}", root, counts);
         }
 
@@ -33,7 +33,7 @@ impl ScriptTree {
         while let Some(k) = tree
             .iter()
             .map(|(k, _)| k.clone())
-            .find(|k| offsets.get(&k.offset()).unwrap_or(&0) == &0)
+            .find(|k| offsets.get(&(k.offset() as u32)).unwrap_or(&0) == &0)
         {
             // Remove k
             let values = tree.remove(&k).unwrap();
@@ -45,11 +45,11 @@ impl ScriptTree {
             for value in values {
                 #[cfg(feature = "debug_scripts_clear")]
                 {
-                    let counts = offsets.get(&value.offset()).unwrap_or(&0);
+                    let counts = offsets.get(&(value.offset() as u32)).unwrap_or(&0);
                     print!("    [COUNT] {} = {}", value, counts);
                 }
 
-                let counts = offsets.get_mut(&value.offset());
+                let counts = offsets.get_mut(&(value.offset() as u32));
                 if let Some(count) = counts {
                     if *count > 0 {
                         *count -= 1;
@@ -68,7 +68,7 @@ impl ScriptTree {
             // Print the remaining offsets
             print!("[NOT CLEARED]");
             for (k, _) in tree.iter() {
-                let counts = offsets.get(&k.offset()).unwrap_or(&0);
+                let counts = offsets.get(&(k.offset() as u32)).unwrap_or(&0);
                 print!(" {} ({}) ", k, counts);
             }
             println!()
@@ -77,12 +77,11 @@ impl ScriptTree {
 }
 
 impl Rom {
-    /// Takes a list of offsets, assuming the places they've been taken
+    /// Takes a list of script resources, assuming the places they've been taken
     /// from have been cleared, and finds, then deletes all the resources
-    /// and scripts that are exclusively referenced by them.
-    pub fn clear_scripts(&mut self, offsets: Vec<usize>) {
-        let offsets = offsets;
-        let tree = ScriptTree::read(self, offsets);
+    /// that are exclusively referenced by them.
+    pub fn clear_scripts(&mut self, resources: Vec<ScriptResource>) {
+        let tree = ScriptTree::read(self, resources);
         tree.clear_internal(self, false)
     }
 }
@@ -92,8 +91,6 @@ fn delete_script_resource(rom: &mut Rom, res: ScriptResource) -> bool {
 
     match res {
         Script(offset) => {
-            let offset = offset as usize;
-
             // Visit the script by returing the size of each instruction
             match visit_script(rom, offset, |_, bytes| Some(bytes.len() + 1))
                 // Sum the results if correct
@@ -104,10 +101,9 @@ fn delete_script_resource(rom: &mut Rom, res: ScriptResource) -> bool {
                 Err(_) => return false,
             }
         }
-        Text(offset) => rom.clear_text(offset as usize).is_ok(),
+        Text(offset) => rom.clear_text(offset).is_ok(),
         Movement(offset) => {
             // Find the first 0xFE after this
-            let offset = offset as usize;
             let end = rom.find_byte_after(offset, 0xFE);
 
             // Clear everything in-between
@@ -123,7 +119,6 @@ fn delete_script_resource(rom: &mut Rom, res: ScriptResource) -> bool {
             }
         }
         Products(offset) => {
-            let offset = offset as usize;
             let mut size = 0;
 
             // Read the products until you find a 0x00
@@ -137,6 +132,27 @@ fn delete_script_resource(rom: &mut Rom, res: ScriptResource) -> bool {
                     _ => (),
                 }
             }
+        }
+        MapScriptsTable(offset) => {
+            let mut read_size = 0;
+            loop {
+                // Read the first variable
+                let first_var = rom.read_unaligned_halfword(offset + read_size);
+                if first_var.is_err() {
+                    return false;
+                }
+
+                read_size += 2;
+                if first_var == Ok(0) {
+                    break;
+                }
+                // We don't care about reading the second variable, we're clearing it
+                // Nor do we care about the script (if we've read it, we can clear it)
+                read_size += 6;
+            }
+
+            // Clear the table
+            rom.clear(offset, read_size).is_ok()
         }
     }
 }

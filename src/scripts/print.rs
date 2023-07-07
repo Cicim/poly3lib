@@ -32,16 +32,11 @@ impl ScriptResource {
     fn print(&self, res: &mut OutputBuffer, rom: &Rom) {
         // Write the header
         res.start_row(Some(self.offset() as usize));
-        output!(
-            res,
-            "{} {}\n",
-            res.keyword(".org"),
-            res.format_as_offset(self)
-        );
+        output!(res, "{} {}\n", res.keyword(".org"), res.offset(self));
 
         match self {
             ScriptResource::Script(offset) => {
-                let offset = *offset as usize;
+                let offset = *offset;
 
                 match visit_script(rom, offset, |code, args| Some((code, args.to_vec()))) {
                     Ok(script) => {
@@ -54,9 +49,8 @@ impl ScriptResource {
                 };
             }
             ScriptResource::Text(offset) => {
-                let offset = *offset as usize;
                 // Read the text
-                match rom.read_text(offset) {
+                match rom.read_text(*offset) {
                     Ok(text) => {
                         res.add_text(text);
                     }
@@ -67,7 +61,7 @@ impl ScriptResource {
                 }
             }
             ScriptResource::Movement(offset) => {
-                let mut offset = *offset as usize;
+                let mut offset = *offset;
 
                 // Write the products
                 while let Some(movement) = res.add_movement(rom, offset) {
@@ -78,10 +72,10 @@ impl ScriptResource {
                 }
             }
             ScriptResource::Products(offset) => {
-                let mut offset = *offset as usize;
+                let mut offset = *offset;
 
                 // Write the products
-                while let Some(product) = res.add_product(rom, offset) {
+                while let Some(product) = res.add_2bytes(rom, offset) {
                     offset += 2;
                     if product == 0 {
                         break;
@@ -90,6 +84,23 @@ impl ScriptResource {
 
                 // Write the last commands
                 res.add_products_release_end(rom, offset);
+            }
+            ScriptResource::MapScriptsTable(offset) => {
+                let mut offset = *offset;
+
+                loop {
+                    let firstvar = res.add_2bytes(rom, offset);
+                    offset += 2;
+                    if firstvar == Some(0) {
+                        break;
+                    }
+
+                    res.add_2bytes(rom, offset);
+                    offset += 2;
+
+                    res.add_script_offset(rom, offset);
+                    offset += 4;
+                }
             }
         }
     }
@@ -155,7 +166,7 @@ impl OutputBuffer {
         }
     }
 
-    fn format_as_offset(&self, res: &ScriptResource) -> String {
+    fn offset(&self, res: &ScriptResource) -> String {
         use ScriptResource::*;
 
         let prefix = match res {
@@ -163,6 +174,7 @@ impl OutputBuffer {
             Text(_) => "text",
             Movement(_) => "movement",
             Products(_) => "products",
+            MapScriptsTable(_) => "map_scripts_table",
         };
 
         let str = format!("@{}_{:0x}", prefix, res.offset());
@@ -200,11 +212,10 @@ impl OutputBuffer {
         }
     }
 
-    fn add_product(&mut self, rom: &Rom, offset: usize) -> Option<u16> {
+    fn add_2bytes(&mut self, rom: &Rom, offset: usize) -> Option<u16> {
+        self.start_row(Some(offset));
         match rom.read_unaligned_halfword(offset) {
             Ok(value) => {
-                self.start_row(Some(offset));
-
                 output!(
                     self,
                     "  {} {}\n",
@@ -213,7 +224,25 @@ impl OutputBuffer {
                 );
                 Some(value)
             }
-            Err(_) => None,
+            Err(_) => {
+                self.error("Failed to read 2 bytes");
+                None
+            }
+        }
+    }
+
+    fn add_script_offset(&mut self, rom: &Rom, offset: usize) {
+        self.start_row(Some(offset));
+        match rom.data.get(offset..offset + 4) {
+            Some(bytes) => match ScriptResource::from_bytes(rom, bytes, ScriptResource::Script) {
+                Some(res) => self.add(&format!(
+                    "  {} {}\n",
+                    self.keyword(".4bytes"),
+                    self.offset(&res)
+                )),
+                None => self.error("Failed to read script offset"),
+            },
+            None => self.error("Failed to read data"),
         }
     }
 

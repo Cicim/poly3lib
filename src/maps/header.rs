@@ -7,6 +7,7 @@ use serde::Serialize;
 use crate::{
     refs::{TableInitError, TablePointer},
     rom::{Rom, RomType},
+    scripts::ScriptResource,
 };
 
 use super::{
@@ -120,7 +121,7 @@ impl MapHeader {
     /// (everything excluding the map layout), according to the game version.
     ///
     /// Returns a list of scripts to clear.
-    pub fn clear(self, rom: &mut Rom, offset: usize) -> Result<Vec<usize>, GBAIOError> {
+    pub fn clear(self, rom: &mut Rom, offset: usize) -> Result<Vec<ScriptResource>, GBAIOError> {
         let mut scripts_to_clear = Vec::new();
 
         // Clear the connections if present
@@ -363,7 +364,7 @@ impl<'rom> MapHeadersTable<'rom> {
     /// Returns the scripts whose references were deleted which need to be cleared.
     ///
     /// The decision as to whether to clear them or not is left to the caller.
-    pub fn delete_header(&mut self, group: u8, index: u8) -> Result<Vec<usize>, MapError> {
+    pub fn delete_header(&mut self, group: u8, index: u8) -> Result<Vec<ScriptResource>, MapError> {
         // If the header exists, clear it
         if let Ok(header_offset) = self.get_header_offset(group, index) {
             let scripts_to_clear = MapHeader::read(self.rom, header_offset)

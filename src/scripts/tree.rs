@@ -4,6 +4,8 @@ use std::{
     hash::{Hash, Hasher},
 };
 
+use gba_types::GBAIOError;
+
 use crate::rom::Rom;
 
 use super::consts::BYTES_TO_SKIP;
@@ -12,19 +14,21 @@ const MAX_SCRIPT_SIZE: usize = 200;
 
 #[derive(PartialEq, Eq, Hash, Clone, Ord)]
 pub enum ScriptResource {
-    Script(u32),
-    Text(u32),
-    Movement(u32),
-    Products(u32),
+    Script(usize),
+    MapScriptsTable(usize),
+    Text(usize),
+    Movement(usize),
+    Products(usize),
 }
 impl ScriptResource {
-    pub fn offset(&self) -> u32 {
+    pub fn offset(&self) -> usize {
         use ScriptResource::*;
         match self {
             Script(offset) => *offset,
             Text(offset) => *offset,
             Movement(offset) => *offset,
             Products(offset) => *offset,
+            MapScriptsTable(offset) => *offset,
         }
     }
 
@@ -35,8 +39,20 @@ impl ScriptResource {
             Text(_) => "Text",
             Movement(_) => "Movement",
             Products(_) => "Products",
+            MapScriptsTable(_) => "Map Scripts Table",
         }
         .to_string()
+    }
+
+    /// Returns whether you can get more data from a resource
+    /// (so, whether it is a branch or a leaf in the tree)
+    pub fn is_expandable(&self) -> bool {
+        use ScriptResource::*;
+        match self {
+            Script(_) => true,
+            MapScriptsTable(_) => true,
+            _ => false,
+        }
     }
 }
 
@@ -50,10 +66,17 @@ impl Display for ScriptResource {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use colored::Colorize;
 
-        let name = self.name()[0..1].to_lowercase().red();
+        let name = match self {
+            ScriptResource::Script(_) => "s",
+            ScriptResource::Text(_) => "t",
+            ScriptResource::Movement(_) => "m",
+            ScriptResource::Products(_) => "p",
+            ScriptResource::MapScriptsTable(_) => "mst",
+        }
+        .red();
         let offset = format!("${:X}", self.offset());
 
-        let offset_with_color = if let ScriptResource::Script(_) = self {
+        let offset_with_color = if self.is_expandable() {
             // Find the color of the hash
             let mut hasher = DefaultHasher::new();
             self.hash(&mut hasher);
@@ -92,33 +115,39 @@ pub struct ScriptTree {
 }
 
 impl ScriptTree {
-    pub fn read(rom: &Rom, offsets: Vec<usize>) -> Self {
+    pub fn read(rom: &Rom, offsets: Vec<ScriptResource>) -> Self {
         // Save the roots for later
-        let roots = offsets
-            .clone()
-            .into_iter()
-            .map(|offset| ScriptResource::Script(offset as u32))
-            .collect();
+        let roots = offsets.clone();
 
         // Keep a queue of offsets to visit
         let mut queue = offsets;
         // Keep track of the scripts you've already expanded
         let mut map: HashMap<ScriptResource, Vec<ScriptResource>> = HashMap::new();
 
-        while let Some(script_offset) = queue.pop() {
+        while let Some(parent_resource) = queue.pop() {
+            if !parent_resource.is_expandable() {
+                println!(
+                    "[WARNING] Resource {:?} is not expandable. 
+Support for non-expandable resources as roots is not implemented yet.",
+                    parent_resource
+                );
+                continue;
+            }
+
             // If you can already see this offset in the map, ignore it
-            if map.contains_key(&ScriptResource::Script(script_offset as u32)) {
+            if map.contains_key(&parent_resource) {
                 continue;
             }
 
             // Get the resources referenced by the script
-            let resources = find_script_references(rom, script_offset).unwrap_or(vec![]);
+            let resources = find_sub_references(rom, &parent_resource);
 
             // Add each script you encounter to the queue, and each resource to the map
             for resource in &resources {
-                if let ScriptResource::Script(offset) = resource {
-                    if !map.contains_key(resource) {
-                        queue.push(*offset as usize);
+                // If the resource can be expanded itself, add it to the queue
+                if resource.is_expandable() {
+                    if !map.contains_key(&resource) {
+                        queue.push(resource.clone());
                     }
                 } else {
                     map.insert(resource.clone(), vec![]);
@@ -126,10 +155,24 @@ impl ScriptTree {
             }
 
             // Add the script to the expanded scripts
-            map.insert(ScriptResource::Script(script_offset as u32), resources);
+            map.insert(parent_resource, resources);
         }
 
         ScriptTree { map, roots }
+    }
+}
+
+/// Visits a resource that can be explored and returns the resources it references
+fn find_sub_references(rom: &Rom, resource: &ScriptResource) -> Vec<ScriptResource> {
+    // This is find because the only times it will ever get here is
+    // if the resource is expandable, which should only happen in
+    // case of a script or a map scripts table.
+    assert!(resource.is_expandable());
+
+    if let ScriptResource::MapScriptsTable(offset) = resource {
+        find_map_scripts_table_references(rom, *offset).unwrap_or(vec![])
+    } else {
+        find_script_references(rom, resource.offset()).unwrap_or(vec![])
     }
 }
 
@@ -234,6 +277,32 @@ fn find_script_references(
     Ok(output)
 }
 
+/// Does a visit of a map scripts table and collects the references to the
+/// scripts it finds in there.
+fn find_map_scripts_table_references(
+    rom: &Rom,
+    offset: usize,
+) -> Result<Vec<ScriptResource>, GBAIOError> {
+    // Start reading the table
+    let mut res = vec![];
+    let mut read_size = 0;
+    loop {
+        // Read the first variable
+        if rom.read_unaligned_halfword(offset + read_size)? == 0 {
+            break;
+        }
+        // Skip the first two variables
+        read_size += 4;
+
+        // Read the script
+        let script = rom.read_unaligned_offset(offset + read_size)?;
+        res.push(ScriptResource::Script(script as usize));
+        read_size += 4;
+    }
+
+    Ok(res)
+}
+
 impl Display for ScriptTree {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         // Sort the keys by offset
@@ -250,7 +319,7 @@ impl Display for ScriptTree {
 
         writeln!(f, " Dependency relations:")?;
         for key in keys {
-            if let ScriptResource::Script(_) = key {
+            if key.is_expandable() {
                 // For scripts, also print the referenced resources
                 let vec = self.map.get(key).unwrap();
 
@@ -389,10 +458,10 @@ impl ScriptResource {
     /// ```
     pub fn from_bytes<F>(rom: &Rom, bytes: &[u8], f: F) -> Option<Self>
     where
-        F: FnOnce(u32) -> Self,
+        F: FnOnce(usize) -> Self,
     {
-        let offset = u32::from_le_bytes(bytes[0..4].try_into().unwrap());
-        if offset < 0x08000000 || offset > 0x08000000 + rom.size() as u32 {
+        let offset = u32::from_le_bytes(bytes[0..4].try_into().unwrap()) as usize;
+        if offset < 0x08000000 || offset > 0x08000000 + rom.size() {
             None
         } else {
             Some(f(offset - 0x08000000))
