@@ -16,8 +16,6 @@ pub enum ScriptResource {
     Text(u32),
     Movement(u32),
     Products(u32),
-
-    InvalidPointer(u32),
 }
 impl ScriptResource {
     pub fn offset(&self) -> u32 {
@@ -27,8 +25,6 @@ impl ScriptResource {
             Text(offset) => *offset,
             Movement(offset) => *offset,
             Products(offset) => *offset,
-
-            InvalidPointer(offset) => *offset,
         }
     }
 
@@ -39,8 +35,6 @@ impl ScriptResource {
             Text(_) => "Text",
             Movement(_) => "Movement",
             Products(_) => "Products",
-
-            InvalidPointer(_) => "InvalidPointer",
         }
         .to_string()
     }
@@ -149,7 +143,7 @@ fn find_script_references(
     let v = visit_script(rom, offset, |code, bytes| {
         use ScriptResource::*;
 
-        Some(vec![match code {
+        let result: Option<ScriptResource> = match code {
             // > Other Scripts
             // call and goto
             0x04 | 0x05 => ScriptResource::from_bytes(rom, bytes, Script),
@@ -162,7 +156,8 @@ fn find_script_references(
             0x67 | 0x78 | 0x9B | 0xBD | 0xBE | 0xC8 | 0xDB | 0xDF => {
                 ScriptResource::from_bytes(rom, bytes, Text)
             }
-            // loadword(!), bufferstring, vbufferstring
+
+            // loadword, bufferstring, vbufferstring
             0x0F | 0x85 | 0xBF => ScriptResource::from_bytes(rom, &bytes[1..5], Text),
 
             // > Movement
@@ -181,27 +176,39 @@ fn find_script_references(
                 let mut resources = vec![];
                 // If the first argument is there, it is a text
                 if bytes.len() >= 9 {
-                    resources.push(ScriptResource::from_bytes(rom, &bytes[5..9], Text));
+                    let res = ScriptResource::from_bytes(rom, &bytes[5..9], Text);
+                    if res.is_some() {
+                        resources.push(res.unwrap());
+                    }
                 }
                 // If the second argument is there, it is a text
                 if bytes.len() >= 13 {
-                    resources.push(ScriptResource::from_bytes(rom, &bytes[9..13], Text));
+                    let res = ScriptResource::from_bytes(rom, &bytes[9..13], Text);
+                    if res.is_some() {
+                        resources.push(res.unwrap());
+                    }
                 }
                 // If the third argument is there, check what it should be
                 if bytes.len() >= 17 {
-                    resources.push(ScriptResource::from_bytes(
+                    let res = ScriptResource::from_bytes(
                         rom,
-                        &bytes[17..21],
+                        &bytes[13..17],
                         match battle_type {
                             TRAINER_BATTLE_CONTINUE_SCRIPT_NO_MUSIC
                             | TRAINER_BATTLE_CONTINUE_SCRIPT => Script,
                             _ => Text,
                         },
-                    ));
+                    );
+                    if res.is_some() {
+                        resources.push(res.unwrap());
+                    }
                 }
                 // If the fourth argument is there, it is always a script
                 if bytes.len() >= 21 {
-                    resources.push(ScriptResource::from_bytes(rom, &bytes[21..25], Script));
+                    let res = ScriptResource::from_bytes(rom, &bytes[17..21], Script);
+                    if res.is_some() {
+                        resources.push(res.unwrap());
+                    }
                 }
 
                 return Some(resources);
@@ -209,7 +216,13 @@ fn find_script_references(
 
             // Commands that do not reference any offset
             _ => return None,
-        }])
+        };
+
+        if let Some(resource) = result {
+            Some(vec![resource])
+        } else {
+            None
+        }
     })?;
 
     // Compact the result
@@ -374,15 +387,15 @@ impl ScriptResource {
     /// assert_eq!(ScriptResource::from_bytes(&rom, &[0, 0, 0, 0xFF], ScriptResource::Text),
     ///     ScriptResource::InvalidPointer(0xFF00_0000));
     /// ```
-    pub fn from_bytes<F>(rom: &Rom, bytes: &[u8], f: F) -> Self
+    pub fn from_bytes<F>(rom: &Rom, bytes: &[u8], f: F) -> Option<Self>
     where
         F: FnOnce(u32) -> Self,
     {
         let offset = u32::from_le_bytes(bytes[0..4].try_into().unwrap());
         if offset < 0x08000000 || offset > 0x08000000 + rom.size() as u32 {
-            Self::InvalidPointer(offset)
+            None
         } else {
-            f(offset - 0x08000000)
+            Some(f(offset - 0x08000000))
         }
     }
 }

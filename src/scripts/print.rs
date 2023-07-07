@@ -91,11 +91,6 @@ impl ScriptResource {
                 // Write the last commands
                 res.add_products_release_end(rom, offset);
             }
-            ScriptResource::InvalidPointer(offset) => {
-                let offset = *offset as usize;
-                res.start_row(Some(offset));
-                res.error("Invalid pointer");
-            }
         }
     }
 }
@@ -168,7 +163,6 @@ impl OutputBuffer {
             Text(_) => "text",
             Movement(_) => "movement",
             Products(_) => "products",
-            InvalidPointer(_) => panic!("You should never need to format an InvalidPointer"),
         };
 
         let str = format!("@{}_{:0x}", prefix, res.offset());

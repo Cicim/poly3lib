@@ -138,6 +138,5 @@ fn delete_script_resource(rom: &mut Rom, res: ScriptResource) -> bool {
                 }
             }
         }
-        InvalidPointer(_) => return false,
     }
 }

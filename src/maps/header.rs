@@ -9,7 +9,11 @@ use crate::{
     rom::{Rom, RomType},
 };
 
-use super::{connection::MapConnections, events::MapScripts, layout::MapLayout};
+use super::{
+    connection::MapConnections,
+    events::{MapEvents, MapScripts},
+    layout::MapLayout,
+};
 
 gba_struct!(EmeraldMapHeader {
     void *map_layout;
@@ -170,9 +174,20 @@ impl MapHeader {
         }
     }
 
-    pub fn read_map_scripts(&self, rom: &Rom) -> Result<MapScripts, GBAIOError> {
-        let offset = self.map_scripts.offset().unwrap();
-        MapScripts::read(rom, offset)
+    /// Reads a [`MapScripts`] from the [`MapHeader`].
+    pub fn read_map_scripts(&self, rom: &Rom) -> Result<Option<MapScripts>, GBAIOError> {
+        Ok(match self.map_scripts.offset() {
+            Some(offset) => Some(MapScripts::read(rom, offset)?),
+            None => None,
+        })
+    }
+
+    /// Reads a [`MapEvents`] from a [`MapHeader`].
+    pub fn read_map_events(&self, rom: &Rom) -> Result<Option<MapEvents>, GBAIOError> {
+        Ok(match self.events.offset() {
+            Some(offset) => Some(rom.read::<MapEvents>(offset)?),
+            None => None,
+        })
     }
 
     /// Checks if the [`MapHeader`] is valid.
