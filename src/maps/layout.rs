@@ -119,7 +119,9 @@ pub struct MapLayoutData {
     pub border_data: MapData,
     /// The number of bits that are used to index a block in the tilesets
     ///
-    /// `16 - tile_index_bits` = number of bits used for permission information
+    /// `16 - tile_index_bits` = number of bits used for permission information.
+    ///
+    /// They are not needed to write the map data.
     pub bits_per_block: u8,
 }
 
@@ -140,6 +142,7 @@ pub enum LayoutError {
     CannotRepointTable,
     CannotRepointMap,
     CannotRepointHeader,
+    TableFull,
 
     IoError(GBAIOError),
 }
@@ -159,6 +162,7 @@ impl Display for LayoutError {
             CannotRepointTable => write!(f, "Cannot repoint the layout table"),
             CannotRepointMap => write!(f, "Cannot repoint the map data"),
             CannotRepointHeader => write!(f, "Cannot repoint the layout header"),
+            TableFull => write!(f, "Layout table is full"),
             IoError(err) => write!(f, "IO error: {}", err),
         }
     }
@@ -308,6 +312,49 @@ impl<'rom> MapLayoutsTable<'rom> {
         })
     }
 
+    /// Creates a new [`MapLayout`] (together with its data) and returns its index.
+    pub fn create_data(
+        &mut self,
+        layout1: u32,
+        layout2: u32,
+        width: i32,
+        height: i32,
+    ) -> Result<u16, LayoutError> {
+        // Get the index
+        let index = self.get_first_free_index()?;
+
+        // Create the header
+        let header = MapLayout {
+            primary_tileset: PointedData::new(layout1),
+            secondary_tileset: PointedData::new(layout2),
+            width,
+            height,
+            border_width: 2,
+            border_height: 2,
+            data: PointedData::Null,
+            border: PointedData::Null,
+        };
+
+        // Create a new map and border data
+        let map_data = vec![vec![0u16; width as usize]; height as usize];
+        let border_data = vec![vec![0u16; 2]; 2];
+
+        // Write the data (finds offset for new data)
+        let data = MapLayoutData {
+            index,
+            header,
+            map_data,
+            border_data,
+            // Don't care about this value
+            bits_per_block: 0,
+        };
+
+        // Try and write the layout to ROM.
+        self.write_data(data)?;
+
+        Ok(index)
+    }
+
     // ANCHOR Headers
     /// Reads the map layout header at the given index.
     fn read_header(&self, index: u16) -> Result<MapLayout, LayoutError> {
@@ -358,6 +405,25 @@ impl<'rom> MapLayoutsTable<'rom> {
             return Err(LayoutError::MissingLayout);
         }
         self.rom.read_ptr(offset).map_err(LayoutError::IoError)
+    }
+
+    /// Returns the first free index in the table
+    fn get_first_free_index(&self) -> Result<u16, LayoutError> {
+        let table = self.get_table()?;
+
+        // If there is no more space for anything, return an error
+        if self.len() == 65535 {
+            return Err(LayoutError::TableFull);
+        }
+
+        for i in 1..=self.len() {
+            let offset = table.offset + (i as usize - 1) * 4;
+            if self.rom.read::<u32>(offset).map_err(LayoutError::IoError)? == 0 {
+                return Ok(i);
+            }
+        }
+
+        Ok(self.len() + 1)
     }
 
     /// Grows the map layouts table to the given size.

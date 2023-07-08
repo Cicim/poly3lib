@@ -67,14 +67,10 @@ pub fn find_references(data: &[u8], offset: usize, alignment: usize) -> Vec<usiz
 
 /// Find a free offset in the ROM of the given size.
 pub fn find_free_space(data: &[u8], size: usize, align: usize) -> Option<usize> {
-    println!("Asking for {} bytes with {} byte alignment", size, align);
-    println!("  over a total of {} bytes", data.len());
-
     let mut offset = 0;
 
     // If no data of that size can fit in this ROM
     if size + offset >= data.len() {
-        println!("No data will ever fit here!");
         return None;
     }
 

@@ -99,6 +99,11 @@ impl<'rom> MapSectionTable<'rom> {
         })
     }
 
+    /// Get the first mapsec index.
+    pub fn get_start_index(&self) -> Result<u8, MapSectionError> {
+        Ok(get_mapsec_start(self.rom).ok_or(MapSectionError::NoMapsecBounds)? as u8)
+    }
+
     fn get_name_shift_and_scale(&self) -> Result<(usize, usize), MapSectionError> {
         match self.rom.rom_type {
             RomType::FireRed | RomType::LeafGreen => Ok((0, 4)),

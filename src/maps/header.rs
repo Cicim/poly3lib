@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use gba_macro::gba_struct;
-use gba_types::{GBAIOError, GBAType};
+use gba_types::{pointers::PointedData, GBAIOError, GBAType};
 use serde::Serialize;
 
 use crate::{
@@ -243,6 +243,7 @@ pub enum MapError {
     InvalidGroupToResize(u8),
     CannotRepointTable,
     CannotRepointHeader,
+    InvalidLayout(u16),
 
     IoError(GBAIOError),
     MissingHeader,
@@ -272,6 +273,7 @@ impl Display for MapError {
             }
             CannotRepointTable => write!(f, "Cannot repoint map table"),
             CannotRepointHeader => write!(f, "Cannot repoint map header"),
+            InvalidLayout(id) => write!(f, "Invalid layout id: {}", id),
 
             IoError(err) => write!(f, "IO error: {}", err),
             MissingHeader => write!(f, "Missing map header"),
@@ -340,7 +342,7 @@ impl<'rom> MapHeadersTable<'rom> {
     ) -> Result<(), MapError> {
         // Increase the sizes as needed
         self.resize_table(group as usize + 1)?;
-        self.resize_group(group, index as usize)?;
+        self.resize_group(group, index as usize + 1)?;
 
         // Check what was there in the old place
         let offset = match self.get_header_offset(group, index) {
@@ -357,6 +359,47 @@ impl<'rom> MapHeadersTable<'rom> {
         // Write everything
         header.write(self.rom, offset).map_err(MapError::IoError)?;
         self.write_offset_to_table(group, index, Some(offset))
+    }
+
+    /// Creates and inserts a new map header into the table.
+    pub fn create_header(
+        &mut self,
+        group: u8,
+        index: u8,
+        map_layout_id: u16,
+    ) -> Result<(), MapError> {
+        // Get the layout offset corresponding to the given layout id
+        let layout_offset = self
+            .rom
+            .map_layouts()
+            .get_header_offset(map_layout_id)
+            .map_err(|_| MapError::InvalidLayout(map_layout_id))?;
+
+        // Get the first map section index
+        let region_map_section_id = self.rom.mapsec().get_start_index().unwrap_or(0);
+
+        let header = MapHeader {
+            map_layout_id,
+            map_layout: PointedData::new(layout_offset as u32),
+            events: PointedData::Null,
+            map_scripts: PointedData::Null,
+            connections: PointedData::Null,
+            // No music to start with
+            music: 0xFFFF,
+            region_map_section_id,
+            cave: 0,
+            weather: 0,
+            map_type: 0,
+            biking_allowed: 0,
+            allow_escaping: 0,
+            allow_running: 0,
+            show_map_name: 0,
+            floor_num: 0,
+            battle_type: 0,
+        };
+
+        // Write the header to the table
+        self.write_header(group, index, header)
     }
 
     /// Deletes the [`MapHeader`] at the given index along with all its attached fields.

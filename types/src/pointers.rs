@@ -207,6 +207,13 @@ impl<T: GBAType> std::fmt::Debug for PointedData<T> {
     }
 }
 
+impl PointedData<Nothing> {
+    /// Creates a new void pointer.
+    pub fn new(offset: u32) -> Self {
+        PointedData::Valid(offset, Nothing)
+    }
+}
+
 impl<T: GBAType> PointedData<T> {
     /// Returns the offset of the data if it points to something
     pub fn offset(&self) -> Option<usize> {
