@@ -328,8 +328,8 @@ impl<'rom> MapLayoutsTable<'rom> {
     /// Creates a new [`MapLayout`] (together with its data) and returns its index.
     pub fn create_data(
         &mut self,
-        layout1: u32,
-        layout2: u32,
+        tileset1: u32,
+        tileset2: u32,
         width: i32,
         height: i32,
     ) -> Result<u16, LayoutError> {
@@ -338,8 +338,8 @@ impl<'rom> MapLayoutsTable<'rom> {
 
         // Create the header
         let header = MapLayout {
-            primary_tileset: PointedData::new(layout1),
-            secondary_tileset: PointedData::new(layout2),
+            primary_tileset: PointedData::new(tileset1),
+            secondary_tileset: PointedData::new(tileset2),
             width,
             height,
             border_width: 2,

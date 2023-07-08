@@ -301,28 +301,36 @@ impl<'rom> MapHeadersTable<'rom> {
     /// Returns a vector [`MapHeaderDump`] structs, which contain
     /// the group, index, offset and header itself.
     pub fn dump_headers(&mut self) -> Result<Vec<MapHeaderDump>, MapError> {
-        self.collect(|group, index, offset, header| {
-            // Only if possible, read the tilesets' offsets
-            let (tileset1, tileset2) = match header.map_layout.offset() {
-                Some(layout_offset) => {
-                    let layout_offset = layout_offset as usize;
-                    // Reads directly from the bytes of the MapLayout struct for performance reasons
-                    let tileset1 = self.rom.read_ptr(layout_offset + 16).ok();
-                    let tileset2 = self.rom.read_ptr(layout_offset + 20).ok();
-                    (tileset1, tileset2)
-                }
-                None => (None, None),
-            };
+        self.collect(|group, index, offset, header| self.dump_header(group, index, offset, header))
+    }
 
-            // Add the header to the result
-            Some(MapHeaderDump {
-                group,
-                index,
-                offset,
-                header,
-                tileset1,
-                tileset2,
-            })
+    pub fn dump_header(
+        &self,
+        group: u8,
+        index: u8,
+        offset: usize,
+        header: MapHeader,
+    ) -> Option<MapHeaderDump> {
+        // Only if possible, read the tilesets' offsets
+        let (tileset1, tileset2) = match header.map_layout.offset() {
+            Some(layout_offset) => {
+                let layout_offset = layout_offset as usize;
+                // Reads directly from the bytes of the MapLayout struct for performance reasons
+                let tileset1 = self.rom.read_ptr(layout_offset + 16).ok();
+                let tileset2 = self.rom.read_ptr(layout_offset + 20).ok();
+                (tileset1, tileset2)
+            }
+            None => (None, None),
+        };
+
+        // Add the header to the result
+        Some(MapHeaderDump {
+            group,
+            index,
+            offset,
+            header,
+            tileset1,
+            tileset2,
         })
     }
 
@@ -492,7 +500,7 @@ impl<'rom> MapHeadersTable<'rom> {
 
     // ANCHOR Header offset
     /// Returns the offset to the [`MapHeader`]
-    fn get_header_offset(&self, group: u8, index: u8) -> Result<usize, MapError> {
+    pub fn get_header_offset(&self, group: u8, index: u8) -> Result<usize, MapError> {
         let group_table = self.get_group_table(group)?;
 
         if index as usize >= group_table.size {
