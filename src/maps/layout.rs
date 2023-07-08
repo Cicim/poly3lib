@@ -191,6 +191,19 @@ impl<'rom> MapLayoutsTable<'rom> {
         self.rom.refs.map_layouts_table.as_ref().unwrap().size as u16
     }
 
+    /// Returns the indices of all the existing layouts.
+    pub fn dump_valid(&self) -> Result<Vec<u16>, TableInitError> {
+        let mut indices = Vec::new();
+
+        for i in 0..self.len() {
+            if self.get_header_offset(i).is_ok() {
+                indices.push(i);
+            }
+        }
+
+        Ok(indices)
+    }
+
     // ANCHOR Layout Data
     /// Deletes a map layout from the table.
     pub fn delete_layout(&mut self, index: u16) -> Result<(), LayoutError> {
