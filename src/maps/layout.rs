@@ -524,17 +524,13 @@ impl Rom {
 
 /// Reads the [`TablePointer`] to the map layouts table.
 fn init_layouts_table(rom: &Rom) -> Result<TablePointer, TableInitError> {
-    // TODO Replace static offset with a mask
-    let base_offset: usize = match rom.rom_type {
-        RomType::FireRed | RomType::LeafGreen => 0x55194,
-        RomType::Emerald | RomType::Ruby | RomType::Sapphire => 0x849CC,
-        // _ => return Err(TableInitError::NotImplemented),
+    let table_offset = match rom.rom_type {
+        RomType::Emerald => 0x481dd4,
+        RomType::FireRed => 0x34eb8c,
+        RomType::LeafGreen => 0x34eb6c,
+        RomType::Ruby => 0x304f18,
+        RomType::Sapphire => 0x304ea8,
     };
-
-    // Read the pointer at the base offset
-    let table_offset = rom
-        .read_ptr(base_offset)
-        .map_err(|_| TableInitError::InvalidTablePointer)?;
 
     // Find the size of the table
     let mut table_size = 0;
@@ -690,10 +686,5 @@ mod tests {
             table.read_header(table.len()),
             Err(LayoutError::IndexOutOfBounds(_)),
         ))
-    }
-
-    #[test]
-    fn read_layout() {
-        // Let's start with layout
     }
 }

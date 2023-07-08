@@ -134,9 +134,11 @@ impl Rom {
 fn init_mapsec_table(rom: &Rom) -> Result<TablePointer, TableInitError> {
     // Find the offset depending on the ROM type
     let offset = match rom.rom_type {
-        RomType::FireRed | RomType::LeafGreen => 0x3F1CAC,
-        RomType::Ruby | RomType::Sapphire | RomType::Emerald => 0x5A147C,
-        // _ => return Err(TableInitError::NotImplemented),
+        RomType::FireRed => 0x3F1CAC,
+        RomType::LeafGreen => 0x3F1AE8,
+        RomType::Ruby => 0x3E73C4,
+        RomType::Sapphire => 0x3E741C,
+        RomType::Emerald => 0x5A147C,
     };
 
     let size = get_mapsec_none(rom).ok_or(TableInitError::NotImplemented)?
@@ -151,17 +153,24 @@ fn init_mapsec_table(rom: &Rom) -> Result<TablePointer, TableInitError> {
 }
 
 fn get_mapsec_start(rom: &Rom) -> Option<usize> {
-    Some(match rom.rom_type {
-        RomType::FireRed | RomType::LeafGreen => rom.read_byte(0xC3CA0) as usize,
-        RomType::Ruby | RomType::Sapphire | RomType::Emerald => 0x00,
-        // _ => None?,
-    })
+    let data_offset = match rom.rom_type {
+        RomType::FireRed => 0xC3CA0,
+        RomType::LeafGreen => 0xC3C74,
+        RomType::Ruby | RomType::Sapphire => 0xFBF2C,
+        RomType::Emerald => 0x1244E4,
+    };
+
+    Some(rom.read_byte(data_offset) as usize)
 }
 
 fn get_mapsec_none(rom: &Rom) -> Option<usize> {
-    Some(match rom.rom_type {
-        RomType::FireRed | RomType::LeafGreen => rom.read_byte(0xC0BE6) as usize,
-        RomType::Ruby | RomType::Sapphire | RomType::Emerald => rom.read_byte(0x124584) as usize,
-        // _ => None?,
-    })
+    let data_offset = match rom.rom_type {
+        RomType::FireRed => 0xC0BE6,
+        RomType::LeafGreen => 0xC0B06,
+        // Cannot read the value from the ROM, so we return the default
+        RomType::Ruby | RomType::Sapphire => return Some(0x58),
+        RomType::Emerald => 0x124584,
+    };
+
+    Some(rom.read_byte(data_offset) as usize)
 }

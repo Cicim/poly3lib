@@ -693,16 +693,13 @@ impl Rom {
 /// Reads the table pointer to the map groups table
 /// and to each group of map headers.
 fn get_map_groups_table(rom: &Rom) -> Result<(TablePointer, Vec<TablePointer>), TableInitError> {
-    let base_offset: usize = match rom.rom_type {
-        RomType::FireRed | RomType::LeafGreen => 0x5524C,
-        RomType::Emerald | RomType::Ruby | RomType::Sapphire => 0x84AA4,
-        // _ => return Err(TableInitError::NotImplemented),
+    let table_offset: usize = match rom.rom_type {
+        RomType::Emerald => 0x486578,
+        RomType::FireRed => 0x3526a8,
+        RomType::LeafGreen => 0x352688,
+        RomType::Ruby => 0x308588,
+        RomType::Sapphire => 0x308518,
     };
-
-    // Read the pointer at the base offset
-    let table_offset = rom
-        .read_ptr(base_offset)
-        .map_err(|_| TableInitError::InvalidTablePointer)?;
 
     // Find all the map groups
     let mut map_groups = vec![];
