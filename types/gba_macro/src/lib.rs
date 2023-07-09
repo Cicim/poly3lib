@@ -8,8 +8,12 @@ use quote::{format_ident, quote};
 
 #[derive(Debug, Default)]
 struct StructOptions {
+    /// Whether to show debug information about the struct being built
     debug: bool,
+    /// Set to `true` if you don't want the struct to be exported
     private: bool,
+    /// Set to `true` if you want to define your own `Debug` implementation
+    custom_debug: bool,
 }
 
 lazy_static! {
@@ -19,6 +23,50 @@ lazy_static! {
     };
 }
 
+/// This macro builds a struct object given a name, the fields and the options.
+///
+/// A sample struct definition would look like this:
+/// ```ignore
+/// gba_struct!(MapHeader {
+///    u8 number,
+///    void *pointer,
+///    u16 list[10],
+/// } PRIVATE);
+/// ```
+///
+/// The macro should provide useful error messages if you make a mistake.
+///
+/// ## Types
+/// Types are given in a C-like syntax with some exceptions:
+/// - `void*` is used to represent a pointer to an unknown type, read as `PointedData::Nothing`,
+///    and `void` cannot be used as a type;
+/// - `u8`, `u16`, `u32` are used to represent unsigned integers of 8, 16 and 32 bits;
+/// - `i8`, `i16`, `i32` are used to represent signed integers of 8, 16 and 32 bits. We use `i`
+///   and not `s` to maintain consistency with Rust's syntax;
+/// - When you add a star before the name of a field, it is read as a pointer to the type of the
+///   field. For example, `u8 *pointer` is read as a `PointedData::<u8>`;
+/// - When you add a `[n]` after the name of a field, it is read as an array of `n` elements of
+///   the type of the field. For example, `u8 list[10]` is read as an `[u8; 10]`;
+/// - If you want to read a pointer to an array, however, instead of the C notation `u8 (*list)[10]`,
+///   you will have to write `u8 [10]*list` in this macro.
+/// - This macro supports vector data types, which are arrays whose length depends on some other
+///   field in the struct. They can be built by using `{}` instead of [] and specifying an expression
+///   using the fields of the struct preceded by a dollar sign `$`. For example, we could have
+///   `u8 data{$length * $scale}`. This type is read into a `VectorData<T>` enum.
+/// - This macro supports bitfields, which are fields that are not aligned on a byte boundary.
+///   They are written as `u8 field:3` for a 3-bit field. They are read as their own fields, but if you
+///   try to write more than 3 bits in a three bit field, it will cut off the extra bits.
+/// - You can add other structs as types using the syntax `struct StructName struct_field`. You cannot
+///   add the struct itself as a field, however, even if it is a pointer.
+/// - There is no support for unions.
+///
+/// ## Options
+/// - `PRIVATE`: if this option is present, the struct will not be exported, so it will remain
+///   private to the module in which it is defined.
+/// - `DEBUG`: if this option is present, the macro will print debug information about the struct
+///   being built, like the field types and offsets.
+/// - `CUSTOM_DEBUG`: if this option is present, the macro will not implement the `Debug` trait
+///   for the struct. This is useful if you want to implement it yourself.
 #[proc_macro]
 #[proc_macro_error]
 pub fn gba_struct(stream: TokenStream) -> TokenStream {
@@ -79,6 +127,7 @@ fn parse_struct(stream: TokenStream) -> (String, Vec<StructField>, StructOptions
             TokenTree::Ident(ref ident) => match ident.to_string().as_str() {
                 "DEBUG" => options.debug = true,
                 "PRIVATE" => options.private = true,
+                "CUSTOM_DEBUG" => options.custom_debug = true,
                 _ => abort!(ident.span(), "expected valid flag"),
             },
             _ => abort!(token.span(), "expected valid flag"),
@@ -597,7 +646,7 @@ fn build_struct_code(name: &String, options: &StructOptions) -> TokenStream2 {
     let struct_ = lock.get(name).unwrap();
 
     // Build the struct body itself
-    let body = build_body(name, struct_, options.private);
+    let body = build_body(name, struct_, &options);
     let trait_ = build_trait(name, struct_);
 
     quote! {
@@ -606,7 +655,7 @@ fn build_struct_code(name: &String, options: &StructOptions) -> TokenStream2 {
     }
 }
 
-fn build_body(name: &String, struct_: &AStruct, is_private: bool) -> TokenStream2 {
+fn build_body(name: &String, struct_: &AStruct, options: &StructOptions) -> TokenStream2 {
     let mut fields = TokenStream2::new();
 
     // Extract the field names
@@ -618,15 +667,22 @@ fn build_body(name: &String, struct_: &AStruct, is_private: bool) -> TokenStream
     }
 
     // Add public only if private is not set
-    let pub_token = if is_private {
+    let pub_token = if options.private {
         quote! {}
     } else {
         quote! { pub }
     };
 
+    // Debug derive
+    let debug = if options.custom_debug {
+        quote! {}
+    } else {
+        quote! { Debug, }
+    };
+
     let name = format_ident!("{}", name);
     quote! {
-        #[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+        #[derive(#debug Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
         #pub_token struct #name {
             #fields
         }
