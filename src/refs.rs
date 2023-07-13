@@ -71,6 +71,8 @@ pub struct Refs {
     pub tilesets_table: Option<HashMap<usize, (usize, bool)>>,
     /// The table of map section names.
     pub mapsec_name_table: Option<TablePointer>,
+    /// The table of wild encounters.
+    pub wilds_table: Option<TablePointer>,
 }
 
 macro_rules! write_field {

@@ -14,6 +14,7 @@ pub mod layout;
 pub mod mapsec;
 pub mod render;
 pub mod tileset;
+pub mod wilds;
 
 impl Rom {
     /// Initializes the map groups table and the map groups list.
@@ -21,6 +22,7 @@ impl Rom {
         header::MapHeadersTable::init(self)?;
         layout::MapLayoutsTable::init(self)?;
         mapsec::MapSectionTable::init(self)?;
+        wilds::WildsTable::init(self)?;
 
         if self.refs.tilesets_table.is_none() {
             // TODO Remove this unwrap
