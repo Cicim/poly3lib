@@ -156,8 +156,9 @@ fn get_mapsec_start(rom: &Rom) -> Option<usize> {
     let data_offset = match rom.rom_type {
         RomType::FireRed => 0xC3CA0,
         RomType::LeafGreen => 0xC3C74,
-        RomType::Ruby | RomType::Sapphire => 0xFBF2C,
-        RomType::Emerald => 0x1244E4,
+
+        // TODO: Find where this information is
+        RomType::Ruby | RomType::Sapphire | RomType::Emerald => return Some(0x00),
     };
 
     Some(rom.read_byte(data_offset) as usize)
@@ -167,9 +168,10 @@ fn get_mapsec_none(rom: &Rom) -> Option<usize> {
     let data_offset = match rom.rom_type {
         RomType::FireRed => 0xC0BE6,
         RomType::LeafGreen => 0xC0B06,
-        // Cannot read the value from the ROM, so we return the default
+
+        // TODO: Find where this information is
         RomType::Ruby | RomType::Sapphire => return Some(0x58),
-        RomType::Emerald => 0x124584,
+        RomType::Emerald => return Some(0xD5),
     };
 
     Some(rom.read_byte(data_offset) as usize)
