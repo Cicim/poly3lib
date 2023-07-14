@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use gba_macro::gba_struct;
 use gba_types::{pointers::PointedData, GBAIOError, GBAType};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     refs::{TableInitError, TablePointer},
@@ -232,6 +232,15 @@ pub struct MapHeaderDump {
     pub tileset2: Option<usize>,
 }
 
+/// All data referenced by a [`MapHeader`] excluding the map layout.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MapHeaderData {
+    pub header: MapHeader,
+    pub connections: Option<MapConnections>,
+    pub events: Option<MapEvents>,
+    pub map_scripts: Option<MapScripts>,
+}
+
 #[derive(Debug)]
 pub enum MapError {
     MapTableNotInitialized,
@@ -298,6 +307,49 @@ impl<'rom> MapHeadersTable<'rom> {
         Ok(Self { rom })
     }
 
+    // ANCHOR Data
+    /// Reads all the data referenced by a [`MapHeader`].
+    pub fn read_data(&self, group: u8, index: u8) -> Result<MapHeaderData, MapError> {
+        // Read the header
+        let header = self.read_header(group, index)?;
+
+        // Read the connections
+        let connections = match header.connections.offset() {
+            Some(offset) => Some(self.rom.read(offset).map_err(MapError::IoError)?),
+            None => None,
+        };
+
+        // Read the events
+        let events = match header.events.offset() {
+            Some(offset) => Some(self.rom.read(offset).map_err(MapError::IoError)?),
+            None => None,
+        };
+
+        // Read the map scripts
+        let map_scripts = match header.map_scripts.offset() {
+            Some(offset) => Some(MapScripts::read(self.rom, offset).map_err(MapError::IoError)?),
+            None => None,
+        };
+
+        Ok(MapHeaderData {
+            connections,
+            events,
+            map_scripts,
+            header,
+        })
+    }
+
+    /// Writes all the data referenced by a [`MapHeader`].
+    pub fn write_data(
+        &mut self,
+        _group: u8,
+        _index: u8,
+        _data: MapHeaderData,
+    ) -> Result<(), MapError> {
+        todo!()
+    }
+
+    // ANCHOR Headers dump
     /// Returns a vector [`MapHeaderDump`] structs, which contain
     /// the group, index, offset and header itself.
     pub fn dump_headers(&mut self) -> Result<Vec<MapHeaderDump>, MapError> {

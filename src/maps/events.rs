@@ -2,7 +2,7 @@ use std::fmt::{self, Display, Formatter};
 
 use gba_macro::gba_struct;
 use gba_types::{vectors::VectorData, GBAIOError};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::{rom::Rom, scripts::ScriptResource};
 
@@ -155,7 +155,7 @@ pub(super) fn get_bg_event_scripts(rom: &Rom, vec: &VectorData<BgEvent>) -> Vec<
 }
 
 // ANCHOR Map Scripts
-#[derive(Serialize, Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 /// The variables to be compared to execute a script.
 struct ConditionalScript {
     first_var: u16,
@@ -163,7 +163,7 @@ struct ConditionalScript {
     script: u32,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 struct ConditionalScriptTable {
     offset: u32,
     read_size: usize,
@@ -179,7 +179,7 @@ const ON_RESUME: u8 = 5;
 const ON_DIVE_WARP: u8 = 6;
 const ON_RETURN_TO_FIELD: u8 = 7;
 
-#[derive(Serialize, Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct MapScripts {
     read_size: usize,
 
