@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 /* When working with tilesets, we don't really have a universal table that
  * contains all of them, so we will refer to rom.refs.tilesets_table
  * to check information such as tileset size, which we will have to
@@ -96,6 +98,21 @@ pub enum TilesetReadingError {
     InvalidMetaTileOffset,
 
     CannotReadRomValue,
+}
+
+impl Display for TilesetReadingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use TilesetReadingError::*;
+
+        match self {
+            InvalidTilesetOffset => write!(f, "Invalid tileset offset"),
+            InvalidPaletteOffset => write!(f, "Invalid palette offset"),
+            InvalidAttributesOffset => write!(f, "Invalid attributes offset"),
+            InvalidGraphicsOffset => write!(f, "Invalid graphics offset"),
+            InvalidMetaTileOffset => write!(f, "Invalid metatile offset"),
+            CannotReadRomValue => write!(f, "Cannot read ROM value"),
+        }
+    }
 }
 
 impl TilesetData {
