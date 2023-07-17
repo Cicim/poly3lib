@@ -176,12 +176,12 @@ impl TilesetsPair {
 
         match attributes.layer_type {
             // TODO Change if you find the difference
-            MetatileLayerType::Normal | MetatileLayerType::Covered => {
+            MetatileLayerType::Normal => {
                 // Hero is covered by top layer
                 self.draw_layer(&mut bot, bot_tiles, false);
                 self.draw_layer(&mut top, top_tiles, true);
             }
-            MetatileLayerType::Split => {
+            MetatileLayerType::Covered | MetatileLayerType::Split => {
                 // Hero cover whole block
                 self.draw_layer(&mut bot, bot_tiles, false);
                 self.draw_layer(&mut bot, top_tiles, true);

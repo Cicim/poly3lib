@@ -291,8 +291,8 @@ impl TilesetHeader {
                     MetatileAttributes {
                         behavior: (attribute & 0x000001ff) as u16,
                         terrain: (attribute & 0x00003e00 >> 9) as u8,
-                        encounter_type: (0x07000000 >> 24) as u8,
-                        layer_type: ((0x60000000 >> 29) as u8).into(),
+                        encounter_type: ((attribute & 0x07000000) >> 24) as u8,
+                        layer_type: (((attribute & 0x60000000) >> 29) as u8).into(),
                     }
                 }
                 RomType::Emerald | RomType::Ruby | RomType::Sapphire => {
@@ -305,7 +305,7 @@ impl TilesetHeader {
                         behavior: (attribute & 0xff) as u16,
                         terrain: 0,
                         encounter_type: 0,
-                        layer_type: ((attribute & 0xf000 >> 12) as u8).into(),
+                        layer_type: (((attribute & 0xf000) >> 12) as u8).into(),
                     }
                 } // _ => {
                   //     // If it's not one of the above, we don't know how to read the attributes
