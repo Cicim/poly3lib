@@ -1,7 +1,11 @@
 use std::io::Cursor;
 
 use base64::{engine::general_purpose, Engine};
-use gba_types::{colors::GBAPalette, pointers::PointedData};
+use gba_types::{
+    colors::GBAPalette,
+    pointers::PointedData,
+    tiles::{MetaTile, Tile},
+};
 use image::{ImageFormat, Rgb, RgbImage, Rgba, RgbaImage};
 use serde::{ser::SerializeTuple, Serialize};
 
@@ -9,7 +13,7 @@ use crate::rom::Rom;
 
 use super::{
     layout::{MapLayout, MapLayoutData},
-    tileset::{TilesetData, TilesetReadingError},
+    tileset::{MetatileAttributes, MetatileLayerType, TilesetData, TilesetReadingError},
 };
 
 /// Palette of colors converted to RGBA.
@@ -151,70 +155,64 @@ impl TilesetsPair {
         tiles
     }
 
-    // TODO Incorporate attributes for Cover Layer and Third Layer functionality
+    // ANCHOR Metatile rendering
+    /// Render a single metatileset given the index.
+    ///
+    /// Returns a blank transparent image if the tile is out of bounds.
     pub fn render_metatile(&self, index: usize) -> RenderedMetatile {
-        let mut bottom_layer = RgbaImage::new(16, 16);
-        let mut top_layer = RgbaImage::new(16, 16);
+        let mut bot: RgbaImage = RgbaImage::new(16, 16);
+        let mut top: RgbaImage = RgbaImage::new(16, 16);
 
-        let metatile = if index < self.metatile_limit {
-            if index >= self.primary.metatiles.len() {
-                return RenderedMetatile(bottom_layer, top_layer);
-            }
-
-            &self.primary.metatiles[index]
-        } else {
-            if index - self.metatile_limit >= self.secondary.metatiles.len() {
-                return RenderedMetatile(bottom_layer, top_layer);
-            }
-
-            &self.secondary.metatiles[index - self.metatile_limit]
+        let metatile = match self.get_metatile(index) {
+            Some(metatile) => metatile,
+            None => return RenderedMetatile(bot, top),
         };
 
-        // For each tile in the bottom layer
-        for (i, tile) in (&metatile.tiles[0..4]).iter().enumerate() {
-            let tile_index = tile.index() as usize;
+        // Get the attributes for this tile
+        let attributes = self.get_attributes_nocheck(index);
 
-            let graphics = if tile_index < self.tile_limit {
-                if tile_index >= self.primary.graphics.tiles.len() {
-                    continue;
-                }
-                &self.primary.graphics.tiles[tile_index]
-            } else {
-                if tile_index - self.tile_limit >= self.secondary.graphics.tiles.len() {
-                    continue;
-                }
-                &self.secondary.graphics.tiles[tile_index - self.tile_limit]
-            };
+        let top_tiles = &metatile.tiles[4..8];
+        let bot_tiles = &metatile.tiles[0..4];
 
-            let xoff = (i as u32 % 2) * 8;
-            let yoff = (i as u32 / 2) * 8;
+        match attributes.layer_type {
+            // TODO Change if you find the difference
+            MetatileLayerType::Normal | MetatileLayerType::Covered => {
+                // Hero is covered by top layer
+                self.draw_layer(&mut bot, bot_tiles, false);
+                self.draw_layer(&mut top, top_tiles, true);
+            }
+            MetatileLayerType::Split => {
+                // Hero cover whole block
+                self.draw_layer(&mut bot, bot_tiles, false);
+                self.draw_layer(&mut bot, top_tiles, true);
+            }
+            MetatileLayerType::ThreeLayers => {
+                self.draw_layer(&mut bot, bot_tiles, false);
+                self.draw_layer(&mut bot, top_tiles, true);
 
-            let palette = tile.palette() as usize;
-
-            for (y, row) in graphics.iter().enumerate() {
-                for (x, pixel) in row.iter().enumerate() {
-                    let x = if tile.hflip() { 7 - x } else { x } as u32;
-                    let y = if tile.vflip() { 7 - y } else { y } as u32;
-
-                    bottom_layer[(x + xoff, y + yoff)] = self.palettes[palette][*pixel as usize];
-                }
+                // Get the next tile
+                let next_metatile = match self.get_metatile(index + 1) {
+                    Some(metatile) => metatile,
+                    None => return RenderedMetatile(bot, top),
+                };
+                let top_tiles = &next_metatile.tiles[4..8];
+                self.draw_layer(&mut top, top_tiles, true);
             }
         }
 
+        RenderedMetatile(bot, top)
+    }
+
+    /// Renders the given metatile layer on top of the given image
+    /// with or without transparency
+    fn draw_layer(&self, buffer: &mut RgbaImage, tiles: &[Tile], transparency: bool) {
         // For each tile in the top layer
-        for (i, tile) in (&metatile.tiles[4..8]).iter().enumerate() {
+        for (i, tile) in tiles.iter().enumerate() {
             let tile_index = tile.index() as usize;
 
-            let graphics = if tile_index < self.tile_limit {
-                if tile_index >= self.primary.graphics.tiles.len() {
-                    continue;
-                }
-                &self.primary.graphics.tiles[tile_index]
-            } else {
-                if tile_index - self.tile_limit >= self.secondary.graphics.tiles.len() {
-                    continue;
-                }
-                &self.secondary.graphics.tiles[tile_index - self.tile_limit]
+            let graphics = match self.get_graphics(tile_index) {
+                Some(graphics) => graphics,
+                None => continue,
             };
 
             let xoff = (i as u32 % 2) * 8;
@@ -228,17 +226,66 @@ impl TilesetsPair {
                     let y = if tile.vflip() { 7 - y } else { y } as u32;
 
                     // If the color is 0, it's transparent
-                    if *pixel == 0 {
+                    if transparency && *pixel == 0 {
                         continue;
                     }
-                    top_layer[(x + xoff, y + yoff)] = self.palettes[palette][*pixel as usize];
+                    buffer[(x + xoff, y + yoff)] = self.palettes[palette][*pixel as usize];
                 }
             }
         }
-
-        RenderedMetatile(bottom_layer, top_layer)
     }
 
+    /// Obtains the metatile data given the index of a metatile.
+    fn get_metatile(&self, metatile_index: usize) -> Option<&MetaTile> {
+        let metatile = if metatile_index < self.metatile_limit {
+            if metatile_index >= self.primary.metatiles.len() {
+                return None;
+            }
+            &self.primary.metatiles[metatile_index]
+        } else {
+            if metatile_index - self.metatile_limit >= self.secondary.metatiles.len() {
+                return None;
+            }
+            &self.secondary.metatiles[metatile_index - self.metatile_limit]
+        };
+
+        Some(metatile)
+    }
+
+    /// Obtains the attributes given the index of a metatile.
+    /// There is the assumption that it is called right after get_metatile, so
+    /// it does not check if the indexes are valid.
+    fn get_attributes_nocheck(&self, metatile_index: usize) -> &MetatileAttributes {
+        if metatile_index < self.metatile_limit {
+            &self.primary.attributes[metatile_index]
+        } else {
+            &self.secondary.attributes[metatile_index - self.metatile_limit]
+        }
+    }
+
+    /// Obtains the graphics data given the index of a tile.
+    fn get_graphics(&self, tile_index: usize) -> Option<&[[u8; 8]; 8]> {
+        let graphics = if tile_index < self.tile_limit {
+            if tile_index >= self.primary.graphics.tiles.len() {
+                return None;
+            }
+            &self.primary.graphics.tiles[tile_index]
+        } else {
+            if tile_index - self.tile_limit >= self.secondary.graphics.tiles.len() {
+                return None;
+            }
+            &self.secondary.graphics.tiles[tile_index - self.tile_limit]
+        };
+
+        Some(graphics)
+    }
+
+    // ANCHOR Debug printing
+    /// Prints the entire tileset to stdout using RGB ANSI colors.
+    ///
+    /// The number of columns must be a multiple of the maximum number of tiles in the first tileset.
+    ///
+    /// If `headers` is true, a separator is printed between the primary and secondary tilesets.
     pub fn print(&self, cols: usize, headers: bool) {
         if self.tile_limit % cols != 0 {
             panic!(
@@ -290,6 +337,7 @@ impl TilesetsPair {
         }
     }
 
+    /// Prints a single metatile to stdout using RGB ANSI colors.
     pub fn print_metatile(&self, index: usize) {
         let metatile = self.render_metatile(index);
 
