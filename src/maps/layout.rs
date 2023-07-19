@@ -103,7 +103,13 @@ impl MapLayout {
     }
 }
 
-pub type MapData = Vec<Vec<u16>>;
+/// A block in the map data. Already divided in block and permission.
+/// The permission part is itself composed of two parts:
+/// - The 8 least significant bits are the level
+/// - The ninth bit is 1 if the block is an obstacle, 0 otherwise
+pub type BlockInfo = [u16; 2];
+/// Map data to pass to the writer as a matrix of `BlockInfo`
+pub type MapData = Vec<Vec<BlockInfo>>;
 
 /// Struct for passing around the map layout header
 /// and the map and border data.
@@ -349,8 +355,8 @@ impl<'rom> MapLayoutsTable<'rom> {
         };
 
         // Create a new map and border data
-        let map_data = vec![vec![0u16; width as usize]; height as usize];
-        let border_data = vec![vec![0u16; 2]; 2];
+        let map_data = vec![vec![[0, 0]; width as usize]; height as usize];
+        let border_data = vec![vec![[0, 0]; 2]; 2];
 
         // Write the data (finds offset for new data)
         let data = MapLayoutData {
@@ -589,11 +595,20 @@ fn read_map_data(
 
         for x in 0..width {
             let offset = offset + (y * width + x) as usize * 2;
-            let tile = rom
+            let block = rom
                 .read::<u16>(offset)
                 .map_err(|_| LayoutError::InvalidOffset(offset as u32))?;
 
-            row.push(tile);
+            // TODO Read the correct number of bits (or better, read it somewhere else and pass it here)
+            let permission = block >> 10;
+            let metatile = block & 0x3ff;
+
+            // Compose the permission bit
+            let level = permission >> 1;
+            let obstacle = permission & 1;
+            let permission = level | (obstacle << 8);
+
+            row.push([metatile, permission]);
         }
 
         data.push(row);
@@ -640,9 +655,14 @@ fn write_over_map_data(
 
     // Write the new map data
     for (y, row) in map.iter().enumerate() {
-        for (x, tile) in row.iter().enumerate() {
+        for (x, block) in row.iter().enumerate() {
+            // TODO Use the correct masks and everything
+            let [metatile, permission] = block;
+            let permission = ((permission & 0x1f) << 1) | (permission >> 8);
+            let block = *metatile | (permission << 10);
+
             let offset = offset + (y * map[0].len() + x) * 2;
-            rom.write(offset, *tile).map_err(LayoutError::IoError)?;
+            rom.write(offset, block).map_err(LayoutError::IoError)?;
         }
     }
 

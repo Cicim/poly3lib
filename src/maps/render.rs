@@ -397,12 +397,10 @@ impl MapLayoutData {
         // Create an image
         let mut image = RgbImage::new(width * 16, height * 16);
 
-        let tile_mask = (1 << self.bits_per_block) - 1;
-
         // Loop over the map data
         for x in 0..width {
             for y in 0..height {
-                let tile_index = self.map_data[y as usize][x as usize] & tile_mask;
+                let tile_index = self.map_data[y as usize][x as usize][0];
                 let tile = &rendered_tp[tile_index as usize];
                 tile.draw(&mut image, x, y);
             }
