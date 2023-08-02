@@ -1,2 +1,7 @@
 //! A basic Thumb emulator.
-pub mod instructions;
+mod alu;
+mod instructions;
+mod memory;
+mod processor;
+
+pub use instructions::Instruction;
