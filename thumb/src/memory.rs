@@ -28,6 +28,12 @@ pub(crate) struct Memory<'rom> {
     sram: Vec<u8>,
 }
 
+pub(crate) enum MemoryError {
+    InvalidRange,
+    WriteToRom,
+    UnalignedAccess,
+}
+
 impl<'rom> Memory<'rom> {
     /// Create a new memory
     pub fn init(rom: &'rom [u8]) -> Self {
@@ -42,5 +48,96 @@ impl<'rom> Memory<'rom> {
             rom,
             sram: vec![],
         }
+    }
+
+    // ANCHOR Byte
+    /// Read a byte to an address in memory
+    pub fn read_byte(&self, address: u32) -> Result<u8, MemoryError> {
+        match address {
+            0x00000000..=0x00003FFF => self.bios.get(address as usize),
+            0x02000000..=0x0203FFFF => self.wram.get(address as usize),
+            0x03000000..=0x03007FFF => self.wram_chip.get(address as usize),
+            0x04000000..=0x040003FE => self.io_registers.get(address as usize),
+            0x05000000..=0x050003FF => self.bg_obj_palette_ram.get(address as usize),
+            0x06000000..=0x06017FFF => self.vram.get(address as usize),
+            0x07000000..=0x070003FF => self.oam.get(address as usize),
+            0x08000000..=0x09FFFFFF => self.rom.get(address as usize),
+            0x0E000000..=0x0E00FFFF => self.sram.get(address as usize),
+            _ => panic!("Invalid address: {:08X}", address),
+        }
+        .ok_or(MemoryError::InvalidRange)
+        .map(|&v| v)
+    }
+
+    /// Write a byte to an address in memory
+    pub fn write_byte(&mut self, address: u32, byte: u8) -> Result<(), MemoryError> {
+        let location = match address {
+            0x00000000..=0x00003FFF => self.bios.get_mut(address as usize),
+            0x02000000..=0x0203FFFF => self.wram.get_mut(address as usize),
+            0x03000000..=0x03007FFF => self.wram_chip.get_mut(address as usize),
+            0x04000000..=0x040003FE => self.io_registers.get_mut(address as usize),
+            0x05000000..=0x050003FF => self.bg_obj_palette_ram.get_mut(address as usize),
+            0x06000000..=0x06017FFF => self.vram.get_mut(address as usize),
+            0x07000000..=0x070003FF => self.oam.get_mut(address as usize),
+            0x08000000..=0x09FFFFFF => return Err(MemoryError::WriteToRom),
+            0x0E000000..=0x0E00FFFF => self.sram.get_mut(address as usize),
+            _ => panic!("Invalid address: {:08X}", address),
+        };
+
+        match location {
+            Some(location) => {
+                *location = byte;
+                Ok(())
+            }
+            None => Err(MemoryError::InvalidRange),
+        }
+    }
+
+    // ANCHOR Halfword
+    /// Read a halfword to an address in memory
+    pub fn read_halfword(&self, address: u32) -> Result<u16, MemoryError> {
+        if address % 2 != 0 {
+            return Err(MemoryError::UnalignedAccess);
+        }
+
+        let byte1 = self.read_byte(address)? as u16;
+        let byte2 = self.read_byte(address + 1)? as u16;
+        Ok(byte1 | (byte2 << 8))
+    }
+    /// Write a halfword to an address in memory
+    pub fn write_halfword(&mut self, address: u32, halfword: u16) -> Result<(), MemoryError> {
+        if address % 2 != 0 {
+            return Err(MemoryError::UnalignedAccess);
+        }
+
+        self.write_byte(address, (halfword & 0xFF) as u8)?;
+        self.write_byte(address + 1, (halfword >> 8) as u8)?;
+        Ok(())
+    }
+
+    // ANCHOR Word
+    /// Read a word to an address in memory
+    pub fn read_word(&self, address: u32) -> Result<u32, MemoryError> {
+        if address % 4 != 0 {
+            return Err(MemoryError::UnalignedAccess);
+        }
+
+        let byte1 = self.read_byte(address)? as u32;
+        let byte2 = self.read_byte(address + 1)? as u32;
+        let byte3 = self.read_byte(address + 2)? as u32;
+        let byte4 = self.read_byte(address + 3)? as u32;
+        Ok(byte1 | (byte2 << 8) | (byte3 << 16) | (byte4 << 24))
+    }
+    /// Write a word to an address in memory
+    pub fn write_word(&mut self, address: u32, word: u32) -> Result<(), MemoryError> {
+        if address % 4 != 0 {
+            return Err(MemoryError::UnalignedAccess);
+        }
+
+        self.write_byte(address, (word & 0xFF) as u8)?;
+        self.write_byte(address + 1, ((word >> 8) & 0xFF) as u8)?;
+        self.write_byte(address + 2, ((word >> 16) & 0xFF) as u8)?;
+        self.write_byte(address + 3, ((word >> 24) & 0xFF) as u8)?;
+        Ok(())
     }
 }
