@@ -2,6 +2,9 @@
 //!
 //! ARMv7TDMI has 19 different instruction formats in Thumb mode.
 
+use bin16_macro::bin16;
+
+#[derive(Clone, Copy)]
 /// A Thumb instruction.
 pub enum Instruction {
     // ANCHOR 1 -- Move shifted register
@@ -169,12 +172,12 @@ pub enum Instruction {
     MovHiHi { hd: u8, hs: u8 },
     /// Perform branch (plus optional state change) to address in a register in the range 0-7.
     ///
-    /// `BX Rs` > `010001` `op=11` `H1=0` `H2=1` **`Rs`** `Hd=0` `Hs=0`
+    /// `BX Rs` > `010001` `op=11` `H1=0` `H2=1` **`Rs`** `000`
     Bx { rs: u8 },
     /// Perform branch (plus optional state change) to address in a register in the range 8-15.
     ///
-    /// `BX Hd` > `010001` `op=11` `H1=1` `H2=0` **`Hd`** `Hd=0` `Hs=0`
-    BxHi { hd: u8 },
+    /// `BX Hs` > `010001` `op=11` `H1=1` `H2=0` **`Hs`** `000`
+    BxHi { hs: u8 },
 
     // ANCHOR 6 -- PC-relative load
     //     01001 Rd Word8
@@ -194,47 +197,47 @@ pub enum Instruction {
     /// adding together the value in Rb and the value in Ro.
     /// Store the contents of Rd at the address.
     ///
-    /// `STR Rd, [Rb, Ro]` > `0101` `L=0` `B=0` **`Ro`** **`Rb`** **`Rd`**
+    /// `STR Rd, [Rb, Ro]` > `0101` `L=0` `B=0` `0` **`Ro`** **`Rb`** **`Rd`**
     StrReg { rb: u8, ro: u8, rd: u8 },
     /// Pre-indexed byte store: Calculate the target address by
     /// adding together the value in Rb and the value in Ro.
     /// Store the byte value in Rd at the resulting address.
     ///
-    /// `STRB Rd, [Rb, Ro]` > `0101` `L=0` `B=1` **`Ro`** **`Rb`** **`Rd`**
+    /// `STRB Rd, [Rb, Ro]` > `0101` `L=0` `B=1` `0` **`Ro`** **`Rb`** **`Rd`**
     StrbReg { rb: u8, ro: u8, rd: u8 },
     /// Pre-indexed word load: Calculate the source address by
     /// adding together the value in Rb and the value in Ro.
     /// Load the contents of the address into Rd.
     ///
-    /// `LDR Rd, [Rb, Ro]` > `0101` `L=1` `B=0` **`Ro`** **`Rb`** **`Rd`**
+    /// `LDR Rd, [Rb, Ro]` > `0101` `L=1` `B=0` `0` **`Ro`** **`Rb`** **`Rd`**
     LdrReg { rb: u8, ro: u8, rd: u8 },
     /// Pre-indexed byte load: Calculate the source address by
     /// adding together the value in Rb and the value in Ro.
     /// Load the byte value at the resulting address.
     ///
-    /// `LDRB Rd, [Rb, Ro]` > `0101` `L=1` `B=1` **`Ro`** **`Rb`** **`Rd`**
+    /// `LDRB Rd, [Rb, Ro]` > `0101` `L=1` `B=1` `0` **`Ro`** **`Rb`** **`Rd`**
     LdrbReg { rb: u8, ro: u8, rd: u8 },
 
     // ANCHOR 8 -- Load/store sign-extended byte/halfword
     //     0101 H S 1 Ro Rn Rd
     /// Store halfword: Add Ro to base address in Rb. Store bits 0-15 of Rd at the resulting address.
     ///
-    /// `STRH Rd, [Rb, Ro]` > `0101` `H=0` `S=0` **`Ro`** **`Rb`** **`Rd`**
+    /// `STRH Rd, [Rb, Ro]` > `0101` `H=0` `S=0` `1` **`Ro`** **`Rb`** **`Rd`**
     StrhReg { rb: u8, ro: u8, rd: u8 },
     /// Load halfword: Add Ro to base address in Rb. Load bits 0-15 of Rd from the resulting address,
     /// and set bits 16-31 of Rd to 0.
     ///
-    /// `LDRH Rd, [Rb, Ro]` > `0101` `H=1` `S=0` **`Ro`** **`Rb`** **`Rd`**
+    /// `LDRH Rd, [Rb, Ro]` > `0101` `H=1` `S=0` `1` **`Ro`** **`Rb`** **`Rd`**
     LdrhReg { rb: u8, ro: u8, rd: u8 },
     /// Load sign-extended byte: Add Ro to base address in Rb. Load bits 0-7 of Rd from the resulting address,
     /// and set bits 8-31 of Rd to bit 7.
     ///
-    /// `LDSB Rd, [Rb, Ro]` > `0101` `H=0` `S=1` **`Ro`** **`Rb`** **`Rd`**
+    /// `LDSB Rd, [Rb, Ro]` > `0101` `H=0` `S=1` `1` **`Ro`** **`Rb`** **`Rd`**
     LdsbReg { rb: u8, ro: u8, rd: u8 },
     /// Load sign-extended halfword: Add Ro to base address in Rb. Load bits 0-15 of Rd from the resulting address,
     /// and set bits 16-31 of Rd to bit 15.
     ///
-    /// `LDSH Rd, [Rb, Ro]` > `0101` `H=1` `S=1` **`Ro`** **`Rb`** **`Rd`**
+    /// `LDSH Rd, [Rb, Ro]` > `0101` `H=1` `S=1` `1` **`Ro`** **`Rb`** **`Rd`**
     LdshReg { rb: u8, ro: u8, rd: u8 },
 
     // ANCHOR 9 -- Load/store with immediate offset
@@ -332,21 +335,21 @@ pub enum Instruction {
     /// Push the registers specified by Rlist onto the stack. Update the stack pointer.
     ///
     /// `PUSH { Rlist }` > `1011` `L=0` `10` `R=0` **`Rlist`**
-    Push { r: u8, rlist: u8 },
+    Push { rlist: u8 },
     /// Push the Link Register and the registers specified by Rlist (if any)
     /// onto the stack. Update the stack pointer.
     ///
     /// `PUSH { Rlist, LR }` > `1011` `L=0` `10` `R=1` **`Rlist`**
-    PushLr { r: u8, rlist: u8 },
+    PushLr { rlist: u8 },
     /// Pop values off the stack into the registers specified by Rlist. Update the stack pointer.
     ///
     /// `POP { Rlist }` > `1011` `L=1` `10` `R=0` **`Rlist`**
-    Pop { r: u8, rlist: u8 },
+    Pop { rlist: u8 },
     /// Pop values off the stack and load into the registers specified by Rlist.
     /// Pop the PC off the stack. Update the stack pointer.
     ///
     /// `POP { Rlist, PC }` > `1011` `L=1` `10` `R=1` **`Rlist`**
-    PopPc { r: u8, rlist: u8 },
+    PopPc { rlist: u8 },
 
     // ANCHOR 15 -- Multiple load/store
     //    1100 L Rb Rlist8
@@ -448,4 +451,133 @@ pub enum Instruction {
     ///
     /// `BL label` > `1111` **`H`** **`Offset11`**
     BlHalf { hi: bool, offset11: u16 },
+}
+
+impl Instruction {
+    /// Returns the 16-bit representation of the instruction.
+    pub fn to_u16(&self) -> u16 {
+        use Instruction::*;
+
+        match self.clone() {
+            // Format 1
+            LslImm { rd, rs, imm5 } => bin16!("000_00{5}{3}{3}", imm5, rs, rd),
+            LsrImm { rd, rs, imm5 } => bin16!("000_01{5}{3}{3}", imm5, rs, rd),
+            AsrImm { rd, rs, imm5 } => bin16!("000_10{5}{3}{3}", imm5, rs, rd),
+
+            // Format 2
+            AddReg { rd, rs, rn } => bin16!("00011_00{3}{3}{3}", rn, rs, rd),
+            AddImm3 { rd, rs, imm3 } => bin16!("00011_01{3}{3}{3}", imm3, rs, rd),
+            SubReg { rd, rs, rn } => bin16!("00011_10{3}{3}{3}", rn, rs, rd),
+            SubImm3 { rd, rs, imm3 } => bin16!("00011_11{3}{3}{3}", imm3, rs, rd),
+
+            // Format 3
+            MovImm { rd, imm8 } => bin16!("001_00{8}{3}", imm8, rd),
+            CmpImm { rd, imm8 } => bin16!("001_01{8}{3}", imm8, rd),
+            AddImm8 { rd, imm8 } => bin16!("001_10{8}{3}", imm8, rd),
+            SubImm8 { rd, imm8 } => bin16!("001_11{8}{3}", imm8, rd),
+
+            // Format 4
+            And { rd, rs } => bin16!("010000_0000{3}{3}", rs, rd),
+            Eor { rd, rs } => bin16!("010000_0001{3}{3}", rs, rd),
+            Lsl { rd, rs } => bin16!("010000_0010{3}{3}", rs, rd),
+            Lsr { rd, rs } => bin16!("010000_0011{3}{3}", rs, rd),
+            Asr { rd, rs } => bin16!("010000_0100{3}{3}", rs, rd),
+            Adc { rd, rs } => bin16!("010000_0101{3}{3}", rs, rd),
+            Sbc { rd, rs } => bin16!("010000_0110{3}{3}", rs, rd),
+            Ror { rd, rs } => bin16!("010000_0111{3}{3}", rs, rd),
+            Tst { rd, rs } => bin16!("010000_1000{3}{3}", rs, rd),
+            Neg { rd, rs } => bin16!("010000_1001{3}{3}", rs, rd),
+            Cmp { rd, rs } => bin16!("010000_1010{3}{3}", rs, rd),
+            Cmn { rd, rs } => bin16!("010000_1011{3}{3}", rs, rd),
+            Orr { rd, rs } => bin16!("010000_1100{3}{3}", rs, rd),
+            Mul { rd, rs } => bin16!("010000_1101{3}{3}", rs, rd),
+            Bic { rd, rs } => bin16!("010000_1110{3}{3}", rs, rd),
+            Mvn { rd, rs } => bin16!("010000_1111{3}{3}", rs, rd),
+
+            // Format 5
+            AddLowHi { rd, hs } => bin16!("010001_00_01{3}{3}", hs, rd),
+            AddHiLow { hd, rs } => bin16!("010001_00_10{3}{3}", rs, hd),
+            AddHiHi { hd, hs } => bin16!("010001_00_11{3}{3}", hs, hd),
+            CmpLowHi { rd, hs } => bin16!("010001_01_01{3}{3}", hs, rd),
+            CmpHiLow { hd, rs } => bin16!("010001_01_10{3}{3}", rs, hd),
+            CmpHiHi { hd, hs } => bin16!("010001_01_11{3}{3}", hs, hd),
+            MovLowHi { rd, hs } => bin16!("010001_10_01{3}{3}", hs, rd),
+            MovHiLow { hd, rs } => bin16!("010001_10_10{3}{3}", rs, hd),
+            MovHiHi { hd, hs } => bin16!("010001_10_11{3}{3}", hs, hd),
+            Bx { rs } => bin16!("010001_11_01{3}000", rs),
+            BxHi { hs } => bin16!("010001_11_10{3}000", hs),
+
+            // Format 6
+            LdrPc { rd, imm8 } => bin16!("01001{3}{8}", rd, imm8),
+
+            // Format 7
+            StrReg { rb, ro, rd } => bin16!("0101_00_0{3}{3}{3}", ro, rb, rd),
+            StrbReg { rb, ro, rd } => bin16!("0101_01_0{3}{3}{3}", ro, rb, rd),
+            LdrReg { rb, ro, rd } => bin16!("0101_10_0{3}{3}{3}", ro, rb, rd),
+            LdrbReg { rb, ro, rd } => bin16!("0101_11_0{3}{3}{3}", ro, rb, rd),
+
+            // Format 8
+            StrhReg { rb, ro, rd } => bin16!("0101_00_1{3}{3}{3}", ro, rb, rd),
+            LdrhReg { rb, ro, rd } => bin16!("0101_10_1{3}{3}{3}", ro, rb, rd),
+            LdsbReg { rb, ro, rd } => bin16!("0101_01_1{3}{3}{3}", ro, rb, rd),
+            LdshReg { rb, ro, rd } => bin16!("0101_11_1{3}{3}{3}", ro, rb, rd),
+
+            // Format 9
+            StrImm { rb, imm5, rd } => bin16!("011_00{5}{3}{3}", imm5, rb, rd),
+            LdrImm { rb, imm5, rd } => bin16!("011_01{5}{3}{3}", imm5, rb, rd),
+            StrbImm { rb, imm5, rd } => bin16!("011_10{5}{3}{3}", imm5, rb, rd),
+            LdrbImm { rb, imm5, rd } => bin16!("011_11{5}{3}{3}", imm5, rb, rd),
+
+            // Format 10
+            StrhImm { rb, imm5, rd } => bin16!("1000_0{5}{3}{3}", imm5, rb, rd),
+            LdrhImm { rb, imm5, rd } => bin16!("1000_1{5}{3}{3}", imm5, rb, rd),
+
+            // Format 11
+            StrSpImm { imm8, rd } => bin16!("1001_0{8}{3}", imm8, rd),
+            LdrSpImm { imm8, rd } => bin16!("1001_1{8}{3}", imm8, rd),
+
+            // Format 12
+            AddPcImm { imm8, rd } => bin16!("1010_0{8}{3}", imm8, rd),
+            AddSpImm { imm8, rd } => bin16!("1010_1{8}{3}", imm8, rd),
+
+            // Format 13
+            AddSpPosImm { imm7 } => bin16!("10110000_0{7}", imm7),
+            AddSpNegImm { imm7 } => bin16!("10110000_1{7}", imm7),
+
+            // Format 14
+            Push { rlist } => bin16!("1011_0_10_0{8}", rlist),
+            PushLr { rlist } => bin16!("1011_0_10_1{8}", rlist),
+            Pop { rlist } => bin16!("1011_1_10_0{8}", rlist),
+            PopPc { rlist } => bin16!("1011_1_10_1{8}", rlist),
+
+            // Format 15
+            Stmia { rb, rlist } => todo!(),
+            Ldmia { rb, rlist } => todo!(),
+
+            // Format 16
+            Beq { soffset } => bin16!("1101_0000{8}", soffset),
+            Bne { soffset } => bin16!("1101_0001{8}", soffset),
+            Bcs { soffset } => bin16!("1101_0010{8}", soffset),
+            Bcc { soffset } => bin16!("1101_0011{8}", soffset),
+            Bmi { soffset } => bin16!("1101_0100{8}", soffset),
+            Bpl { soffset } => bin16!("1101_0101{8}", soffset),
+            Bvs { soffset } => bin16!("1101_0110{8}", soffset),
+            Bvc { soffset } => bin16!("1101_0111{8}", soffset),
+            Bhi { soffset } => bin16!("1101_1000{8}", soffset),
+            Bls { soffset } => bin16!("1101_1001{8}", soffset),
+            Bge { soffset } => bin16!("1101_1010{8}", soffset),
+            Blt { soffset } => bin16!("1101_1011{8}", soffset),
+            Bgt { soffset } => bin16!("1101_1100{8}", soffset),
+            Ble { soffset } => bin16!("1101_1101{8}", soffset),
+
+            // Format 17
+            Swi { imm } => bin16!("1101_1111{8}", imm),
+
+            // Format 18
+            B { offset11 } => bin16!("11100{11}", offset11),
+
+            // Format 19
+            BlHalf { hi, offset11 } => bin16!("1111_{}{11}", hi, offset11),
+        }
+    }
 }
