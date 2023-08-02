@@ -5,3 +5,5 @@ mod memory;
 mod processor;
 
 pub use instructions::Instruction;
+pub use memory::Memory;
+pub use processor::Processor;

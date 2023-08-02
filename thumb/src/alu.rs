@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 /// Arithmetic Logic Unit
 pub(crate) struct Alu {
     /// Carry flag (C)
@@ -25,7 +27,7 @@ pub(crate) struct Alu {
 
 impl Alu {
     /// Create a new ALU
-    pub fn init() -> Self {
+    pub fn new() -> Self {
         Alu {
             carry_flag: false,
             overflow_flag: false,
@@ -219,5 +221,15 @@ impl Alu {
     /// Less than or equal (Z set, or N set and V clear, or N clear and V set)
     pub fn is_le(&self) -> bool {
         self.zero_flag || self.negative_flag != self.overflow_flag
+    }
+}
+
+impl Display for Alu {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The display is something like ZNCV with - for clear flags
+        write!(f, "{}", if self.zero_flag { 'Z' } else { '-' })?;
+        write!(f, "{}", if self.negative_flag { 'N' } else { '-' })?;
+        write!(f, "{}", if self.carry_flag { 'C' } else { '-' })?;
+        write!(f, "{}", if self.overflow_flag { 'V' } else { '-' })
     }
 }
