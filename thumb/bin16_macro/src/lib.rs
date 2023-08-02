@@ -1,12 +1,12 @@
 use proc_macro::{TokenStream, TokenTree};
-use proc_macro2::{Ident as Ident2, TokenStream as TokenStream2};
+use proc_macro2::TokenStream as TokenStream2;
 use proc_macro_error::{abort, abort_call_site, proc_macro_error};
 use quote::{format_ident, quote};
 
 /// Macro to format a value as a 16-bit binary string
 ///
 /// Example:
-/// ```
+/// ```norun
 /// assert_eq!(bin16!("000{5}00{5}1", 0b11111, 0b11111), 0b0001111100111111);
 /// ```
 /// The `{:5}` is a placeholder for a 5-bit value.

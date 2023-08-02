@@ -2,6 +2,8 @@
 //!
 //! ARMv7TDMI has 19 different instruction formats in Thumb mode.
 
+use std::fmt::Display;
+
 use bin16_macro::bin16;
 
 /// A Thumb instruction.
@@ -584,11 +586,11 @@ impl Into<u16> for Instruction {
 
 impl Instruction {
     /// Decodes a 16-bit Thumb instruction.
-    pub fn decode(data: u16) -> Self {
+    pub fn decode(data: u16) -> Option<Self> {
         use Instruction::*;
 
         // Decoding will be divided into eight sections based on the starting 3 bits.
-        match data >> 13 {
+        Some(match data >> 13 {
             // Formats 1 and 2
             0b000 => {
                 // These registers are in common
@@ -619,7 +621,7 @@ impl Instruction {
                         let imm3 = rn;
 
                         // Get the OI flag combo.
-                        match (data >> 10) & 0b11 {
+                        match (data >> 9) & 0b11 {
                             0b00 => AddReg { rd, rs, rn },
                             0b10 => SubReg { rd, rs, rn },
                             0b01 => AddImm3 { rd, rs, imm3 },
@@ -698,9 +700,7 @@ impl Instruction {
                             0b1101 => Bx { rs },
                             0b1110 => BxHi { hs },
 
-                            0b0000 | 0b0100 | 0b1000 | 0b1100 | 0b1111 => {
-                                todo!("Handle decoding errors")
-                            }
+                            0b0000 | 0b0100 | 0b1000 | 0b1100 | 0b1111 => return None,
 
                             _ => unreachable!(),
                         }
@@ -802,7 +802,7 @@ impl Instruction {
                                     true => AddSpNegImm { imm7 },
                                 }
                             }
-                            0b10 => todo!("Handle encoding errors"),
+                            0b10 => return None,
                             // Format 14
                             0b01 | 0b11 => {
                                 // Get the instruction type based on bits 11, 10, 9 and 8
@@ -813,9 +813,7 @@ impl Instruction {
                                     0b1100 => Pop { rlist },
                                     0b1101 => PopPc { rlist },
 
-                                    0b0000..=0b0011 | 0b0110 | 0b1011 | 0b1110 | 0b1111 => {
-                                        todo!("Handle encoding errors")
-                                    }
+                                    0b0000..=0b1111 => return None,
 
                                     _ => unreachable!(),
                                 }
@@ -866,7 +864,7 @@ impl Instruction {
                             0b1100 => Bgt { soffset },
                             0b1101 => Ble { soffset },
 
-                            0b1110 => todo!("Handle encoding errors"),
+                            0b1110 => return None,
 
                             // Format 17
                             0b1111 => Swi { imm },
@@ -887,7 +885,7 @@ impl Instruction {
                     // Format 18
                     (false, false) => B { offset11 },
 
-                    (false, true) => todo!("Handle encoding errors"),
+                    (false, true) => return None,
 
                     // Format 19
                     (true, _) => BlHalf { hi, offset11 },
@@ -895,7 +893,7 @@ impl Instruction {
             }
 
             _ => unreachable!(),
-        }
+        })
     }
 }
 
@@ -921,4 +919,194 @@ fn get_rd(data: u16) -> u8 {
 #[inline]
 fn get_imm5(data: u16) -> u8 {
     ((data >> 6) & 0b11111) as u8
+}
+
+pub static REGISTER_NAMES: [&str; 16] = [
+    "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "sp", "lr",
+    "pc",
+];
+
+/// Convert low register index to its name
+#[inline]
+fn lreg(reg: &u8) -> &'static str {
+    REGISTER_NAMES[*reg as usize]
+}
+/// Convert high register index to its name
+#[inline]
+fn hreg(reg: &u8) -> &'static str {
+    REGISTER_NAMES[(*reg + 8) as usize]
+}
+
+/// Get the signed offset given a 8-bit value
+#[inline]
+fn signed_offset(soffset: u8) -> i32 {
+    // The offset was a multiple of 4 and signed
+    ((soffset as i8) as i32) << 2
+}
+
+/// Crates the interior of the {} braces of a PUSH/POP-like expression
+/// given the flags representing the registers to be pushed/popped.
+fn reglist(rlist: &u8) -> String {
+    // Get the bits set to 1 in rlist
+    let mut set_to_one = vec![];
+    for i in 0..8 {
+        if (rlist >> i) & 1 == 1 {
+            set_to_one.push(i);
+        }
+    }
+
+    // Get the bits set to 0 in rlist
+    set_to_one
+        .iter()
+        .map(|x| lreg(x))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+impl Display for Instruction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use Instruction::*;
+
+        match self {
+            // Format 1
+            LslImm { rd, rs, imm5 } => write!(f, "LSL {}, {}, #{}", lreg(rd), lreg(rs), imm5),
+            LsrImm { rd, rs, imm5 } => write!(f, "LSR {}, {}, #{}", lreg(rd), lreg(rs), imm5),
+            AsrImm { rd, rs, imm5 } => write!(f, "ASR {}, {}, #{}", lreg(rd), lreg(rs), imm5),
+
+            // Format 2
+            AddReg { rd, rs, rn } => write!(f, "ADD {}, {}, {}", lreg(rd), lreg(rs), lreg(rn)),
+            AddImm3 { rd, rs, imm3 } => write!(f, "ADD {}, {}, #{}", lreg(rd), lreg(rs), imm3),
+            SubReg { rd, rs, rn } => write!(f, "SUB {}, {}, {}", lreg(rd), lreg(rs), lreg(rn)),
+            SubImm3 { rd, rs, imm3 } => write!(f, "SUB {}, {}, #{}", lreg(rd), lreg(rs), imm3),
+
+            // Format 3
+            MovImm { rd, imm8 } => write!(f, "MOV {}, #{}", lreg(rd), imm8),
+            CmpImm { rd, imm8 } => write!(f, "CMP {}, #{}", lreg(rd), imm8),
+            AddImm8 { rd, imm8 } => write!(f, "ADD {}, #{}", lreg(rd), imm8),
+            SubImm8 { rd, imm8 } => write!(f, "SUB {}, #{}", lreg(rd), imm8),
+
+            // Format 4
+            And { rd, rs } => write!(f, "AND {}, {}", lreg(rd), lreg(rs)),
+            Eor { rd, rs } => write!(f, "EOR {}, {}", lreg(rd), lreg(rs)),
+            Lsl { rd, rs } => write!(f, "LSL {}, {}", lreg(rd), lreg(rs)),
+            Lsr { rd, rs } => write!(f, "LSR {}, {}", lreg(rd), lreg(rs)),
+            Asr { rd, rs } => write!(f, "ASR {}, {}", lreg(rd), lreg(rs)),
+            Adc { rd, rs } => write!(f, "ADC {}, {}", lreg(rd), lreg(rs)),
+            Sbc { rd, rs } => write!(f, "SBC {}, {}", lreg(rd), lreg(rs)),
+            Ror { rd, rs } => write!(f, "ROR {}, {}", lreg(rd), lreg(rs)),
+            Tst { rd, rs } => write!(f, "TST {}, {}", lreg(rd), lreg(rs)),
+            Neg { rd, rs } => write!(f, "NEG {}, {}", lreg(rd), lreg(rs)),
+            Cmp { rd, rs } => write!(f, "CMP {}, {}", lreg(rd), lreg(rs)),
+            Cmn { rd, rs } => write!(f, "CMN {}, {}", lreg(rd), lreg(rs)),
+            Orr { rd, rs } => write!(f, "ORR {}, {}", lreg(rd), lreg(rs)),
+            Mul { rd, rs } => write!(f, "MUL {}, {}", lreg(rd), lreg(rs)),
+            Bic { rd, rs } => write!(f, "BIC {}, {}", lreg(rd), lreg(rs)),
+            Mvn { rd, rs } => write!(f, "MVN {}, {}", lreg(rd), lreg(rs)),
+
+            // Format 5
+            AddLowHi { rd, hs } => write!(f, "ADD {}, {}", lreg(rd), hreg(hs)),
+            AddHiLow { hd, rs } => write!(f, "ADD {}, {}", hreg(hd), lreg(rs)),
+            AddHiHi { hd, hs } => write!(f, "ADD {}, {}", hreg(hd), hreg(hs)),
+            CmpLowHi { rd, hs } => write!(f, "CMP {}, {}", lreg(rd), hreg(hs)),
+            CmpHiLow { hd, rs } => write!(f, "CMP {}, {}", hreg(hd), lreg(rs)),
+            CmpHiHi { hd, hs } => write!(f, "CMP {}, {}", hreg(hd), hreg(hs)),
+            MovLowHi { rd, hs } => write!(f, "MOV {}, {}", lreg(rd), hreg(hs)),
+            MovHiLow { hd, rs } => write!(f, "MOV {}, {}", hreg(hd), lreg(rs)),
+            MovHiHi { hd, hs } => write!(f, "MOV {}, {}", hreg(hd), hreg(hs)),
+            Bx { rs } => write!(f, "BX {}", lreg(rs)),
+            BxHi { hs } => write!(f, "BX {}", hreg(hs)),
+
+            // Format 6
+            LdrPc { rd, imm8 } => write!(f, "LDR {}, [pc, #{}]", lreg(rd), imm8 << 2),
+
+            // Format 7
+            StrReg { rb, ro, rd } => write!(f, "STR {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
+            StrbReg { rb, ro, rd } => write!(f, "STRB {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
+            LdrReg { rb, ro, rd } => write!(f, "LDR {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
+            LdrbReg { rb, ro, rd } => write!(f, "LDRB {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
+
+            // Format 8
+            StrhReg { rb, ro, rd } => write!(f, "STRH {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
+            LdrhReg { rb, ro, rd } => write!(f, "LDRH {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
+            LdsbReg { rb, ro, rd } => write!(f, "LDSB {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
+            LdshReg { rb, ro, rd } => write!(f, "LDSH {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
+
+            // Format 9
+            StrImm { rb, imm5, rd } => {
+                write!(f, "STR {}, [{}, #{}]", lreg(rd), lreg(rb), imm5 << 2)
+            }
+            LdrImm { rb, imm5, rd } => {
+                write!(f, "LDR {}, [{}, #{}]", lreg(rd), lreg(rb), imm5 << 2)
+            }
+            StrbImm { rb, imm5, rd } => {
+                write!(f, "STRB {}, [{}, #{}]", lreg(rd), lreg(rb), imm5)
+            }
+            LdrbImm { rb, imm5, rd } => {
+                write!(f, "LDRB {}, [{}, #{}]", lreg(rd), lreg(rb), imm5)
+            }
+
+            // Format 10
+            StrhImm { rb, imm5, rd } => {
+                write!(f, "STRH {}, [{}, #{}]", lreg(rd), lreg(rb), imm5 << 1)
+            }
+            LdrhImm { rb, imm5, rd } => {
+                write!(f, "LDRH {}, [{}, #{}]", lreg(rd), lreg(rb), imm5 << 1)
+            }
+
+            // Format 11
+            StrSpImm { imm8, rd } => write!(f, "STR {}, [sp, #{}]", lreg(rd), imm8 << 2),
+            LdrSpImm { imm8, rd } => write!(f, "LDR {}, [sp, #{}]", lreg(rd), imm8 << 2),
+
+            // Format 12
+            AddPcImm { imm8, rd } => write!(f, "ADD {}, pc, #{}", lreg(rd), imm8 << 2),
+            AddSpImm { imm8, rd } => write!(f, "ADD {}, sp, #{}", lreg(rd), imm8 << 2),
+
+            // Format 13
+            AddSpPosImm { imm7 } => write!(f, "ADD sp, #{}", imm7 << 2),
+            AddSpNegImm { imm7 } => write!(f, "ADD sp, #-{}", imm7 << 2),
+
+            // Format 14
+            Push { rlist } => write!(f, "PUSH {{ {} }}", reglist(rlist)),
+            PushLr { rlist } => write!(f, "PUSH {{ {}, lr }}", reglist(rlist)),
+            Pop { rlist } => write!(f, "POP {{ {} }}", reglist(rlist)),
+            PopPc { rlist } => write!(f, "POP {{ {}, pc }}", reglist(rlist)),
+
+            // Format 15
+            Stmia { rb, rlist } => write!(f, "STMIA {}!, {{ {} }}", lreg(rb), reglist(rlist)),
+            Ldmia { rb, rlist } => write!(f, "LDMIA {}!, {{ {} }}", lreg(rb), reglist(rlist)),
+
+            // Format 16
+            Beq { soffset } => write!(f, "BEQ <{}>", signed_offset(*soffset)),
+            Bne { soffset } => write!(f, "BNE <{}>", signed_offset(*soffset)),
+            Bcs { soffset } => write!(f, "BCS <{}>", signed_offset(*soffset)),
+            Bcc { soffset } => write!(f, "BCC <{}>", signed_offset(*soffset)),
+            Bmi { soffset } => write!(f, "BMI <{}>", signed_offset(*soffset)),
+            Bpl { soffset } => write!(f, "BPL <{}>", signed_offset(*soffset)),
+            Bvs { soffset } => write!(f, "BVS <{}>", signed_offset(*soffset)),
+            Bvc { soffset } => write!(f, "BVC <{}>", signed_offset(*soffset)),
+            Bhi { soffset } => write!(f, "BHI <{}>", signed_offset(*soffset)),
+            Bls { soffset } => write!(f, "BLS <{}>", signed_offset(*soffset)),
+            Bge { soffset } => write!(f, "BGE <{}>", signed_offset(*soffset)),
+            Blt { soffset } => write!(f, "BLT <{}>", signed_offset(*soffset)),
+            Bgt { soffset } => write!(f, "BGT <{}>", signed_offset(*soffset)),
+            Ble { soffset } => write!(f, "BLE <{}>", signed_offset(*soffset)),
+
+            // Format 17
+            Swi { imm } => write!(f, "SWI #{}", imm),
+
+            // Format 18
+            // TODO Compute the offset correctly
+            B { offset11 } => write!(f, "B <{}>", (*offset11 as i16) << 1),
+
+            // Format 19
+            // TODO Compute the offset correctly
+            BlHalf { hi, offset11 } => {
+                write!(
+                    f,
+                    "BL <{}>",
+                    ((*hi as u32) << 12) | ((*offset11 as u32) << 1)
+                )
+            }
+        }
+    }
 }
