@@ -1,2 +1,2 @@
 //! A basic Thumb emulator.
-mod instructions;
+pub mod instructions;

@@ -4,8 +4,8 @@
 
 use bin16_macro::bin16;
 
-#[derive(Clone, Copy)]
 /// A Thumb instruction.
+#[derive(Debug)]
 pub enum Instruction {
     // ANCHOR 1 -- Move shifted register
     //     000 op2 imm5 Rs Rd where op2 != 0b11
@@ -64,7 +64,7 @@ pub enum Instruction {
     SubImm8 { rd: u8, imm8: u8 },
 
     // ANCHOR 4 -- ALU operations
-    //     010000 op4 Rs Rd
+    //     010 000 op4 Rs Rd
     /// Rd := Rd AND Rs
     ///
     /// `AND Rd, Rs` > `010000` `op=0000` **`Rs`** **`Rd`**
@@ -131,7 +131,7 @@ pub enum Instruction {
     Mvn { rd: u8, rs: u8 },
 
     // ANCHOR 5 -- Hi register operations/branch exchange
-    //     010001 op2 H1-flag H2-flag Rs/Hs Rd/Hd
+    //     010 001 op2 H1-flag H2-flag Rs/Hs Rd/Hd
     /// Add a register in the range 8-15 to a register in the range 0-7.
     ///
     /// `ADD Rd, Hs` > `010001` `op=00` `H1=0` `H2=1` **`Hs`** **`Rd`**
@@ -180,7 +180,7 @@ pub enum Instruction {
     BxHi { hs: u8 },
 
     // ANCHOR 6 -- PC-relative load
-    //     01001 Rd Word8
+    //     010 01 Rd Word8
     /// Add unsigned offset (255 words, 1020 bytes) in Imm to the current value of the PC.
     /// Load the word from the resulting address into Rd.
     ///
@@ -190,7 +190,7 @@ pub enum Instruction {
     LdrPc { rd: u8, imm8: u8 },
 
     // ANCHOR 7 -- Load/store with register offset
-    //     0101 L B 0 Ro Rn Rd
+    //     010 1 L B 0 Ro Rn Rd
     //     L is 0 for store, 1 for load
     //     B is 0 for word, 1 for byte
     /// Pre-indexed word store: Calculate the target address by
@@ -219,7 +219,7 @@ pub enum Instruction {
     LdrbReg { rb: u8, ro: u8, rd: u8 },
 
     // ANCHOR 8 -- Load/store sign-extended byte/halfword
-    //     0101 H S 1 Ro Rn Rd
+    //     010 1 H S 1 Ro Rn Rd
     /// Store halfword: Add Ro to base address in Rb. Store bits 0-15 of Rd at the resulting address.
     ///
     /// `STRH Rd, [Rb, Ro]` > `0101` `H=0` `S=0` `1` **`Ro`** **`Rb`** **`Rd`**
@@ -268,7 +268,7 @@ pub enum Instruction {
     LdrbImm { rb: u8, imm5: u8, rd: u8 },
 
     // ANCHOR 10 -- Load/store halfword
-    //     1000 L Imm5 Rb Rd
+    //     100 0 L Imm5 Rb Rd
     /// Add #Imm to base address in Rb and store bits 0-15 of Rd at the resulting address.
     ///
     /// `STRH Rd, [Rb, #Imm]` > `1000` `L=0` **`Imm`** **`Rb`** **`Rd`**
@@ -284,7 +284,7 @@ pub enum Instruction {
     LdrhImm { rb: u8, imm5: u8, rd: u8 },
 
     // ANCHOR 11 -- SP-relative load/store
-    //     1001 L Rd Imm8
+    //     100 1 L Rd Imm8
     /// Add unsigned offset (255 words, 1020 bytes) in Imm to the current value of the SP (R7).
     /// Store the contents of Rd at the resulting address.
     ///
@@ -301,7 +301,7 @@ pub enum Instruction {
     LdrSpImm { imm8: u8, rd: u8 },
 
     // ANCHOR 12 -- Load address
-    //    1010 SP Rd Imm8
+    //    101 0 SP Rd Imm8
     //    SP is 0 for SP and 1 for PC
     /// Add #Imm to the current value of the program counter (PC) and load the result into Rd.
     ///
@@ -317,7 +317,7 @@ pub enum Instruction {
     AddSpImm { imm8: u8, rd: u8 },
 
     // ANCHOR 13 -- Add offset to Stack Pointer
-    //    1011 0000 S Imm7
+    //    101 1 0000 S Imm7
     //    S is 0 for positive offset and 1 for negative offset
     /// Add #Imm to the stack pointer (SP).
     ///
@@ -329,7 +329,7 @@ pub enum Instruction {
     AddSpNegImm { imm7: u8 },
 
     // ANCHOR 14 -- Push/pop registers
-    //    1011 L 10 R Rlist8
+    //    101 1 L 1 0 R Rlist8
     //    L is 0 for push and 1 for pop
     //    R enables storing LR/loading PC
     /// Push the registers specified by Rlist onto the stack. Update the stack pointer.
@@ -453,12 +453,12 @@ pub enum Instruction {
     BlHalf { hi: bool, offset11: u16 },
 }
 
-impl Instruction {
+impl Into<u16> for Instruction {
     /// Returns the 16-bit representation of the instruction.
-    pub fn to_u16(&self) -> u16 {
+    fn into(self) -> u16 {
         use Instruction::*;
 
-        match self.clone() {
+        match self {
             // Format 1
             LslImm { rd, rs, imm5 } => bin16!("000_00{5}{3}{3}", imm5, rs, rd),
             LsrImm { rd, rs, imm5 } => bin16!("000_01{5}{3}{3}", imm5, rs, rd),
@@ -551,8 +551,8 @@ impl Instruction {
             PopPc { rlist } => bin16!("1011_1_10_1{8}", rlist),
 
             // Format 15
-            Stmia { rb, rlist } => todo!(),
-            Ldmia { rb, rlist } => todo!(),
+            Stmia { rb, rlist } => bin16!("1100_0{3}{8}", rb, rlist),
+            Ldmia { rb, rlist } => bin16!("1100_1{3}{8}", rb, rlist),
 
             // Format 16
             Beq { soffset } => bin16!("1101_0000{8}", soffset),
@@ -577,7 +577,348 @@ impl Instruction {
             B { offset11 } => bin16!("11100{11}", offset11),
 
             // Format 19
-            BlHalf { hi, offset11 } => bin16!("1111_{}{11}", hi, offset11),
+            BlHalf { hi, offset11 } => bin16!("1111{}{11}", hi, offset11),
         }
     }
+}
+
+impl Instruction {
+    /// Decodes a 16-bit Thumb instruction.
+    pub fn decode(data: u16) -> Self {
+        use Instruction::*;
+
+        // Decoding will be divided into eight sections based on the starting 3 bits.
+        match data >> 13 {
+            // Formats 1 and 2
+            0b000 => {
+                // These registers are in common
+                let rs = get_rs(data);
+                let rd = get_rd(data);
+
+                // Match based on bits 12 and 11.
+                match (data >> 11) & 0b11 {
+                    // Format 1
+                    0b00 => LslImm {
+                        rd,
+                        rs,
+                        imm5: get_imm5(data),
+                    },
+                    0b01 => LsrImm {
+                        rd,
+                        rs,
+                        imm5: get_imm5(data),
+                    },
+                    0b10 => AsrImm {
+                        rd,
+                        rs,
+                        imm5: get_imm5(data),
+                    },
+                    // Format 2
+                    0b11 => {
+                        let rn = get_rn(data);
+                        let imm3 = rn;
+
+                        // Get the OI flag combo.
+                        match (data >> 10) & 0b11 {
+                            0b00 => AddReg { rd, rs, rn },
+                            0b10 => SubReg { rd, rs, rn },
+                            0b01 => AddImm3 { rd, rs, imm3 },
+                            0b11 => SubImm3 { rd, rs, imm3 },
+                            _ => unreachable!(),
+                        }
+                    }
+
+                    _ => unreachable!(),
+                }
+            }
+            // Format 3
+            0b001 => {
+                let rd = get_rd(data);
+                let imm8 = ((data >> 3) & 0xFF) as u8;
+
+                // Match based on bits 12 and 11.
+                match (data >> 11) & 0b11 {
+                    0b00 => MovImm { rd, imm8 },
+                    0b01 => CmpImm { rd, imm8 },
+                    0b10 => AddImm8 { rd, imm8 },
+                    0b11 => SubImm8 { rd, imm8 },
+                    _ => unreachable!(),
+                }
+            }
+            // Formats 4, 5, 6, 7 and 8
+            0b010 => {
+                // Match the next three bits (bits 12, 11 and 10).
+                match (data >> 10) & 0b111 {
+                    // Format 4
+                    0b000 => {
+                        let rs = get_rs(data);
+                        let rd = get_rd(data);
+
+                        // Match the opcode
+                        match (data >> 6) & 0b1111 {
+                            0b0000 => And { rd, rs },
+                            0b0001 => Eor { rd, rs },
+                            0b0010 => Lsl { rd, rs },
+                            0b0011 => Lsr { rd, rs },
+                            0b0100 => Asr { rd, rs },
+                            0b0101 => Adc { rd, rs },
+                            0b0110 => Sbc { rd, rs },
+                            0b0111 => Ror { rd, rs },
+                            0b1000 => Tst { rd, rs },
+                            0b1001 => Neg { rd, rs },
+                            0b1010 => Cmp { rd, rs },
+                            0b1011 => Cmn { rd, rs },
+                            0b1100 => Orr { rd, rs },
+                            0b1101 => Mul { rd, rs },
+                            0b1110 => Bic { rd, rs },
+                            0b1111 => Mvn { rd, rs },
+
+                            _ => unreachable!(),
+                        }
+                    }
+                    // Format 5
+                    0b001 => {
+                        let rs = get_rs(data);
+                        let rd = get_rd(data);
+                        let hs = rs;
+                        let hd = rd;
+
+                        // Match the opcode
+                        match (data >> 6) & 0b1111 {
+                            0b0001 => AddLowHi { rd, hs },
+                            0b0010 => AddHiLow { hd, rs },
+                            0b0011 => AddHiHi { hd, hs },
+                            0b0101 => CmpLowHi { rd, hs },
+                            0b0110 => CmpHiLow { hd, rs },
+                            0b0111 => CmpHiHi { hd, hs },
+                            0b1001 => MovLowHi { rd, hs },
+                            0b1010 => MovHiLow { hd, rs },
+                            0b1011 => MovHiHi { hd, hs },
+
+                            0b1101 => Bx { rs },
+                            0b1110 => BxHi { hs },
+
+                            0b0000 | 0b0100 | 0b1000 | 0b1100 | 0b1111 => {
+                                todo!("Handle decoding errors")
+                            }
+
+                            _ => unreachable!(),
+                        }
+                    }
+                    // Format 6
+                    0b010 | 0b011 => LdrPc {
+                        rd: ((data >> 8) & 0b111) as u8,
+                        imm8: (data & 0xff) as u8,
+                    },
+                    // Formats 7 and 8
+                    0b100..=0b111 => {
+                        let rd = get_rd(data);
+                        let rb = get_rs(data);
+                        let ro = get_rn(data);
+
+                        // Match the L and B flags (bits 11 and 10) and
+                        // bit 9 differentiating between formats 7 and 8.
+                        match (data >> 9) & 0b111 {
+                            0b000 => StrReg { rb, ro, rd },
+                            0b010 => StrbReg { rb, ro, rd },
+                            0b100 => LdrReg { rb, ro, rd },
+                            0b110 => LdrbReg { rb, ro, rd },
+                            0b001 => StrhReg { rb, ro, rd },
+                            0b101 => LdrhReg { rb, ro, rd },
+                            0b011 => LdsbReg { rb, ro, rd },
+                            0b111 => LdshReg { rb, ro, rd },
+
+                            _ => unreachable!(),
+                        }
+                    }
+
+                    _ => unreachable!(),
+                }
+            }
+            // Format 9
+            0b011 => {
+                let rd = get_rd(data);
+                let rb = get_rs(data);
+                let imm5 = get_imm5(data);
+
+                // Match the B and L flags (bits 11 and 10).
+                match (data >> 10) & 0b11 {
+                    0b00 => StrImm { rb, imm5, rd },
+                    0b01 => LdrImm { rb, imm5, rd },
+                    0b10 => StrbImm { rb, imm5, rd },
+                    0b11 => LdrbImm { rb, imm5, rd },
+
+                    _ => unreachable!(),
+                }
+            }
+            // Formats 10 and 11
+            0b100 => {
+                let rd = get_rd(data);
+                let next_flag = ((data >> 11) & 1) == 1;
+
+                match ((data >> 12) & 1) == 1 {
+                    // Format 10
+                    true => {
+                        let rb = get_rs(data);
+                        let imm5 = get_imm5(data);
+                        match next_flag {
+                            false => StrhImm { rb, imm5, rd },
+                            true => LdrhImm { rb, imm5, rd },
+                        }
+                    }
+                    // Format 11
+                    false => {
+                        let imm8 = ((data >> 3) & 0xff) as u8;
+                        match next_flag {
+                            false => StrSpImm { imm8, rd },
+                            true => LdrSpImm { imm8, rd },
+                        }
+                    }
+                }
+            }
+            // Formats 12, 13 and 14
+            0b101 => {
+                // Get the bit 12
+                match (data >> 12) & 1 == 1 {
+                    // Format 12
+                    false => {
+                        let rd = get_rd(data);
+                        let imm8 = ((data >> 3) & 0xff) as u8;
+
+                        // Match the bit 11
+                        match (data >> 11) & 1 == 1 {
+                            false => AddPcImm { imm8, rd },
+                            true => AddSpImm { imm8, rd },
+                        }
+                    }
+                    // Formats 13 and 14
+                    true => {
+                        match (data >> 10) & 0b11 {
+                            // Format 13
+                            0b00 => {
+                                let imm7 = (data & 0x7f) as u8;
+                                match (data >> 7) & 1 == 1 {
+                                    false => AddSpPosImm { imm7 },
+                                    true => AddSpNegImm { imm7 },
+                                }
+                            }
+                            0b10 => todo!("Handle encoding errors"),
+                            // Format 14
+                            0b01 | 0b11 => {
+                                // Get the instruction type based on bits 11, 10, 9 and 8
+                                let rlist = (data & 0xff) as u8;
+                                match (data >> 8) & 0b1111 {
+                                    0b0100 => Push { rlist },
+                                    0b0101 => PushLr { rlist },
+                                    0b1100 => Pop { rlist },
+                                    0b1101 => PopPc { rlist },
+
+                                    0b0000..=0b0011 | 0b0110 | 0b1011 | 0b1110 | 0b1111 => {
+                                        todo!("Handle encoding errors")
+                                    }
+
+                                    _ => unreachable!(),
+                                }
+                            }
+
+                            _ => unreachable!(),
+                        }
+                    }
+                }
+            }
+            // Formats 15, 16 and 17
+            0b110 => {
+                let last_eight_bits = (data & 0xff) as u8;
+
+                // Get the bit 12
+                match (data >> 12) & 1 == 1 {
+                    // Format 15
+                    false => {
+                        let rb = ((data >> 8) & 0b111) as u8;
+                        let rlist = last_eight_bits;
+
+                        // Match bit 11
+                        match (data >> 11) & 1 == 1 {
+                            false => Stmia { rb, rlist },
+                            true => Ldmia { rb, rlist },
+                        }
+                    }
+                    // Formats 16 or 17
+                    true => {
+                        let soffset = last_eight_bits;
+                        let imm = last_eight_bits;
+
+                        // Match the condition
+                        match ((data >> 8) & 0xf) as u8 {
+                            // Format 16
+                            0b0000 => Beq { soffset },
+                            0b0001 => Bne { soffset },
+                            0b0010 => Bcs { soffset },
+                            0b0011 => Bcc { soffset },
+                            0b0100 => Bmi { soffset },
+                            0b0101 => Bpl { soffset },
+                            0b0110 => Bvs { soffset },
+                            0b0111 => Bvc { soffset },
+                            0b1000 => Bhi { soffset },
+                            0b1001 => Bls { soffset },
+                            0b1010 => Bge { soffset },
+                            0b1011 => Blt { soffset },
+                            0b1100 => Bgt { soffset },
+                            0b1101 => Ble { soffset },
+
+                            0b1110 => todo!("Handle encoding errors"),
+
+                            // Format 17
+                            0b1111 => Swi { imm },
+
+                            _ => unreachable!(),
+                        }
+                    }
+                }
+            }
+            // Formats 18 and 19
+            0b111 => {
+                // Get the next flag
+                let hi = ((data >> 11) & 1) == 1;
+                let offset11 = data & 0x7ff;
+
+                // Match the bits 12 and 11
+                match ((data >> 12) & 1 == 1, hi) {
+                    // Format 18
+                    (false, false) => B { offset11 },
+
+                    (false, true) => todo!("Handle encoding errors"),
+
+                    // Format 19
+                    (true, _) => BlHalf { hi, offset11 },
+                }
+            }
+
+            _ => unreachable!(),
+        }
+    }
+}
+
+/// Gets the `rn` register from the instruction data.
+#[inline]
+fn get_rn(data: u16) -> u8 {
+    ((data >> 6) & 0b111) as u8
+}
+
+/// Gets the `rs` register from the instruction data.
+#[inline]
+fn get_rs(data: u16) -> u8 {
+    ((data >> 3) & 0b111) as u8
+}
+
+/// Gets the `rd` register from the instruction data.
+#[inline]
+fn get_rd(data: u16) -> u8 {
+    (data & 0b111) as u8
+}
+
+// Get the `imm5` from the format 1 and 9 instructions.
+#[inline]
+fn get_imm5(data: u16) -> u8 {
+    ((data >> 6) & 0b11111) as u8
 }

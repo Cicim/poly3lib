@@ -208,8 +208,6 @@ fn build_code(
 
     let mut args = quote! {};
 
-    println!("{:?}", shifts_masks);
-
     for (arg, (shift, mask)) in arguments.into_iter().zip(shifts_masks.into_iter()) {
         let mask: TokenStream2 = format!("{}_u{}", mask, expected_size)
             .parse::<TokenStream>()
