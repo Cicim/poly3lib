@@ -176,11 +176,11 @@ pub enum Instruction {
     MovHiHi { hd: u8, hs: u8 },
     /// Perform branch (plus optional state change) to address in a register in the range 0-7.
     ///
-    /// `BX Rs` > `010001` `op=11` `H1=0` `H2=1` **`Rs`** `000`
+    /// `BX Rs` > `010001` `op=11` `H1=0` `H2=0` **`Rs`** `000`
     Bx { rs: u8 },
     /// Perform branch (plus optional state change) to address in a register in the range 8-15.
     ///
-    /// `BX Hs` > `010001` `op=11` `H1=1` `H2=0` **`Hs`** `000`
+    /// `BX Hs` > `010001` `op=11` `H1=0` `H2=1` **`Hs`** `000`
     BxHi { hs: u8 },
 
     // ANCHOR 6 -- PC-relative load
@@ -508,8 +508,8 @@ impl Into<u16> for Instruction {
             MovLowHi { rd, hs } => bin16!("010001_10_01{3}{3}", hs, rd),
             MovHiLow { hd, rs } => bin16!("010001_10_10{3}{3}", rs, hd),
             MovHiHi { hd, hs } => bin16!("010001_10_11{3}{3}", hs, hd),
-            Bx { rs } => bin16!("010001_11_01{3}000", rs),
-            BxHi { hs } => bin16!("010001_11_10{3}000", hs),
+            Bx { rs } => bin16!("010001_11_00{3}000", rs),
+            BxHi { hs } => bin16!("010001_11_01{3}000", hs),
 
             // Format 6
             LdrPc { rd, imm8 } => bin16!("01001{3}{8}", rd, imm8),
@@ -699,10 +699,10 @@ impl Instruction {
                             0b1010 => MovHiLow { hd, rs },
                             0b1011 => MovHiHi { hd, hs },
 
-                            0b1101 => Bx { rs },
-                            0b1110 => BxHi { hs },
+                            0b1100 => Bx { rs },
+                            0b1101 => BxHi { hs },
 
-                            0b0000 | 0b0100 | 0b1000 | 0b1100 | 0b1111 => return None,
+                            0b0000..=0b1111 => return None,
 
                             _ => unreachable!(),
                         }
@@ -937,13 +937,6 @@ fn lreg(reg: &u8) -> &'static str {
 #[inline]
 fn hreg(reg: &u8) -> &'static str {
     REGISTER_NAMES[(*reg + 8) as usize]
-}
-
-/// Get the signed offset given a 8-bit value
-#[inline]
-fn signed_offset(soffset: u8) -> i32 {
-    // The offset was a multiple of 4 and signed
-    ((soffset as i8) as i32) << 2
 }
 
 /// Crates the interior of the {} braces of a PUSH/POP-like expression
