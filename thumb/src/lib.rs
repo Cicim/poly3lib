@@ -7,4 +7,4 @@ pub(crate) mod utils;
 
 pub use instructions::Instruction;
 pub use memory::Memory;
-pub use processor::Processor;
+pub use processor::{ExecutionError, Processor};

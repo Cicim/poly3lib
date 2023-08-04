@@ -295,7 +295,7 @@ pub enum Instruction {
     /// `STR Rd, [SP, #Imm]` > `1001` `L=0` **`Imm`** **`Rd`**
     ///
     /// **Note**: `#Imm` is a multiple of 4, therefore `imm8` is shifted right by 2.
-    StrSpImm { imm8: u8, rd: u8 },
+    StrSpImm { imm8: u8, rs: u8 },
     /// Add unsigned offset (255 words, 1020 bytes) in Imm to the current value of the SP (R7).
     /// Load the word from the resulting address into Rd.
     ///
@@ -537,7 +537,7 @@ impl Into<u16> for Instruction {
             LdrhImm { rb, imm5, rd } => bin16!("1000_1{5}{3}{3}", imm5, rb, rd),
 
             // Format 11
-            StrSpImm { imm8, rd } => bin16!("1001_0{8}{3}", imm8, rd),
+            StrSpImm { imm8, rs: rd } => bin16!("1001_0{8}{3}", imm8, rd),
             LdrSpImm { imm8, rd } => bin16!("1001_1{8}{3}", imm8, rd),
 
             // Format 12
@@ -772,7 +772,7 @@ impl Instruction {
                     false => {
                         let imm8 = ((data >> 3) & 0xff) as u8;
                         match next_flag {
-                            false => StrSpImm { imm8, rd },
+                            false => StrSpImm { imm8, rs: rd },
                             true => LdrSpImm { imm8, rd },
                         }
                     }
@@ -1047,7 +1047,7 @@ impl Display for Instruction {
             }
 
             // Format 11
-            StrSpImm { imm8, rd } => write!(f, "STR {}, [sp, #{}]", lreg(rd), imm8 << 2),
+            StrSpImm { imm8, rs: rd } => write!(f, "STR {}, [sp, #{}]", lreg(rd), imm8 << 2),
             LdrSpImm { imm8, rd } => write!(f, "LDR {}, [sp, #{}]", lreg(rd), imm8 << 2),
 
             // Format 12
@@ -1060,44 +1060,55 @@ impl Display for Instruction {
 
             // Format 14
             Push { rlist } => write!(f, "PUSH {{ {} }}", reglist(rlist)),
-            PushLr { rlist } => write!(f, "PUSH {{ {}, lr }}", reglist(rlist)),
+            PushLr { rlist } => write!(
+                f,
+                "PUSH {{ {}{}lr }}",
+                reglist(rlist),
+                if *rlist == 0 { "" } else { ", " }
+            ),
             Pop { rlist } => write!(f, "POP {{ {} }}", reglist(rlist)),
-            PopPc { rlist } => write!(f, "POP {{ {}, pc }}", reglist(rlist)),
+            PopPc { rlist } => write!(
+                f,
+                "POP {{ {}{}pc }}",
+                reglist(rlist),
+                if *rlist == 0 { "" } else { ", " }
+            ),
 
             // Format 15
             Stmia { rb, rlist } => write!(f, "STMIA {}!, {{ {} }}", lreg(rb), reglist(rlist)),
             Ldmia { rb, rlist } => write!(f, "LDMIA {}!, {{ {} }}", lreg(rb), reglist(rlist)),
 
             // Format 16
-            Beq { soffset } => write!(f, "BEQ <{}>", signed_offset(*soffset)),
-            Bne { soffset } => write!(f, "BNE <{}>", signed_offset(*soffset)),
-            Bcs { soffset } => write!(f, "BCS <{}>", signed_offset(*soffset)),
-            Bcc { soffset } => write!(f, "BCC <{}>", signed_offset(*soffset)),
-            Bmi { soffset } => write!(f, "BMI <{}>", signed_offset(*soffset)),
-            Bpl { soffset } => write!(f, "BPL <{}>", signed_offset(*soffset)),
-            Bvs { soffset } => write!(f, "BVS <{}>", signed_offset(*soffset)),
-            Bvc { soffset } => write!(f, "BVC <{}>", signed_offset(*soffset)),
-            Bhi { soffset } => write!(f, "BHI <{}>", signed_offset(*soffset)),
-            Bls { soffset } => write!(f, "BLS <{}>", signed_offset(*soffset)),
-            Bge { soffset } => write!(f, "BGE <{}>", signed_offset(*soffset)),
-            Blt { soffset } => write!(f, "BLT <{}>", signed_offset(*soffset)),
-            Bgt { soffset } => write!(f, "BGT <{}>", signed_offset(*soffset)),
-            Ble { soffset } => write!(f, "BLE <{}>", signed_offset(*soffset)),
+            Beq { soffset } => write!(f, "BEQ <{}>", extend_8bit_offset(*soffset)),
+            Bne { soffset } => write!(f, "BNE <{}>", extend_8bit_offset(*soffset)),
+            Bcs { soffset } => write!(f, "BCS <{}>", extend_8bit_offset(*soffset)),
+            Bcc { soffset } => write!(f, "BCC <{}>", extend_8bit_offset(*soffset)),
+            Bmi { soffset } => write!(f, "BMI <{}>", extend_8bit_offset(*soffset)),
+            Bpl { soffset } => write!(f, "BPL <{}>", extend_8bit_offset(*soffset)),
+            Bvs { soffset } => write!(f, "BVS <{}>", extend_8bit_offset(*soffset)),
+            Bvc { soffset } => write!(f, "BVC <{}>", extend_8bit_offset(*soffset)),
+            Bhi { soffset } => write!(f, "BHI <{}>", extend_8bit_offset(*soffset)),
+            Bls { soffset } => write!(f, "BLS <{}>", extend_8bit_offset(*soffset)),
+            Bge { soffset } => write!(f, "BGE <{}>", extend_8bit_offset(*soffset)),
+            Blt { soffset } => write!(f, "BLT <{}>", extend_8bit_offset(*soffset)),
+            Bgt { soffset } => write!(f, "BGT <{}>", extend_8bit_offset(*soffset)),
+            Ble { soffset } => write!(f, "BLE <{}>", extend_8bit_offset(*soffset)),
 
             // Format 17
             Swi { imm } => write!(f, "SWI #{}", imm),
 
             // Format 18
             // TODO Compute the offset correctly
-            B { offset11 } => write!(f, "B <{}>", (*offset11 as i16) << 1),
+            B { offset11 } => write!(f, "B <{}>", extend_11bit_offset(*offset11)),
 
             // Format 19
             // TODO Compute the offset correctly
             BlHalf { hi, offset11 } => {
                 write!(
                     f,
-                    "BL <{}>",
-                    ((*hi as u32) << 12) | ((*offset11 as u32) << 1)
+                    "BL <{:011b}-{}>",
+                    (*offset11 as u32) << 1,
+                    if *hi { "ready" } else { "prep" }
                 )
             }
         }

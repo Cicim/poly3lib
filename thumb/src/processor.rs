@@ -29,6 +29,7 @@ pub struct Processor<'rom> {
 pub enum ExecutionError {
     MemoryError(MemoryError),
     InvalidInstruction,
+    JumpToArm,
 }
 
 type ExecutionResult = Result<(), ExecutionError>;
@@ -48,7 +49,7 @@ impl<'rom> Processor<'rom> {
             memory: Memory::new(rom),
         };
 
-        cpu.set_sp(0x03_000_000);
+        cpu.set_sp(0x03_007_FFC);
         cpu.set_pc(0x08_000_000);
 
         cpu
@@ -167,6 +168,17 @@ impl<'rom> Processor<'rom> {
             }};
         }
 
+        /// Does a conditional jump to the given offset if the condition is true.
+        macro_rules! conditional_branch(
+            ($cond:ident, $offset:ident) => {{
+                if self.alu.$cond() {
+                    let offset = extend_8bit_offset($offset);
+                    let pc = self.get_pc();
+                    self.set_pc(pc.wrapping_add(offset as u32));
+                }
+            }};
+        );
+
         match instruction {
             // Format 1 -- Move shifted register
             LslImm { rd, rs, imm5 } => alu_op!(rd, rs, lsl, IMM, imm5),
@@ -187,7 +199,7 @@ impl<'rom> Processor<'rom> {
 
             // Format 4 -- ALU operations
             And { rd, rs } => alu_op!(rd, rd, and, REG, rs),
-            Eor { rd, rs } => alu_op!(rd, rd, or, REG, rs),
+            Eor { rd, rs } => alu_op!(rd, rd, xor, REG, rs),
             Lsl { rd, rs } => alu_op!(rd, rd, lsl, REG, rs),
             Lsr { rd, rs } => alu_op!(rd, rd, lsr, REG, rs),
             Asr { rd, rs } => alu_op!(rd, rd, asr, REG, rs),
@@ -213,11 +225,20 @@ impl<'rom> Processor<'rom> {
             MovLowHi { rd, hs } => self.mov_registers(rd, hs + 8),
             MovHiLow { hd, rs } => self.mov_registers(hd + 8, rs),
             MovHiHi { hd, hs } => self.mov_registers(hd + 8, hs + 8),
-            Bx { rs } => todo!(),
-            BxHi { hs } => todo!(),
+            Bx { rs } => self.jump_to(self.get_register(rs))?,
+            BxHi { hs } => self.jump_to(self.get_register(hs + 8))?,
 
             // Format 6 -- PC-relative load
-            LdrPc { rd, imm8 } => todo!(),
+            LdrPc { rd, imm8 } => {
+                let offset = (imm8 as u32) << 2;
+                let address = self.get_pc() + offset;
+
+                // Make sure the address is word-aligned
+                let address = address & !0b11;
+
+                let value = self.memory.read_word(address)?;
+                self.set_register(rd, value);
+            }
 
             // Format 7 -- Load/store with register offset
             StrReg { rb, ro, rd } => todo!(),
@@ -242,8 +263,8 @@ impl<'rom> Processor<'rom> {
             LdrhImm { rb, imm5, rd } => todo!(),
 
             // Format 11 -- SP-relative load/store
-            StrSpImm { imm8, rd } => todo!(),
-            LdrSpImm { imm8, rd } => todo!(),
+            StrSpImm { imm8, rs } => self.store_word(rs, 13, (imm8 as u32) << 2)?,
+            LdrSpImm { imm8, rd } => self.load_word(rd, 13, (imm8 as u32) << 2)?,
 
             // Format 12 -- Load address
             AddPcImm { imm8, rd } => todo!(),
@@ -284,29 +305,50 @@ impl<'rom> Processor<'rom> {
             Ldmia { rb, rlist } => todo!(),
 
             // Format 16 -- Conditional branch
-            Beq { soffset } => todo!(),
-            Bne { soffset } => todo!(),
-            Bcs { soffset } => todo!(),
-            Bcc { soffset } => todo!(),
-            Bmi { soffset } => todo!(),
-            Bpl { soffset } => todo!(),
-            Bvs { soffset } => todo!(),
-            Bvc { soffset } => todo!(),
-            Bhi { soffset } => todo!(),
-            Bls { soffset } => todo!(),
-            Bge { soffset } => todo!(),
-            Blt { soffset } => todo!(),
-            Bgt { soffset } => todo!(),
-            Ble { soffset } => todo!(),
+            Beq { soffset } => conditional_branch!(is_eq, soffset),
+            Bne { soffset } => conditional_branch!(is_ne, soffset),
+            Bcs { soffset } => conditional_branch!(is_cs, soffset),
+            Bcc { soffset } => conditional_branch!(is_cc, soffset),
+            Bmi { soffset } => conditional_branch!(is_mi, soffset),
+            Bpl { soffset } => conditional_branch!(is_pl, soffset),
+            Bvs { soffset } => conditional_branch!(is_vs, soffset),
+            Bvc { soffset } => conditional_branch!(is_vc, soffset),
+            Bhi { soffset } => conditional_branch!(is_hi, soffset),
+            Bls { soffset } => conditional_branch!(is_ls, soffset),
+            Bge { soffset } => conditional_branch!(is_ge, soffset),
+            Blt { soffset } => conditional_branch!(is_lt, soffset),
+            Bgt { soffset } => conditional_branch!(is_gt, soffset),
+            Ble { soffset } => conditional_branch!(is_le, soffset),
 
             // Format 17 -- Software interrupt
-            Swi { imm } => todo!(),
+            Swi { imm } => panic!("SWI #{} not implemented", imm),
 
             // Format 18 -- Unconditional branch
-            B { offset11 } => todo!(),
+            B { offset11 } => {
+                let offset = extend_11bit_offset(offset11);
+                self.set_pc(self.get_pc().wrapping_add(offset as u32));
+            }
 
             // Format 19 -- Long branch with link
-            BlHalf { hi, offset11 } => todo!(),
+            BlHalf { hi, offset11 } => {
+                // Last part
+                if hi {
+                    // The offset11 contains the lower 11 bits of the target address
+                    let bottom = (offset11 as u32) << 1;
+                    let jump_to = bottom + self.get_lr();
+
+                    // Get the offset to the instruction right after this one
+                    let jump_back = self.get_pc();
+
+                    self.jump_to(jump_to)?;
+                    self.set_lr(jump_back);
+                }
+                // First part
+                else {
+                    let top = (offset11 as u32) << 12;
+                    self.set_lr(self.get_pc() + top - 2);
+                }
+            }
         }
 
         Ok(())
@@ -365,6 +407,19 @@ impl<'rom> Processor<'rom> {
 
         Ok(())
     }
+
+    /// Updates PC so that the next instruction starts at the given value
+    fn jump_to(&mut self, addr: u32) -> ExecutionResult {
+        // Make sure the address has bit 0 set to 1 (Thumb)
+        if addr & 1 == 0 {
+            return Err(ExecutionError::JumpToArm);
+        }
+
+        // Update PC to have that address
+        self.set_pc(addr & 0xFFFF_FFFE);
+
+        Ok(())
+    }
 }
 
 impl<'rom> Display for Processor<'rom> {
@@ -385,7 +440,6 @@ impl<'rom> Display for Processor<'rom> {
             }
         }
 
-        write!(f, "\nNext instruction:\n    ")?;
         // Decode the next instruction
         match self.decode() {
             Ok(instruction) => {
