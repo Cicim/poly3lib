@@ -6,6 +6,8 @@ use std::fmt::Display;
 
 use bin16_macro::bin16;
 
+use crate::utils::*;
+
 /// A Thumb instruction.
 #[derive(Debug)]
 pub enum Instruction {
@@ -947,16 +949,7 @@ fn signed_offset(soffset: u8) -> i32 {
 /// Crates the interior of the {} braces of a PUSH/POP-like expression
 /// given the flags representing the registers to be pushed/popped.
 fn reglist(rlist: &u8) -> String {
-    // Get the bits set to 1 in rlist
-    let mut set_to_one = vec![];
-    for i in 0..8 {
-        if (rlist >> i) & 1 == 1 {
-            set_to_one.push(i);
-        }
-    }
-
-    // Get the bits set to 0 in rlist
-    set_to_one
+    get_registers_in_rlist(*rlist)
         .iter()
         .map(|x| lreg(x))
         .collect::<Vec<_>>()
