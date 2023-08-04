@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 bin16_macro = { "path" = "bin16_macro" }
+
+colored = "2.0.0"
