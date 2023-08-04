@@ -23,7 +23,7 @@ pub struct Processor<'rom> {
     registers: [u32; 16],
 
     /// Memory
-    memory: Memory<'rom>,
+    pub memory: Memory<'rom>,
 }
 
 pub enum ExecutionError {
@@ -49,7 +49,7 @@ impl<'rom> Processor<'rom> {
             memory: Memory::new(rom),
         };
 
-        cpu.set_sp(0x03_007_FFC);
+        cpu.set_sp(0x03_008_000);
         cpu.set_pc(0x08_000_000);
 
         cpu
@@ -241,38 +241,95 @@ impl<'rom> Processor<'rom> {
             }
 
             // Format 7 -- Load/store with register offset
-            StrReg { rb, ro, rd } => todo!(),
-            StrbReg { rb, ro, rd } => todo!(),
-            LdrReg { rb, ro, rd } => todo!(),
-            LdrbReg { rb, ro, rd } => todo!(),
+            StrReg { rb, ro, rd } => {
+                let address = self.get_register(rb) + self.get_register(ro);
+                let value = self.get_register(rd);
+                self.memory.write_word(address, value)?;
+            }
+            StrbReg { rb, ro, rd } => {
+                let address = self.get_register(rb) + self.get_register(ro);
+                let value = self.get_register(rd) as u8;
+                self.memory.write_byte(address, value)?;
+            }
+            LdrReg { rb, ro, rd } => {
+                let address = self.get_register(rb) + self.get_register(ro);
+                let value = self.memory.read_word(address)?;
+                self.set_register(rd, value);
+            }
+            LdrbReg { rb, ro, rd } => {
+                let address = self.get_register(rb) + self.get_register(ro);
+                let value = self.memory.read_byte(address)? as u32;
+                self.set_register(rd, value);
+            }
 
             // Format 8 -- Load/store sign-extended byte/halfword
-            StrhReg { rb, ro, rd } => todo!(),
-            LdrhReg { rb, ro, rd } => todo!(),
-            LdsbReg { rb, ro, rd } => todo!(),
-            LdshReg { rb, ro, rd } => todo!(),
+            StrhReg { rb, ro, rd } => {
+                let address = self.get_register(rb) + self.get_register(ro);
+                let value = self.get_register(rd) as u16;
+                self.memory.write_halfword(address, value)?;
+            }
+            LdrhReg { rb, ro, rd } => {
+                let address = self.get_register(rb) + self.get_register(ro);
+                let value = self.memory.read_halfword(address)? as u32;
+                self.set_register(rd, value);
+            }
+            LdsbReg { rb, ro, rd } => {
+                let address = self.get_register(rb) + self.get_register(ro);
+                let value = self.memory.read_byte(address)? as i8 as i32 as u32;
+                self.set_register(rd, value);
+            }
+            LdshReg { rb, ro, rd } => {
+                let address = self.get_register(rb) + self.get_register(ro);
+                let value = self.memory.read_halfword(address)? as i16 as i32 as u32;
+                self.set_register(rd, value);
+            }
 
             // Format 9 -- Load/store with immediate offset
-            StrImm { rb, imm5, rd } => todo!(),
-            LdrImm { rb, imm5, rd } => todo!(),
-            StrbImm { rb, imm5, rd } => todo!(),
-            LdrbImm { rb, imm5, rd } => todo!(),
+            StrImm { rb, imm5, rd } => {
+                let address = self.get_register(rb) + ((imm5 as u32) << 2);
+                let value = self.get_register(rd);
+                self.memory.write_word(address, value)?;
+            }
+            LdrImm { rb, imm5, rd } => {
+                let address = self.get_register(rb) + ((imm5 as u32) << 2);
+                let value = self.memory.read_word(address)?;
+                self.set_register(rd, value);
+            }
+            StrbImm { rb, imm5, rd } => {
+                let address = self.get_register(rb) + (imm5 as u32);
+                let value = self.get_register(rd) as u8;
+                self.memory.write_byte(address, value)?;
+            }
+            LdrbImm { rb, imm5, rd } => {
+                let address = self.get_register(rb) + (imm5 as u32);
+                let value = self.memory.read_byte(address)? as u32;
+                self.set_register(rd, value);
+            }
 
             // Format 10 -- Load/store halfword
-            StrhImm { rb, imm5, rd } => todo!(),
-            LdrhImm { rb, imm5, rd } => todo!(),
+            StrhImm { rb, imm5, rd } => {
+                let address = self.get_register(rb) + ((imm5 as u32) << 1);
+                let value = self.get_register(rd) as u16;
+                self.memory.write_halfword(address, value)?;
+            }
+            LdrhImm { rb, imm5, rd } => {
+                let address = self.get_register(rb) + ((imm5 as u32) << 1);
+                let value = self.memory.read_halfword(address)? as u32;
+                self.set_register(rd, value);
+            }
 
             // Format 11 -- SP-relative load/store
             StrSpImm { imm8, rs } => self.store_word(rs, 13, (imm8 as u32) << 2)?,
             LdrSpImm { imm8, rd } => self.load_word(rd, 13, (imm8 as u32) << 2)?,
 
             // Format 12 -- Load address
-            AddPcImm { imm8, rd } => todo!(),
-            AddSpImm { imm8, rd } => todo!(),
+            // REVIEW - Is imm really a multiple of 4?
+            AddPcImm { imm8, rd } => alu_op!(rd, 15, add, IMM, (imm8 as u32) << 2),
+            AddSpImm { imm8, rd } => alu_op!(rd, 13, add, IMM, (imm8 as u32) << 2),
 
             // Format 13 -- Add offset to Stack Pointer
-            AddSpPosImm { imm7 } => todo!(),
-            AddSpNegImm { imm7 } => todo!(),
+            AddSpPosImm { imm7 } => alu_op!(13, 13, add, IMM, (imm7 as u32) << 2),
+            AddSpNegImm { imm7 } => alu_op!(13, 13, sub, IMM, (imm7 as u32) << 2),
 
             // Format 14 -- Push/pop registers
             Push { rlist } => get_registers_in_rlist(rlist)
@@ -301,8 +358,24 @@ impl<'rom> Processor<'rom> {
             }
 
             // Format 15 -- Multiple load/store
-            Stmia { rb, rlist } => todo!(),
-            Ldmia { rb, rlist } => todo!(),
+            Stmia { rb, rlist } => {
+                let mut addr = self.get_register(rb);
+                for r in get_registers_in_rlist(rlist) {
+                    let value = self.get_register(r);
+                    self.memory.write_word(addr, value)?;
+                    addr += 4;
+                }
+                self.set_register(rb, addr)
+            }
+            Ldmia { rb, rlist } => {
+                let mut addr = self.get_register(rb);
+                for r in get_registers_in_rlist(rlist) {
+                    let value = self.memory.read_word(addr)?;
+                    self.set_register(r, value);
+                    addr += 4;
+                }
+                self.set_register(rb, addr)
+            }
 
             // Format 16 -- Conditional branch
             Beq { soffset } => conditional_branch!(is_eq, soffset),
@@ -378,6 +451,11 @@ impl<'rom> Processor<'rom> {
         let value = self.memory.read_word(address)?;
         // Store it
         self.set_register(rd, value);
+
+        println!(
+            "Loaded {:08X} from 0x{:08X} into {}",
+            value, address, REGISTER_NAMES[rd as usize]
+        );
 
         Ok(())
     }

@@ -760,7 +760,7 @@ impl Instruction {
 
                 match ((data >> 12) & 1) == 1 {
                     // Format 10
-                    true => {
+                    false => {
                         let rb = get_rs(data);
                         let imm5 = get_imm5(data);
                         match next_flag {
@@ -769,7 +769,7 @@ impl Instruction {
                         }
                     }
                     // Format 11
-                    false => {
+                    true => {
                         let imm8 = ((data >> 3) & 0xff) as u8;
                         match next_flag {
                             false => StrSpImm { imm8, rs: rd },
