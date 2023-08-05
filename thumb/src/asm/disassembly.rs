@@ -128,12 +128,15 @@ impl<'a> DisassemblyState<'a, 'a> {
     fn disassemble_function(&mut self, function: u32) {
         // Add a label for this function
         let label = match self.get_label(function) {
-            Some(label) => format!("FUN_{}", label),
-            None => format!("FUN_{:08x}", function),
+            Some(label) => label.clone(),
+            None => {
+                self.add_label(function, format!("sub_{:08x}", function));
+                format!("{:08x}", function)
+            }
         };
-        self.add_label(function, label.clone());
 
-        let mut sublabels: HashMap<u32, String> = HashMap::new();
+        let mut jmplabels: HashMap<u32, String> = HashMap::new();
+        let mut datlabels: HashMap<u32, String> = HashMap::new();
 
         let mut offset = function;
         let mut bl_half = 0;
@@ -148,15 +151,15 @@ impl<'a> DisassemblyState<'a, 'a> {
             macro_rules! conditional_jump {
                 ($name:literal, $offset:ident) => {{
                     let diff = extend_8bit_offset($offset);
-                    let target = offset.wrapping_add(diff as u32) + 2;
+                    let target = offset.wrapping_add(diff as u32) + 4;
 
                     // Create a label if it does not already exist
                     let label = if let Some(label) = self.get_label(target) {
                         label.clone()
                     } else {
-                        let count = sublabels.len() + 1;
-                        let new_label = format!("{}.{}", label, count);
-                        sublabels.insert(target, new_label.clone());
+                        let count = jmplabels.len() + 1;
+                        let new_label = format!("lab_{}.{}", label, count);
+                        jmplabels.insert(target, new_label.clone());
                         self.add_label(target, new_label.clone());
                         new_label
                     };
@@ -231,16 +234,14 @@ impl<'a> DisassemblyState<'a, 'a> {
                     // Format 6
                     LdrPc { rd, imm8 } => {
                         let off = (imm8 as u32) << 2;
-                        println!("{}", imm8);
-
                         let target = (offset + off + 4) & 0xFFFF_FFFC;
 
                         let label = if let Some(label) = self.get_label(target) {
                             label.clone()
                         } else {
-                            let count = sublabels.len() + 1;
-                            let new_label = format!("{}.{}", label, count);
-                            sublabels.insert(target, new_label.clone());
+                            let count = datlabels.len() + 1;
+                            let new_label = format!("dat_{}.{}", label, count);
+                            datlabels.insert(target, new_label.clone());
                             self.add_label(target, new_label.clone());
                             new_label
                         };
@@ -296,7 +297,11 @@ impl<'a> DisassemblyState<'a, 'a> {
                     Push { rlist } => push_pop("push", rlist, None),
                     PushLr { rlist } => push_pop("push", rlist, Some(Register::LR)),
                     Pop { rlist } => push_pop("pop", rlist, None),
-                    PopPc { rlist } => push_pop("pop", rlist, Some(Register::PC)),
+                    PopPc { rlist } => {
+                        // If something is popped onto pc, the control flow switches away
+                        finished = true;
+                        push_pop("pop", rlist, Some(Register::PC))
+                    }
 
                     // Format 15
                     Stmia { rb, rlist } => stmldmia("stdmia", rlist, rb.into()),
@@ -330,9 +335,9 @@ impl<'a> DisassemblyState<'a, 'a> {
                         let label = if let Some(label) = self.get_label(target) {
                             label.clone()
                         } else {
-                            let count = sublabels.len() + 1;
-                            let new_label = format!("{}.{}", label, count);
-                            sublabels.insert(target, new_label.clone());
+                            let count = jmplabels.len() + 1;
+                            let new_label = format!("lab_{}.{}", label, count);
+                            jmplabels.insert(target, new_label.clone());
                             self.add_label(target, new_label.clone());
                             new_label
                         };
@@ -340,8 +345,45 @@ impl<'a> DisassemblyState<'a, 'a> {
                         AssemblyInstruction::BranchCond("b", label)
                     }
 
-                    BlHalf { hi, offset11 } => {
-                        AssemblyInstruction::Val("bl", Operand::Immediate(6969))
+                    BlHalf {
+                        hi: false,
+                        offset11,
+                    } => {
+                        bl_half = (offset11 as u32) << 12;
+                        offset += 2;
+                        continue;
+                    }
+                    BlHalf { hi: true, offset11 } => {
+                        let diff = bl_half + ((offset11 as u32) << 1);
+                        // Convert the stuff to a offset
+                        let diff = diff as i32;
+                        let diff = (diff << 9) >> 9;
+
+                        let target = offset.wrapping_add(diff as u32) + 2;
+
+                        let prev_lower = self.bytes[offset as usize - 2 - 0x08_000_000];
+                        let prev_upper = self.bytes[offset as usize - 1 - 0x08_000_000];
+
+                        // Add the new target to the functions in the queue
+                        if self.options.recurse_over_function_calls
+                            && !self.visited_functions.contains(&target)
+                        {
+                            self.functions_queue.push(target);
+                        }
+
+                        // TODO Compute correct label
+                        self.disassembled.insert(
+                            offset - 2,
+                            DisassembledLine::Instruction {
+                                instruction: AssemblyInstruction::BranchCond(
+                                    "bl",
+                                    format!("sub_{:08x}", target),
+                                ),
+                                binary: vec![prev_lower, prev_upper, lower as u8, upper as u8],
+                            },
+                        );
+                        offset += 2;
+                        continue;
                     }
                 },
                 None => break,
@@ -424,6 +466,12 @@ impl<'a> DisassemblyState<'a, 'a> {
         offset: &u32,
         line: &DisassembledLine,
     ) -> std::fmt::Result {
+        if let DisassembledLine::Label(label) = line {
+            if !label.starts_with("lab_") && !label.starts_with("dat_") {
+                write!(f, "\n\n")?;
+            }
+        }
+
         // Print the offset
         if self.options.show_offsets {
             if self.options.colored_output {
@@ -531,7 +579,20 @@ impl<'a> DisassemblyState<'a, 'a> {
 
                 write!(f, " }}")
             }
-            StmLdmIA(_, _, _) => write!(f, "{:?}", i),
+            StmLdmIA(op, r, regs) => {
+                self.print_operator(f, op)?;
+                write!(f, " ")?;
+                self.print_register(f, *r)?;
+                write!(f, "!, {{ ")?;
+                for (i, r) in regs.iter().enumerate() {
+                    self.print_register(f, *r)?;
+                    if i != regs.len() - 1 {
+                        write!(f, ", ")?;
+                    }
+                }
+
+                write!(f, " }}")
+            }
         }
     }
     fn print_operator(&self, f: &mut String, op: Operator) -> std::fmt::Result {

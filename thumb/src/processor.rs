@@ -403,24 +403,25 @@ impl<'rom> Processor<'rom> {
             }
 
             // Format 19 -- Long branch with link
-            BlHalf { hi, offset11 } => {
-                // Last part
-                if hi {
-                    // The offset11 contains the lower 11 bits of the target address
-                    let bottom = (offset11 as u32) << 1;
-                    let jump_to = bottom + self.get_lr();
-
-                    // Get the offset to the instruction right after this one
-                    let jump_back = self.get_pc();
-
-                    self.jump_to(jump_to)?;
-                    self.set_lr(jump_back);
-                }
+            BlHalf {
+                hi: false,
+                offset11,
+            } => {
                 // First part
-                else {
-                    let top = (offset11 as u32) << 12;
-                    self.set_lr(self.get_pc() + top - 2);
-                }
+                let top = (offset11 as u32) << 12;
+                self.set_lr(self.get_pc() + top - 2);
+            }
+            BlHalf { hi: true, offset11 } => {
+                // Last part
+                // The offset11 contains the lower 11 bits of the target address
+                let bottom = (offset11 as u32) << 1;
+                let jump_to = bottom + self.get_lr();
+
+                // Get the offset to the instruction right after this one
+                let jump_back = self.get_pc();
+
+                self.jump_to(jump_to)?;
+                self.set_lr(jump_back);
             }
         }
 
