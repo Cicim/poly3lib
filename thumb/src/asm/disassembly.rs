@@ -136,8 +136,15 @@ impl<'a> DisassemblyState<'a, 'a> {
         let mut sublabels: HashMap<u32, String> = HashMap::new();
 
         let mut offset = function;
+        let mut bl_half = 0;
+        let mut finished = false;
         // Until you detect the end of the function
-        loop {
+        while !finished {
+            if self.is_word(offset) {
+                offset += 4;
+                continue;
+            }
+
             macro_rules! conditional_jump {
                 ($name:literal, $offset:ident) => {{
                     let diff = extend_8bit_offset($offset);
@@ -212,30 +219,78 @@ impl<'a> DisassemblyState<'a, 'a> {
                     MovLowHi { rd, hs } => rdrs("mov", rd, hs + 8),
                     MovHiLow { hd, rs } => rdrs("mov", hd + 8, rs),
                     MovHiHi { hd, hs } => rdrs("mov", hd + 8, hs + 8),
-                    Bx { rs } => Val("bx", Operand::Register(rs.into())),
-                    BxHi { hs } => Val("bx", Operand::Register((hs + 8).into())),
+                    Bx { rs } => {
+                        finished = true;
+                        Val("bx", Operand::Register(rs.into()))
+                    }
+                    BxHi { hs } => {
+                        finished = true;
+                        Val("bx", Operand::Register((hs + 8).into()))
+                    }
 
-                    LdrPc { rd, imm8 } => todo!("Convert for LdrPc"),
-                    StrReg { rb, ro, rd } => todo!("Convert for StrReg"),
-                    StrbReg { rb, ro, rd } => todo!("Convert for StrbReg"),
-                    LdrReg { rb, ro, rd } => todo!("Convert for LdrReg"),
-                    LdrbReg { rb, ro, rd } => todo!("Convert for LdrbReg"),
-                    StrhReg { rb, ro, rd } => todo!("Convert for StrhReg"),
-                    LdrhReg { rb, ro, rd } => todo!("Convert for LdrhReg"),
-                    LdsbReg { rb, ro, rd } => todo!("Convert for LdsbReg"),
-                    LdshReg { rb, ro, rd } => todo!("Convert for LdshReg"),
-                    StrImm { rb, imm5, rd } => todo!("Convert for StrImm"),
-                    LdrImm { rb, imm5, rd } => todo!("Convert for LdrImm"),
-                    StrbImm { rb, imm5, rd } => todo!("Convert for StrbImm"),
-                    LdrbImm { rb, imm5, rd } => todo!("Convert for LdrbImm"),
-                    StrhImm { rb, imm5, rd } => todo!("Convert for StrhImm"),
-                    LdrhImm { rb, imm5, rd } => todo!("Convert for LdrhImm"),
-                    StrSpImm { imm8, rs } => todo!("Convert for StrSpImm"),
-                    LdrSpImm { imm8, rd } => todo!("Convert for LdrSpImm"),
-                    AddPcImm { imm8, rd } => todo!("Convert for AddPcImm"),
-                    AddSpImm { imm8, rd } => todo!("Convert for AddSpImm"),
-                    AddSpPosImm { imm7 } => todo!("Convert for AddSpPosImm"),
-                    AddSpNegImm { imm7 } => todo!("Convert for AddSpNegImm"),
+                    // Format 6
+                    LdrPc { rd, imm8 } => {
+                        let off = (imm8 as u32) << 2;
+                        println!("{}", imm8);
+
+                        let target = (offset + off + 4) & 0xFFFF_FFFC;
+
+                        let label = if let Some(label) = self.get_label(target) {
+                            label.clone()
+                        } else {
+                            let count = sublabels.len() + 1;
+                            let new_label = format!("{}.{}", label, count);
+                            sublabels.insert(target, new_label.clone());
+                            self.add_label(target, new_label.clone());
+                            new_label
+                        };
+
+                        // Explore the given target
+                        let byte1 = self.bytes[target as usize - 0x08_000_000] as u32;
+                        let byte2 = self.bytes[target as usize + 1 - 0x08_000_000] as u32;
+                        let byte3 = self.bytes[target as usize + 2 - 0x08_000_000] as u32;
+                        let byte4 = self.bytes[target as usize + 3 - 0x08_000_000] as u32;
+                        let word = byte1 | (byte2 << 8) | (byte3 << 16) | (byte4 << 24);
+
+                        let word = DisassembledLine::Word(word);
+                        self.disassembled.insert(target, word);
+
+                        AssemblyInstruction::LoadLabel(rd.into(), label)
+                    }
+
+                    // Format 7
+                    StrReg { rb, ro, rd } => memory_ro("str", rd, rb, ro),
+                    StrbReg { rb, ro, rd } => memory_ro("strb", rd, rb, ro),
+                    LdrReg { rb, ro, rd } => memory_ro("ldr", rd, rb, ro),
+                    LdrbReg { rb, ro, rd } => memory_ro("ldrb", rd, rb, ro),
+
+                    // Format 8
+                    StrhReg { rb, ro, rd } => memory_ro("strh", rd, rb, ro),
+                    LdrhReg { rb, ro, rd } => memory_ro("ldrh", rd, rb, ro),
+                    LdsbReg { rb, ro, rd } => memory_ro("ldsb", rd, rb, ro),
+                    LdshReg { rb, ro, rd } => memory_ro("ldsh", rd, rb, ro),
+
+                    // Format 9
+                    StrImm { rb, imm5, rd } => memory_imm("str", rd, rb, (imm5 as u32) << 2),
+                    LdrImm { rb, imm5, rd } => memory_imm("ldr", rd, rb, (imm5 as u32) << 2),
+                    StrbImm { rb, imm5, rd } => memory_imm("strb", rd, rb, imm5 as u32),
+                    LdrbImm { rb, imm5, rd } => memory_imm("ldrb", rd, rb, imm5 as u32),
+
+                    // Format 10
+                    StrhImm { rb, imm5, rd } => memory_imm("strh", rd, rb, (imm5 as u32) << 1),
+                    LdrhImm { rb, imm5, rd } => memory_imm("ldrh", rd, rb, (imm5 as u32) << 1),
+
+                    // Format 11
+                    StrSpImm { imm8, rs } => memory_imm("str", rs, 13, (imm8 as u32) << 2),
+                    LdrSpImm { imm8, rd } => memory_imm("ldr", rd, 13, (imm8 as u32) << 2),
+
+                    // Format 12
+                    AddPcImm { imm8, rd } => rdrsimm("add", rd, 13, imm8 << 2),
+                    AddSpImm { imm8, rd } => rdrsimm("add", rd, 15, imm8 << 2),
+
+                    // Format 13
+                    AddSpPosImm { imm7 } => rdimm("add", 13, imm7 << 2),
+                    AddSpNegImm { imm7 } => rdimm("sub", 13, imm7 << 2),
 
                     // Format 14
                     Push { rlist } => push_pop("push", rlist, None),
@@ -263,7 +318,8 @@ impl<'a> DisassemblyState<'a, 'a> {
                     Bgt { soffset } => conditional_jump!("bgt", soffset),
                     Ble { soffset } => conditional_jump!("ble", soffset),
 
-                    Swi { imm } => todo!("Convert for Swi"),
+                    // Format 17
+                    Swi { imm } => AssemblyInstruction::Val("swi", Operand::Immediate(imm as u32)),
 
                     // Format 18
                     B { offset11 } => {
@@ -284,7 +340,9 @@ impl<'a> DisassemblyState<'a, 'a> {
                         AssemblyInstruction::BranchCond("b", label)
                     }
 
-                    BlHalf { hi, offset11 } => todo!("Convert for BlHalf"),
+                    BlHalf { hi, offset11 } => {
+                        AssemblyInstruction::Val("bl", Operand::Immediate(6969))
+                    }
                 },
                 None => break,
             };
@@ -299,9 +357,6 @@ impl<'a> DisassemblyState<'a, 'a> {
             );
 
             offset += 2;
-            if offset == function + 24 {
-                break;
-            }
         }
 
         // Add this function to the list of disassembled ones
@@ -322,6 +377,14 @@ impl<'a> DisassemblyState<'a, 'a> {
     /// Adds a label to the local labels
     fn add_label(&mut self, offset: u32, label: String) {
         self.labels.insert(offset, label);
+    }
+
+    /// Returns true if the given offset is already a parsed word
+    fn is_word(&mut self, offset: u32) -> bool {
+        matches!(
+            self.disassembled.get(&offset),
+            Some(DisassembledLine::Word(_))
+        )
     }
 
     // ANCHOR Printing
@@ -382,12 +445,20 @@ impl<'a> DisassemblyState<'a, 'a> {
         match line {
             DisassembledLine::Label(label) => {
                 self.print_label(f, label)?;
+                write!(f, ":")?;
             }
             DisassembledLine::Instruction { instruction, .. } => {
                 write!(f, "    ")?;
                 self.print_instruction(f, instruction)?;
             }
             DisassembledLine::Word(word) => {
+                write!(f, "    ")?;
+                if self.options.colored_output {
+                    write!(f, "{}", ".word ".yellow())?;
+                } else {
+                    write!(f, "{}", ".word ")?;
+                }
+
                 if self.options.colored_output {
                     write!(f, "{}", format!("0x{:08x}", word).cyan())?;
                 } else {
@@ -405,7 +476,16 @@ impl<'a> DisassemblyState<'a, 'a> {
 
         match i {
             Nop => write!(f, "{:?}", i),
-            MemoryOperation(_, _, _, _) => write!(f, "{:?}", i),
+            MemoryOperation(op, rd, rb, off) => {
+                self.print_operator(f, op)?;
+                write!(f, " ")?;
+                self.print_register(f, *rd)?;
+                write!(f, ", [")?;
+                self.print_register(f, *rb)?;
+                write!(f, ", ")?;
+                self.print_operand(f, off)?;
+                write!(f, "]")
+            }
             RdRsVal(op, rd, rs, val) => {
                 self.print_operator(f, op)?;
                 write!(f, " ")?;
@@ -432,7 +512,13 @@ impl<'a> DisassemblyState<'a, 'a> {
                 write!(f, " ")?;
                 self.print_label(f, label)
             }
-            LoadLabel(_, _) => write!(f, "{:?}", i),
+            LoadLabel(rd, label) => {
+                self.print_operator(f, "mov ")?;
+                self.print_register(f, *rd)?;
+                write!(f, ", =(")?;
+                self.print_label(f, label)?;
+                write!(f, ")")
+            }
             PushPop(op, regs) => {
                 self.print_operator(f, op)?;
                 write!(f, " {{ ")?;
@@ -448,7 +534,6 @@ impl<'a> DisassemblyState<'a, 'a> {
             StmLdmIA(_, _, _) => write!(f, "{:?}", i),
         }
     }
-
     fn print_operator(&self, f: &mut String, op: Operator) -> std::fmt::Result {
         if self.options.colored_output {
             write!(f, "{}", op.to_string().yellow())
@@ -456,7 +541,6 @@ impl<'a> DisassemblyState<'a, 'a> {
             write!(f, "{}", op.to_string())
         }
     }
-
     fn print_register(&self, f: &mut String, reg: Register) -> std::fmt::Result {
         if self.options.colored_output {
             write!(f, "{}", reg.to_string().red())
@@ -464,14 +548,13 @@ impl<'a> DisassemblyState<'a, 'a> {
             write!(f, "{}", reg.to_string())
         }
     }
-
     fn print_operand(&self, f: &mut String, op: &Operand) -> std::fmt::Result {
         match op {
             Operand::Immediate(imm) => {
                 if self.options.colored_output {
                     write!(f, "{}", format!("#{}", imm).cyan())
                 } else {
-                    write!(f, "#0x{:02x}", imm)
+                    write!(f, "#{}", imm)
                 }
             }
             Operand::Register(reg) => self.print_register(f, *reg),
@@ -488,16 +571,22 @@ impl<'a> DisassemblyState<'a, 'a> {
 
 // ANCHOR Helpers
 fn rdrsimm(name: &'static str, rd: u8, rs: u8, imm: u8) -> AssemblyInstruction {
-    AssemblyInstruction::RdRsVal(name, rd.into(), rs.into(), Operand::Immediate(imm))
+    AssemblyInstruction::RdRsVal(name, rd.into(), rs.into(), Operand::Immediate(imm as u32))
 }
 fn rdrsrn(name: &'static str, rd: u8, rs: u8, rn: u8) -> AssemblyInstruction {
     AssemblyInstruction::RdRsVal(name, rd.into(), rs.into(), Operand::Register(rn.into()))
 }
 fn rdimm(name: &'static str, rd: u8, imm: u8) -> AssemblyInstruction {
-    AssemblyInstruction::RdVal(name, rd.into(), Operand::Immediate(imm))
+    AssemblyInstruction::RdVal(name, rd.into(), Operand::Immediate(imm as u32))
 }
 fn rdrs(name: &'static str, rd: u8, rs: u8) -> AssemblyInstruction {
     AssemblyInstruction::RdVal(name, rd.into(), Operand::Register(rs.into()))
+}
+fn memory_imm(name: &'static str, rd: u8, rb: u8, offset: u32) -> AssemblyInstruction {
+    AssemblyInstruction::MemoryOperation(name, rd.into(), rb.into(), Operand::Immediate(offset))
+}
+fn memory_ro(name: &'static str, rd: u8, rb: u8, ro: u8) -> AssemblyInstruction {
+    AssemblyInstruction::MemoryOperation(name, rd.into(), rb.into(), Operand::Register(ro.into()))
 }
 
 fn push_pop(name: &'static str, rlist: u8, other: Option<Register>) -> AssemblyInstruction {

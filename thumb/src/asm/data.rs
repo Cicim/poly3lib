@@ -106,7 +106,7 @@ impl Display for Register {
 #[derive(Debug)]
 pub enum Operand {
     Register(Register),
-    Immediate(u8),
+    Immediate(u32),
 }
 
 #[derive(Debug)]

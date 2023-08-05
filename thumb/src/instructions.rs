@@ -52,19 +52,19 @@ pub enum Instruction {
     //     001 op2 rd imm8
     /// Move 8-bit immediate value into Rd.
     ///
-    /// `MOV Rd, #imm8` > `001` `op=00` **`imm8`** **`Rd`**
+    /// `MOV Rd, #imm8` > `001` `op=00` **`Rd`** **`imm8`**
     MovImm { rd: u8, imm8: u8 },
     /// Compare contents of Rd with 8-bit immediate value.
     ///
-    /// `CMP Rd, #imm8` > `001` `op=01` **`imm8`** **`Rd`**
+    /// `CMP Rd, #imm8` > `001` `op=01` **`Rd`** **`imm8`**
     CmpImm { rd: u8, imm8: u8 },
     /// Add 8-bit immediate value to contents of Rd and place the result in Rd.
     ///
-    /// `ADD Rd, #imm8` > `001` `op=10` **`imm8`** **`Rd`**
+    /// `ADD Rd, #imm8` > `001` `op=10` **`Rd`** **`imm8`**
     AddImm8 { rd: u8, imm8: u8 },
     /// Subtract 8-bit immediate value from contents of Rd and place the result in Rd.
     ///
-    /// `SUB Rd, #imm8` > `001` `op=11` **`imm8`** **`Rd`**
+    /// `SUB Rd, #imm8` > `001` `op=11` **`Rd`** **`imm8`**
     SubImm8 { rd: u8, imm8: u8 },
 
     // ANCHOR 4 -- ALU operations
@@ -475,10 +475,10 @@ impl Into<u16> for Instruction {
             SubImm3 { rd, rs, imm3 } => bin16!("00011_11{3}{3}{3}", imm3, rs, rd),
 
             // Format 3
-            MovImm { rd, imm8 } => bin16!("001_00{8}{3}", imm8, rd),
-            CmpImm { rd, imm8 } => bin16!("001_01{8}{3}", imm8, rd),
-            AddImm8 { rd, imm8 } => bin16!("001_10{8}{3}", imm8, rd),
-            SubImm8 { rd, imm8 } => bin16!("001_11{8}{3}", imm8, rd),
+            MovImm { rd, imm8 } => bin16!("001_00{3}{8}", rd, imm8),
+            CmpImm { rd, imm8 } => bin16!("001_01{3}{8}", rd, imm8),
+            AddImm8 { rd, imm8 } => bin16!("001_10{3}{8}", rd, imm8),
+            SubImm8 { rd, imm8 } => bin16!("001_11{3}{8}", rd, imm8),
 
             // Format 4
             And { rd, rs } => bin16!("010000_0000{3}{3}", rs, rd),
@@ -637,8 +637,8 @@ impl Instruction {
             }
             // Format 3
             0b001 => {
-                let rd = get_rd(data);
-                let imm8 = ((data >> 3) & 0xFF) as u8;
+                let rd = ((data >> 8) & 0b111) as u8;
+                let imm8 = (data & 0xFF) as u8;
 
                 // Match based on bits 12 and 11.
                 match (data >> 11) & 0b11 {
