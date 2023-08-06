@@ -51,7 +51,8 @@ impl DisassembledLine {
     }
 }
 
-pub struct DisassemblyOptions<'b> {
+#[derive(Default)]
+struct DisassemblyOptions<'b> {
     colored_output: bool,
     show_offsets: bool,
     show_bytes: bool,
@@ -59,24 +60,10 @@ pub struct DisassemblyOptions<'b> {
 
     /// Predefined labels (not created by the disassbely process)
     imported_labels: Option<&'b HashMap<u32, String>>,
-    /// Entry point for disassembly (we assume it is a function)
-    entry_point: u32,
 }
 
-impl<'b> DisassemblyOptions<'b> {
-    pub fn new(entry_point: u32, imported_labels: Option<&'b HashMap<u32, String>>) -> Self {
-        DisassemblyOptions {
-            colored_output: true,
-            show_offsets: true,
-            show_bytes: true,
-            recurse_over_function_calls: true,
-            imported_labels,
-            entry_point,
-        }
-    }
-}
-
-struct DisassemblyState<'a, 'b> {
+#[derive(Default)]
+pub struct Disassembler<'a, 'b> {
     /// The options for disassembly and output formatting
     options: DisassemblyOptions<'b>,
     /// The bytes to read the functions from
@@ -90,321 +77,372 @@ struct DisassemblyState<'a, 'b> {
     disassembled: HashMap<u32, DisassembledLine>,
     /// The map of labels to their offsets
     labels: HashMap<u32, String>,
+
+    /// Offset you are currently visiting
+    current_offset: u32,
+    /// The current function's label
+    current_function_label: String,
+    /// The current function's branching sub-labels count
+    current_function_branching_sub_count: u32,
 }
 
-/// Disassembles a function with the given options
-pub fn disassemble<'a, 'b>(rom: &'a [u8], options: DisassemblyOptions<'b>) -> String {
-    let mut state = DisassemblyState {
-        options,
-        bytes: rom,
-        functions_queue: vec![],
-        visited_functions: HashSet::new(),
-        disassembled: HashMap::new(),
-        labels: HashMap::new(),
-    };
-
-    // Add the entry point to the queue
-    state.functions_queue.push(state.options.entry_point);
-
-    // Disassemble all functions
-    while let Some(function) = state.functions_queue.pop() {
-        // Make sure the function has not already been visited
-        if state.visited_functions.contains(&function) {
-            continue;
+impl<'a> Disassembler<'a, 'a> {
+    /// Initializes the disassembler
+    pub fn new(rom: &'a [u8]) -> Self {
+        let options = DisassemblyOptions::default();
+        Disassembler {
+            options,
+            bytes: rom,
+            ..Default::default()
         }
-
-        // Disassemble the function
-        state.disassemble_function(function);
     }
 
-    state.create_string()
-}
+    /// Import labels for annotation
+    pub fn import_labels(mut self, labels: &'a HashMap<u32, String>) -> Self {
+        self.options.imported_labels = Some(labels);
+        self
+    }
+    /// Allow recursion when encountering a function
+    pub fn allow_recursion(mut self) -> Self {
+        self.options.recurse_over_function_calls = true;
+        self
+    }
 
-impl<'a> DisassemblyState<'a, 'a> {
+    /// Disassembles an entire function
+    pub fn start_from_function(mut self, function: u32) -> Self {
+        // Add the entry point to the queue
+        self.functions_queue.push(function);
+
+        // Disassemble all functions
+        while let Some(function) = self.functions_queue.pop() {
+            // Make sure the function has not already been visited
+            if self.visited_functions.contains(&function) {
+                continue;
+            }
+
+            // Disassemble the function
+            self.do_function(function);
+        }
+        self
+    }
+    /// Disassembles `count` instructions starting from `offset`
+    pub fn start_from(mut self, offset: u32, count: u32) -> Self {
+        self.current_offset = offset;
+        for _ in 0..count {
+            self.do_instruction();
+        }
+        self
+    }
+
+    /// Print the output with all special options
+    pub fn pretty_string(&mut self) -> String {
+        self.options.colored_output = true;
+        self.options.show_bytes = true;
+        self.options.show_offsets = true;
+        self.create_string()
+    }
+
     // ANCHOR Disassembly
     /// Disassembles a function's instructions along with all its referenced data
     /// and its internal labels, then sets this function as visited and adds all
     /// visited functions to its queue.
-    fn disassemble_function(&mut self, function: u32) {
+    fn do_function(&mut self, function: u32) {
         // Add a label for this function
-        let label = match self.get_label(function) {
+        self.current_function_label = match self.get_label(function) {
             Some(label) => label.clone(),
             None => {
                 self.add_label(function, format!("sub_{:08x}", function));
                 format!("{:08x}", function)
             }
         };
+        self.current_offset = function;
+        self.current_function_branching_sub_count = 0;
 
-        let mut jmplabels: HashMap<u32, String> = HashMap::new();
-        let mut datlabels: HashMap<u32, String> = HashMap::new();
-
-        let mut offset = function;
-        let mut bl_half = 0;
-        let mut finished = false;
-        // Until you detect the end of the function
-        while !finished {
-            if self.is_word(offset) {
-                offset += 4;
-                continue;
-            }
-
-            macro_rules! conditional_jump {
-                ($name:literal, $offset:ident) => {{
-                    let diff = extend_8bit_offset($offset);
-                    let target = offset.wrapping_add(diff as u32) + 4;
-
-                    // Create a label if it does not already exist
-                    let label = if let Some(label) = self.get_label(target) {
-                        label.clone()
-                    } else {
-                        let count = jmplabels.len() + 1;
-                        let new_label = format!("lab_{}.{}", label, count);
-                        jmplabels.insert(target, new_label.clone());
-                        self.add_label(target, new_label.clone());
-                        new_label
-                    };
-
-                    AssemblyInstruction::BranchCond($name, label)
-                }};
-            }
-
-            use AssemblyInstruction::*;
-            use Instruction::*;
-            // Try to decode the instruction at the current offset
-            let lower = self.bytes[offset as usize - 0x08_000_000] as u16;
-            let upper = self.bytes[offset as usize + 1 - 0x08_000_000] as u16;
-            let halfword = lower | (upper << 8);
-
-            let instruction = match Instruction::decode(halfword) {
-                Some(instruction) => match instruction {
-                    // Format 1
-                    LslImm { rd, rs, imm5 } => rdrsimm("lsl", rd, rs, imm5),
-                    LsrImm { rd, rs, imm5 } => rdrsimm("lsr", rd, rs, imm5),
-                    AsrImm { rd, rs, imm5 } => rdrsimm("asr", rd, rs, imm5),
-
-                    // Format 2
-                    AddReg { rd, rs, rn } => rdrsrn("add", rd, rs, rn),
-                    AddImm3 { rd, rs, imm3 } => rdrsimm("add", rd, rs, imm3),
-                    SubReg { rd, rs, rn } => rdrsrn("sub", rd, rs, rn),
-                    SubImm3 { rd, rs, imm3 } => rdrsimm("sub", rd, rs, imm3),
-
-                    // Format 3
-                    MovImm { rd, imm8 } => rdimm("mov", rd, imm8),
-                    CmpImm { rd, imm8 } => rdimm("cmp", rd, imm8),
-                    AddImm8 { rd, imm8 } => rdimm("add", rd, imm8),
-                    SubImm8 { rd, imm8 } => rdimm("sub", rd, imm8),
-
-                    // Format 4
-                    And { rd, rs } => rdrs("and", rd, rs),
-                    Eor { rd, rs } => rdrs("eor", rd, rs),
-                    Lsl { rd, rs } => rdrs("lsl", rd, rs),
-                    Lsr { rd, rs } => rdrs("lsr", rd, rs),
-                    Asr { rd, rs } => rdrs("asr", rd, rs),
-                    Adc { rd, rs } => rdrs("adc", rd, rs),
-                    Sbc { rd, rs } => rdrs("sbc", rd, rs),
-                    Ror { rd, rs } => rdrs("ror", rd, rs),
-                    Tst { rd, rs } => rdrs("tst", rd, rs),
-                    Neg { rd, rs } => rdrs("neg", rd, rs),
-                    Cmp { rd, rs } => rdrs("cmp", rd, rs),
-                    Cmn { rd, rs } => rdrs("cmn", rd, rs),
-                    Orr { rd, rs } => rdrs("orr", rd, rs),
-                    Mul { rd, rs } => rdrs("mul", rd, rs),
-                    Bic { rd, rs } => rdrs("bic", rd, rs),
-                    Mvn { rd, rs } => rdrs("mvn", rd, rs),
-
-                    // Format 5
-                    AddLowHi { rd, hs } => rdrs("add", rd, hs + 8),
-                    AddHiLow { hd, rs } => rdrs("add", hd + 8, rs),
-                    AddHiHi { hd, hs } => rdrs("add", hd + 8, hs + 8),
-                    CmpLowHi { rd, hs } => rdrs("cmp", rd, hs + 8),
-                    CmpHiLow { hd, rs } => rdrs("cmp", hd + 8, rs),
-                    CmpHiHi { hd, hs } => rdrs("cmp", hd + 8, hs + 8),
-                    MovLowHi { rd, hs } => rdrs("mov", rd, hs + 8),
-                    MovHiLow { hd, rs } => rdrs("mov", hd + 8, rs),
-                    MovHiHi { hd, hs } => rdrs("mov", hd + 8, hs + 8),
-                    Bx { rs } => {
-                        finished = true;
-                        Val("bx", Operand::Register(rs.into()))
-                    }
-                    BxHi { hs } => {
-                        finished = true;
-                        Val("bx", Operand::Register((hs + 8).into()))
-                    }
-
-                    // Format 6
-                    LdrPc { rd, imm8 } => {
-                        let off = (imm8 as u32) << 2;
-                        let target = (offset + off + 4) & 0xFFFF_FFFC;
-
-                        let label = if let Some(label) = self.get_label(target) {
-                            label.clone()
-                        } else {
-                            let count = datlabels.len() + 1;
-                            let new_label = format!("dat_{}.{}", label, count);
-                            datlabels.insert(target, new_label.clone());
-                            self.add_label(target, new_label.clone());
-                            new_label
-                        };
-
-                        // Explore the given target
-                        let byte1 = self.bytes[target as usize - 0x08_000_000] as u32;
-                        let byte2 = self.bytes[target as usize + 1 - 0x08_000_000] as u32;
-                        let byte3 = self.bytes[target as usize + 2 - 0x08_000_000] as u32;
-                        let byte4 = self.bytes[target as usize + 3 - 0x08_000_000] as u32;
-                        let word = byte1 | (byte2 << 8) | (byte3 << 16) | (byte4 << 24);
-
-                        let word = DisassembledLine::Word(word);
-                        self.disassembled.insert(target, word);
-
-                        AssemblyInstruction::LoadLabel(rd.into(), label)
-                    }
-
-                    // Format 7
-                    StrReg { rb, ro, rd } => memory_ro("str", rd, rb, ro),
-                    StrbReg { rb, ro, rd } => memory_ro("strb", rd, rb, ro),
-                    LdrReg { rb, ro, rd } => memory_ro("ldr", rd, rb, ro),
-                    LdrbReg { rb, ro, rd } => memory_ro("ldrb", rd, rb, ro),
-
-                    // Format 8
-                    StrhReg { rb, ro, rd } => memory_ro("strh", rd, rb, ro),
-                    LdrhReg { rb, ro, rd } => memory_ro("ldrh", rd, rb, ro),
-                    LdsbReg { rb, ro, rd } => memory_ro("ldsb", rd, rb, ro),
-                    LdshReg { rb, ro, rd } => memory_ro("ldsh", rd, rb, ro),
-
-                    // Format 9
-                    StrImm { rb, imm5, rd } => memory_imm("str", rd, rb, (imm5 as u32) << 2),
-                    LdrImm { rb, imm5, rd } => memory_imm("ldr", rd, rb, (imm5 as u32) << 2),
-                    StrbImm { rb, imm5, rd } => memory_imm("strb", rd, rb, imm5 as u32),
-                    LdrbImm { rb, imm5, rd } => memory_imm("ldrb", rd, rb, imm5 as u32),
-
-                    // Format 10
-                    StrhImm { rb, imm5, rd } => memory_imm("strh", rd, rb, (imm5 as u32) << 1),
-                    LdrhImm { rb, imm5, rd } => memory_imm("ldrh", rd, rb, (imm5 as u32) << 1),
-
-                    // Format 11
-                    StrSpImm { imm8, rs } => memory_imm("str", rs, 13, (imm8 as u32) << 2),
-                    LdrSpImm { imm8, rd } => memory_imm("ldr", rd, 13, (imm8 as u32) << 2),
-
-                    // Format 12
-                    AddPcImm { imm8, rd } => rdrsimm("add", rd, 13, imm8 << 2),
-                    AddSpImm { imm8, rd } => rdrsimm("add", rd, 15, imm8 << 2),
-
-                    // Format 13
-                    AddSpPosImm { imm7 } => rdimm("add", 13, imm7 << 2),
-                    AddSpNegImm { imm7 } => rdimm("sub", 13, imm7 << 2),
-
-                    // Format 14
-                    Push { rlist } => push_pop("push", rlist, None),
-                    PushLr { rlist } => push_pop("push", rlist, Some(Register::LR)),
-                    Pop { rlist } => push_pop("pop", rlist, None),
-                    PopPc { rlist } => {
-                        // If something is popped onto pc, the control flow switches away
-                        finished = true;
-                        push_pop("pop", rlist, Some(Register::PC))
-                    }
-
-                    // Format 15
-                    Stmia { rb, rlist } => stmldmia("stdmia", rlist, rb.into()),
-                    Ldmia { rb, rlist } => stmldmia("ldmia", rlist, rb.into()),
-
-                    // Format 16
-                    Beq { soffset } => conditional_jump!("beq", soffset),
-                    Bne { soffset } => conditional_jump!("bne", soffset),
-                    Bcs { soffset } => conditional_jump!("bcs", soffset),
-                    Bcc { soffset } => conditional_jump!("bcc", soffset),
-                    Bmi { soffset } => conditional_jump!("bmi", soffset),
-                    Bpl { soffset } => conditional_jump!("bpl", soffset),
-                    Bvs { soffset } => conditional_jump!("bvs", soffset),
-                    Bvc { soffset } => conditional_jump!("bvc", soffset),
-                    Bhi { soffset } => conditional_jump!("bhi", soffset),
-                    Bls { soffset } => conditional_jump!("bls", soffset),
-                    Bge { soffset } => conditional_jump!("bge", soffset),
-                    Blt { soffset } => conditional_jump!("blt", soffset),
-                    Bgt { soffset } => conditional_jump!("bgt", soffset),
-                    Ble { soffset } => conditional_jump!("ble", soffset),
-
-                    // Format 17
-                    Swi { imm } => AssemblyInstruction::Val("swi", Operand::Immediate(imm as u32)),
-
-                    // Format 18
-                    B { offset11 } => {
-                        let diff = extend_11bit_offset(offset11);
-                        let target = offset.wrapping_add(diff as u32) + 2;
-
-                        // Create a label if it does not already exist
-                        let label = if let Some(label) = self.get_label(target) {
-                            label.clone()
-                        } else {
-                            let count = jmplabels.len() + 1;
-                            let new_label = format!("lab_{}.{}", label, count);
-                            jmplabels.insert(target, new_label.clone());
-                            self.add_label(target, new_label.clone());
-                            new_label
-                        };
-
-                        AssemblyInstruction::BranchCond("b", label)
-                    }
-
-                    BlHalf {
-                        hi: false,
-                        offset11,
-                    } => {
-                        bl_half = (offset11 as u32) << 12;
-                        offset += 2;
-                        continue;
-                    }
-                    BlHalf { hi: true, offset11 } => {
-                        let diff = bl_half + ((offset11 as u32) << 1);
-                        // Convert the stuff to a offset
-                        let diff = diff as i32;
-                        let diff = (diff << 9) >> 9;
-
-                        let target = offset.wrapping_add(diff as u32) + 2;
-
-                        let prev_lower = self.bytes[offset as usize - 2 - 0x08_000_000];
-                        let prev_upper = self.bytes[offset as usize - 1 - 0x08_000_000];
-
-                        // Add the new target to the functions in the queue
-                        if self.options.recurse_over_function_calls
-                            && !self.visited_functions.contains(&target)
-                        {
-                            self.functions_queue.push(target);
-                        }
-
-                        // TODO Compute correct label
-                        self.disassembled.insert(
-                            offset - 2,
-                            DisassembledLine::Instruction {
-                                instruction: AssemblyInstruction::BranchCond(
-                                    "bl",
-                                    format!("sub_{:08x}", target),
-                                ),
-                                binary: vec![prev_lower, prev_upper, lower as u8, upper as u8],
-                            },
-                        );
-                        offset += 2;
-                        continue;
-                    }
-                },
-                None => break,
-            };
-
-            // Add a decoded instruction to the given offset
-            self.disassembled.insert(
-                offset,
-                DisassembledLine::Instruction {
-                    instruction,
-                    binary: vec![lower as u8, upper as u8],
-                },
-            );
-
-            offset += 2;
-        }
+        // Parse instructions until the function terminates
+        while !self.do_instruction() {}
 
         // Add this function to the list of disassembled ones
         self.visited_functions.insert(function);
     }
 
+    /// Parses a single instruction at the current offset, stores it and updates
+    /// the current offset. Returns true if this instruction terminates the
+    /// function (e.g. a BX LR or a POP {PC}, etc.)
+    fn do_instruction(&mut self) -> bool {
+        // If this offset is a word, skip it
+        if self.is_word(self.current_offset) {
+            self.current_offset += 4;
+            return false;
+        }
+
+        // Read the next two bytes
+        let instruction_offset = self.current_offset;
+        let two_bytes = self.read_two_bytes();
+        let encoded_instruction = u16::from_le_bytes(two_bytes);
+        let mut binary = two_bytes.to_vec();
+
+        // Decode the instruction
+        let instruction = Instruction::decode(encoded_instruction);
+        if instruction.is_none() {
+            // TODO Handle invalid instructions
+            return true;
+        }
+        let instruction = instruction.unwrap();
+        // Some instructions
+        let mut terminates_function = false;
+
+        // Macros for quicker instruction parsing
+        macro_rules! reg {
+            (sp) => {
+                Register::SP
+            };
+            (pc) => {
+                Register::PC
+            };
+            ($reg:ident) => {
+                Register::from($reg).into()
+            };
+        }
+        macro_rules! hireg {
+            ($reg:ident) => {
+                Register::from($reg + 8).into()
+            };
+        }
+        macro_rules! imm {
+            ($imm:ident) => {
+                Operand::Immediate($imm)
+            };
+            ($imm:ident, $shift:literal) => {
+                Operand::Immediate($imm << $shift)
+            };
+        }
+        macro_rules! jump {
+            ($name:literal, $offset:ident) => {{
+                // Parse the actual signed offset from the instruction
+                let signed_offset = extend_8bit_offset($offset);
+                // The PC is always 4 bytes ahead of the current instruction due to prefetching
+                let target = instruction_offset.wrapping_add(signed_offset as u32) + 4;
+
+                AssemblyInstruction::BranchCond($name, self.get_jmp_label(target))
+            }};
+        }
+
+        // Match the decoded instruction to obtain an `AssembledInstruction`
+        use AssemblyInstruction::*;
+        use Instruction::*;
+        let instruction = match instruction {
+            // Format 1
+            LslImm { rd, rs, imm5 } => RdRsVal("lsl", reg!(rd), reg!(rs), imm!(imm5)),
+            LsrImm { rd, rs, imm5 } => RdRsVal("lsr", reg!(rd), reg!(rs), imm!(imm5)),
+            AsrImm { rd, rs, imm5 } => RdRsVal("asr", reg!(rd), reg!(rs), imm!(imm5)),
+            // Format 2
+            AddReg { rd, rs, rn } => RdRsVal("add", reg!(rd), reg!(rs), reg!(rn)),
+            AddImm3 { rd, rs, imm3 } => RdRsVal("add", reg!(rd), reg!(rs), imm!(imm3)),
+            SubReg { rd, rs, rn } => RdRsVal("sub", reg!(rd), reg!(rs), reg!(rn)),
+            SubImm3 { rd, rs, imm3 } => RdRsVal("sub", reg!(rd), reg!(rs), imm!(imm3)),
+            // Format 3
+            MovImm { rd, imm8 } => RdVal("mov", reg!(rd), imm!(imm8)),
+            CmpImm { rd, imm8 } => RdVal("cmp", reg!(rd), imm!(imm8)),
+            AddImm8 { rd, imm8 } => RdVal("add", reg!(rd), imm!(imm8)),
+            SubImm8 { rd, imm8 } => RdVal("sub", reg!(rd), imm!(imm8)),
+            // Format 4
+            And { rd, rs } => RdVal("and", reg!(rd), reg!(rs)),
+            Eor { rd, rs } => RdVal("eor", reg!(rd), reg!(rs)),
+            Lsl { rd, rs } => RdVal("lsl", reg!(rd), reg!(rs)),
+            Lsr { rd, rs } => RdVal("lsr", reg!(rd), reg!(rs)),
+            Asr { rd, rs } => RdVal("asr", reg!(rd), reg!(rs)),
+            Adc { rd, rs } => RdVal("adc", reg!(rd), reg!(rs)),
+            Sbc { rd, rs } => RdVal("sbc", reg!(rd), reg!(rs)),
+            Ror { rd, rs } => RdVal("ror", reg!(rd), reg!(rs)),
+            Tst { rd, rs } => RdVal("tst", reg!(rd), reg!(rs)),
+            Neg { rd, rs } => RdVal("neg", reg!(rd), reg!(rs)),
+            Cmp { rd, rs } => RdVal("cmp", reg!(rd), reg!(rs)),
+            Cmn { rd, rs } => RdVal("cmn", reg!(rd), reg!(rs)),
+            Orr { rd, rs } => RdVal("orr", reg!(rd), reg!(rs)),
+            Mul { rd, rs } => RdVal("mul", reg!(rd), reg!(rs)),
+            Bic { rd, rs } => RdVal("bic", reg!(rd), reg!(rs)),
+            Mvn { rd, rs } => RdVal("mvn", reg!(rd), reg!(rs)),
+            // Format 5
+            AddLowHi { rd, hs } => RdVal("add", reg!(rd), hireg!(hs)),
+            CmpLowHi { rd, hs } => RdVal("cmp", reg!(rd), hireg!(hs)),
+            MovLowHi { rd, hs } => RdVal("mov", reg!(rd), hireg!(hs)),
+            AddHiLow { hd, rs } => RdVal("add", hireg!(hd), reg!(rs)),
+            MovHiLow { hd, rs } => RdVal("mov", hireg!(hd), reg!(rs)),
+            CmpHiLow { hd, rs } => RdVal("cmp", hireg!(hd), reg!(rs)),
+            AddHiHi { hd, hs } => RdVal("add", hireg!(hd), hireg!(hs)),
+            CmpHiHi { hd, hs } => RdVal("cmp", hireg!(hd), hireg!(hs)),
+            MovHiHi { hd, hs } => RdVal("mov", hireg!(hd), hireg!(hs)),
+            Bx { rs } => {
+                terminates_function = true;
+                Val("bx", reg!(rs))
+            }
+            BxHi { hs } => {
+                terminates_function = true;
+                Val("bx", hireg!(hs))
+            }
+            // Format 6
+            LdrPc { rd, imm8 } => {
+                // Get the unsigned offset by which to increment the PC
+                let unsigned_offset = (imm8 as u32) << 2;
+                // Get the target by adding the offset to the PC (which is two steps (4 bytes)
+                // ahead of the current instruction due to prefetching.
+                let target = instruction_offset.wrapping_add(unsigned_offset + 4);
+                // Since the read word must always be byte-aligned, force bit 1 to 0
+                let target = target & !0b10;
+                // Explore the given target
+                self.do_word(target);
+
+                LoadLabel(reg!(rd), self.get_dat_label(target))
+            }
+            // Format 7
+            StrReg { rb, ro, rd } => Mem("str", reg!(rd), reg!(rb), reg!(ro)),
+            StrbReg { rb, ro, rd } => Mem("strb", reg!(rd), reg!(rb), reg!(ro)),
+            LdrReg { rb, ro, rd } => Mem("ldr", reg!(rd), reg!(rb), reg!(ro)),
+            LdrbReg { rb, ro, rd } => Mem("ldrb", reg!(rd), reg!(rb), reg!(ro)),
+            // Format 8
+            StrhReg { rb, ro, rd } => Mem("strh", reg!(rd), reg!(rb), reg!(ro)),
+            LdrhReg { rb, ro, rd } => Mem("ldrh", reg!(rd), reg!(rb), reg!(ro)),
+            LdsbReg { rb, ro, rd } => Mem("ldsb", reg!(rd), reg!(rb), reg!(ro)),
+            LdshReg { rb, ro, rd } => Mem("ldsh", reg!(rd), reg!(rb), reg!(ro)),
+            // Format 9
+            StrImm { rb, imm5, rd } => Mem("str", reg!(rd), reg!(rb), imm!(imm5, 2)),
+            LdrImm { rb, imm5, rd } => Mem("ldr", reg!(rd), reg!(rb), imm!(imm5, 2)),
+            StrbImm { rb, imm5, rd } => Mem("strb", reg!(rd), reg!(rb), imm!(imm5)),
+            LdrbImm { rb, imm5, rd } => Mem("ldrb", reg!(rd), reg!(rb), imm!(imm5)),
+            // Format 10
+            StrhImm { rb, imm5, rd } => Mem("strh", reg!(rd), reg!(rb), imm!(imm5, 1)),
+            LdrhImm { rb, imm5, rd } => Mem("ldrh", reg!(rd), reg!(rb), imm!(imm5, 1)),
+            // Format 11
+            StrSpImm { imm8, rs } => Mem("str", reg!(rs), reg!(sp), imm!(imm8, 2)),
+            LdrSpImm { imm8, rd } => Mem("ldr", reg!(rd), reg!(sp), imm!(imm8, 2)),
+            // Format 12
+            AddPcImm { imm8, rd } => RdRsVal("add", reg!(rd), reg!(pc), imm!(imm8, 2)),
+            AddSpImm { imm8, rd } => RdRsVal("add", reg!(rd), reg!(sp), imm!(imm8, 2)),
+            // Format 13
+            AddSpPosImm { imm7 } => RdVal("add", reg!(sp), imm!(imm7, 2)),
+            AddSpNegImm { imm7 } => RdVal("sub", reg!(sp), imm!(imm7, 2)),
+            // Format 14
+            Push { rlist } => parse_push_or_pop("push", rlist, None),
+            PushLr { rlist } => parse_push_or_pop("push", rlist, Some(Register::LR)),
+            Pop { rlist } => parse_push_or_pop("pop", rlist, None),
+            PopPc { rlist } => {
+                // If something is popped onto pc, the control flow switches away
+                terminates_function = true;
+                parse_push_or_pop("pop", rlist, Some(Register::PC))
+            }
+            // Format 15
+            Stmia { rb, rlist } => parse_stmia_or_ldmia("stdmia", rlist, reg!(rb)),
+            Ldmia { rb, rlist } => parse_stmia_or_ldmia("ldmia", rlist, reg!(rb)),
+            // Format 16
+            Beq { soffset } => jump!("beq", soffset),
+            Bne { soffset } => jump!("bne", soffset),
+            Bcs { soffset } => jump!("bcs", soffset),
+            Bcc { soffset } => jump!("bcc", soffset),
+            Bmi { soffset } => jump!("bmi", soffset),
+            Bpl { soffset } => jump!("bpl", soffset),
+            Bvs { soffset } => jump!("bvs", soffset),
+            Bvc { soffset } => jump!("bvc", soffset),
+            Bhi { soffset } => jump!("bhi", soffset),
+            Bls { soffset } => jump!("bls", soffset),
+            Bge { soffset } => jump!("bge", soffset),
+            Blt { soffset } => jump!("blt", soffset),
+            Bgt { soffset } => jump!("bgt", soffset),
+            Ble { soffset } => jump!("ble", soffset),
+            // Format 17
+            Swi { imm } => Val("swi", imm!(imm)),
+            // Format 18
+            B { offset11 } => {
+                // Get the signed 12 bit offset to add to the target
+                let signed_offset = extend_11bit_offset(offset11);
+                let target = instruction_offset.wrapping_add(signed_offset as u32) + 2;
+
+                BranchCond("b", self.get_jmp_label(target))
+            }
+            // Format 19
+            BlHalf { hi, offset11 } => {
+                // If we find the high instruction on its own, it's pretty likely it is invalid,
+                // so we can skip this instruction altogether.
+                if hi == true {
+                    // TODO Handle invalid instructions
+                    return true;
+                }
+
+                // Decode the next instruction
+                let next_two_bytes = self.read_two_bytes();
+                let next_opcode = u16::from_le_bytes(next_two_bytes);
+                let next_offset11 = match Instruction::decode(next_opcode) {
+                    // The only valid case is a BlHalf with hi set to true
+                    Some(BlHalf { hi: true, offset11 }) => offset11,
+                    // All other cases are invalid
+                    _ => {
+                        // TODO Handle invalid instructions
+                        return true;
+                    }
+                } as u32;
+
+                // Compose the signed difference
+                let offset_bits = ((offset11 as u32) << 12) + (next_offset11 << 1);
+                // Then convert make it actually signed
+                let signed_offset = offset_bits as i32;
+                let signed_offset = (signed_offset << 9) >> 9;
+
+                // Since the instruction offset is still at the previous instruction we have to add 4
+                let target = instruction_offset.wrapping_add(signed_offset as u32) + 4;
+
+                // Add the new target to the functions in the queue
+                if self.options.recurse_over_function_calls
+                    && !self.visited_functions.contains(&target)
+                {
+                    self.functions_queue.push(target);
+                }
+
+                // Fill in the complete instruction bytes
+                binary.extend(next_two_bytes);
+
+                // TODO Get the correct function label
+                let label = match self.get_label(target) {
+                    Some(label) => label.clone(),
+                    None => format!("sub_{:08x}", target),
+                };
+
+                BranchCond("bl", label)
+            }
+        };
+
+        // Construct the line
+        self.disassembled.insert(
+            instruction_offset,
+            DisassembledLine::Instruction {
+                instruction,
+                binary,
+            },
+        );
+
+        terminates_function
+    }
+
+    /// Parse a word data and create a line for it
+    fn do_word(&mut self, target: u32) {
+        let byte1 = self.bytes[target as usize - 0x08_000_000] as u32;
+        let byte2 = self.bytes[target as usize + 1 - 0x08_000_000] as u32;
+        let byte3 = self.bytes[target as usize + 2 - 0x08_000_000] as u32;
+        let byte4 = self.bytes[target as usize + 3 - 0x08_000_000] as u32;
+        let word = byte1 | (byte2 << 8) | (byte3 << 16) | (byte4 << 24);
+
+        let word = DisassembledLine::Word(word);
+        self.disassembled.insert(target, word);
+    }
+
+    // ANCHOR Utilities
+    /// Read the next two bytes
+    fn read_two_bytes(&mut self) -> [u8; 2] {
+        let lower = self.bytes[self.current_offset as usize - 0x08_000_000];
+        let upper = self.bytes[self.current_offset as usize - 0x08_000_000 + 1];
+
+        self.current_offset += 2;
+
+        [lower, upper]
+    }
     /// Obtain the label name at the given offset
     fn get_label(&'a self, offset: u32) -> Option<&'a String> {
         if let Some(imported) = self.options.imported_labels {
@@ -415,12 +453,10 @@ impl<'a> DisassemblyState<'a, 'a> {
 
         self.labels.get(&offset)
     }
-
     /// Adds a label to the local labels
     fn add_label(&mut self, offset: u32, label: String) {
         self.labels.insert(offset, label);
     }
-
     /// Returns true if the given offset is already a parsed word
     fn is_word(&mut self, offset: u32) -> bool {
         matches!(
@@ -428,9 +464,39 @@ impl<'a> DisassemblyState<'a, 'a> {
             Some(DisassembledLine::Word(_))
         )
     }
+    /// Get the label for the given dat_ reference
+    fn get_dat_label(&mut self, target: u32) -> String {
+        match self.get_label(target) {
+            // If there is already a label with that target, return it
+            Some(label) => label.clone(),
+            // Otherwise, build a new one
+            None => {
+                let new_label = format!("dat_{:08x}", target);
+                self.add_label(target, new_label.clone());
+                new_label
+            }
+        }
+    }
+    /// Get the label for the given branch_reference
+    fn get_jmp_label(&mut self, target: u32) -> String {
+        match self.get_label(target) {
+            // If there is already a label with that target, return it
+            Some(label) => label.clone(),
+            // Otherwise, build a new one
+            None => {
+                self.current_function_branching_sub_count += 1;
+                let new_label = format!(
+                    "lab_{}.{}",
+                    self.current_function_label, self.current_function_branching_sub_count
+                );
+                self.add_label(target, new_label.clone());
+                new_label
+            }
+        }
+    }
 
     // ANCHOR Printing
-    fn create_string(&self) -> String {
+    pub fn create_string(&self) -> String {
         let mut res = String::new();
         match self.create_string_inner(&mut res) {
             Ok(_) => res,
@@ -523,8 +589,7 @@ impl<'a> DisassemblyState<'a, 'a> {
         use AssemblyInstruction::*;
 
         match i {
-            Nop => write!(f, "{:?}", i),
-            MemoryOperation(op, rd, rb, off) => {
+            Mem(op, rd, rb, off) => {
                 self.print_operator(f, op)?;
                 write!(f, " ")?;
                 self.print_register(f, *rd)?;
@@ -631,26 +696,11 @@ impl<'a> DisassemblyState<'a, 'a> {
 }
 
 // ANCHOR Helpers
-fn rdrsimm(name: &'static str, rd: u8, rs: u8, imm: u8) -> AssemblyInstruction {
-    AssemblyInstruction::RdRsVal(name, rd.into(), rs.into(), Operand::Immediate(imm as u32))
-}
-fn rdrsrn(name: &'static str, rd: u8, rs: u8, rn: u8) -> AssemblyInstruction {
-    AssemblyInstruction::RdRsVal(name, rd.into(), rs.into(), Operand::Register(rn.into()))
-}
-fn rdimm(name: &'static str, rd: u8, imm: u8) -> AssemblyInstruction {
-    AssemblyInstruction::RdVal(name, rd.into(), Operand::Immediate(imm as u32))
-}
-fn rdrs(name: &'static str, rd: u8, rs: u8) -> AssemblyInstruction {
-    AssemblyInstruction::RdVal(name, rd.into(), Operand::Register(rs.into()))
-}
-fn memory_imm(name: &'static str, rd: u8, rb: u8, offset: u32) -> AssemblyInstruction {
-    AssemblyInstruction::MemoryOperation(name, rd.into(), rb.into(), Operand::Immediate(offset))
-}
-fn memory_ro(name: &'static str, rd: u8, rb: u8, ro: u8) -> AssemblyInstruction {
-    AssemblyInstruction::MemoryOperation(name, rd.into(), rb.into(), Operand::Register(ro.into()))
-}
-
-fn push_pop(name: &'static str, rlist: u8, other: Option<Register>) -> AssemblyInstruction {
+fn parse_push_or_pop(
+    name: &'static str,
+    rlist: u8,
+    other: Option<Register>,
+) -> AssemblyInstruction {
     let mut registers = get_registers_in_rlist(rlist)
         .iter()
         .map(|reg| (*reg).into())
@@ -663,7 +713,7 @@ fn push_pop(name: &'static str, rlist: u8, other: Option<Register>) -> AssemblyI
     AssemblyInstruction::PushPop(name, registers)
 }
 
-fn stmldmia(name: &'static str, rlist: u8, reg: Register) -> AssemblyInstruction {
+fn parse_stmia_or_ldmia(name: &'static str, rlist: u8, reg: Register) -> AssemblyInstruction {
     let registers = get_registers_in_rlist(rlist)
         .iter()
         .map(|reg| (*reg).into())

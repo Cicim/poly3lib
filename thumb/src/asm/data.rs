@@ -106,14 +106,13 @@ impl Display for Register {
 #[derive(Debug)]
 pub enum Operand {
     Register(Register),
-    Immediate(u32),
+    Immediate(u8),
 }
 
-#[derive(Debug)]
-pub enum MemoryOperand {
-    Register(Register),
-    Immediate(u8),
-    Label(Label),
+impl From<Register> for Operand {
+    fn from(val: Register) -> Self {
+        Operand::Register(val)
+    }
 }
 
 pub type Operator = &'static str;
@@ -122,17 +121,11 @@ pub type Label = String;
 #[derive(Debug)]
 /// Instructions as seen by the final user
 pub enum AssemblyInstruction {
-    /// An assembly instruction that compiles to
-    /// ```
-    /// LSL r0, r0, #0
-    /// ```
-    Nop,
-
     /// ```
     /// OP Rd, [Rb, Ro]
     /// OP Rd, [Rb, #offset]
     /// ```
-    MemoryOperation(Operator, Register, Register, Operand),
+    Mem(Operator, Register, Register, Operand),
 
     /// ```
     /// OP Rd, Rs, Rn
