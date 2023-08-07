@@ -1,7 +1,9 @@
 use std::{collections::HashMap, fmt::Display};
 
-use gba_types::GBAIOError;
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
+use gba_types::GBAIOError;
 
 use crate::rom::Rom;
 
@@ -75,16 +77,17 @@ pub struct Refs {
     pub wilds_table: Option<TablePointer>,
 }
 
-macro_rules! write_field {
-    ($name:ident, $f:ident, $value:expr) => {
-        if let Some(table) = &$value {
-            writeln!($f, "  {}: {}", stringify!($name), table)?;
-        }
-    };
-}
 impl Display for Refs {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use colored::Colorize;
+
+        macro_rules! write_field {
+            ($name:ident, $f:ident, $value:expr) => {
+                if let Some(table) = &$value {
+                    writeln!($f, "  {}: {}", stringify!($name), table)?;
+                }
+            };
+        }
 
         // If every field is None
         if self.map_groups.is_none() && self.map_layouts_table.is_none() {
@@ -104,6 +107,7 @@ impl Display for Refs {
 
         write_field!(map_layouts_table, f, self.map_layouts_table);
         write_field!(mapsec_name_table, f, self.mapsec_name_table);
+        write_field!(wilds_table, f, self.wilds_table);
 
         if let Some(table) = &self.tilesets_table {
             writeln!(f, "  tilesets_table:")?;
@@ -127,41 +131,14 @@ impl Display for Refs {
     }
 }
 
-impl Rom {
-    /// Returns all offsets in the ROM that contain a reference
-    /// to the given `offset`.
-    pub fn find_references(&self, offset: usize) -> Vec<usize> {
-        fast_ops::find_references(&self.data, offset, 4)
-    }
-
-    /// Returns all offsets in the ROM that contain a reference
-    /// to the given `offset`, ignoring alignment.
-    pub fn find_references_unaligned(&self, offset: usize) -> Vec<usize> {
-        fast_ops::find_references(&self.data, offset, 1)
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Error)]
 pub enum TableInitError {
+    #[error("Not implemented for this ROM type")]
     NotImplemented,
+    #[error("Invalid table pointer")]
     InvalidTablePointer,
+    #[error("Table goes out of bounds")]
     TableGoesOutOfBounds,
-}
-
-impl Display for TableInitError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use TableInitError::*;
-
-        write!(
-            f,
-            "{}",
-            match self {
-                NotImplemented => "Not implemented",
-                InvalidTablePointer => "Invalid table pointer",
-                TableGoesOutOfBounds => "Table goes out of bounds",
-            },
-        )
-    }
 }
 
 impl Refs {

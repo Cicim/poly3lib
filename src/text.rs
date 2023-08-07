@@ -1,4 +1,5 @@
 use gba_types::GBAIOError;
+use thiserror::Error;
 
 use crate::rom::Rom;
 
@@ -310,26 +311,26 @@ pub enum TextToken {
     /// A normal symbol (in the range 0x00-0xF6)
     Symbol(u8),
 
-    /// [0xF7] Dynamic text got from elsewhere
+    /// `0xF7` Dynamic text got from elsewhere
     Dynamic,
-    /// [0xF8] Keypad icon. The next byte is the icon index.
+    /// `0xF8` Keypad icon. The next byte is the icon index.
     KeyPadIcon(TextKeyPadIcon),
-    /// [0xF9] Extra symbol. The next byte is the symbol index.
+    /// `0xF9` Extra symbol. The next byte is the symbol index.
     ExtraSymbol(TextExtraSymbol),
-    /// [0xFA] Waits for button press and scrolls dialog
+    /// `0xFA` Waits for button press and scrolls dialog
     PromptScroll,
-    /// [0xFB] Waits for button press and clears dialog
+    /// `0xFB` Waits for button press and clears dialog
     PromptClear,
-    /// [0xFC] A code for specifying placeholder text. The next byte is the placeholder index.
+    /// `0xFC` A code for specifying placeholder text. The next byte is the placeholder index.
     PlaceHolder(TextPlaceHolder),
-    /// [0xFD] Extended control code. The next byte is the control code.
+    /// `0xFD` Extended control code. The next byte is the control code.
     ExtCtrlCode(TextExtCtrlCode),
-    /// [0xFD 0x01] Color. The next byte is the color index.
+    /// `0xFD`0x01] Color. The next byte is the color index.
     Color(TextColor),
-    /// [0xFE] Newline
+    /// `0xFE` Newline
     NewLine,
 
-    /// [0xFF] Not read
+    /// `0xFF` Not read
     EOS,
 }
 
@@ -378,12 +379,19 @@ impl TextToken {
     }
 }
 
+#[derive(Error, Debug)]
 pub enum TextError {
-    InvalidOffset,
+    #[error("Invalid offset {0}")]
+    InvalidOffset(usize),
+    #[error("Invalid keypad icon symbol {0}")]
     InvalidKeyPadIcon(u8),
+    #[error("Invalid extra symbol {0}")]
     InvalidExtraSymbol(u8),
+    #[error("Invalid placeholder {0}")]
     InvalidPlaceHolder(u8),
+    #[error("Invalid extended control code {0}")]
     InvalidExtCtrlCode(u8),
+    #[error("Invalid color {0}")]
     InvalidColor(u8),
 }
 
@@ -437,7 +445,7 @@ impl Rom {
         while length < MAX_TEXT_LENGTH {
             let codepoint: u8 = self
                 .read(offset + length)
-                .map_err(|_| TextError::InvalidOffset)?;
+                .map_err(|_| TextError::InvalidOffset(offset + length))?;
             length += 1;
 
             tokens.push(match codepoint {
@@ -456,7 +464,7 @@ impl Rom {
                     // All other codes need at least an extra byte
                     let specifier: u8 = self
                         .read(offset + length)
-                        .map_err(|_| TextError::InvalidOffset)?;
+                        .map_err(|_| TextError::InvalidOffset(offset + length))?;
                     length += 1;
 
                     match codepoint {
@@ -468,7 +476,7 @@ impl Rom {
                             if specifier == 1 {
                                 let color: u8 = self
                                     .read(offset + length)
-                                    .map_err(|_| TextError::InvalidOffset)?;
+                                    .map_err(|_| TextError::InvalidOffset(offset + length))?;
                                 length += 1;
                                 TextToken::Color(TextColor::try_from(color)?)
                             } else {

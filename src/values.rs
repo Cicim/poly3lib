@@ -1,10 +1,12 @@
-use std::fmt::Display;
+use thiserror::Error;
 
 use crate::rom::{Rom, RomType};
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum ValueGrabError {
+    #[error("The value cannot be grabbed on this ROM type")]
     NotImplemented,
+    #[error("The offset is invalid")]
     InvalidOffset,
 }
 
@@ -58,14 +60,5 @@ impl Rom {
             RomType::FireRed | RomType::LeafGreen | RomType::Emerald => 13,
             RomType::Ruby | RomType::Sapphire => 12,
         })
-    }
-}
-
-impl Display for ValueGrabError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ValueGrabError::NotImplemented => write!(f, "Rom type not implemented"),
-            ValueGrabError::InvalidOffset => write!(f, "Invalid offset"),
-        }
     }
 }

@@ -3,6 +3,8 @@ use std::fmt::Display;
 use std::fs::File;
 use std::io::{Read, Write};
 
+use thiserror::Error;
+
 use gba_types::lz77::*;
 use gba_types::{GBAIOError, GBAType};
 use thumb::Processor;
@@ -48,44 +50,17 @@ pub struct Rom {
     pub refs: Refs,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum RomError {
+    #[error("IO error: {0}")]
     IoError(std::io::Error),
-    InvalidType([u8; 4]),
+    #[error("This ROM is not supported: {0}")]
+    UnsupportedRomType(String),
+    #[error("The file is not a ROM: the identifier is invalid")]
+    InvalidRomIdentifier,
+    #[error("{} is not a valid ROM size", with_appropriate_byte_unit(.0))]
     InvalidSize(usize),
 }
-
-impl Display for RomError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        use RomError::*;
-        match self {
-            IoError(e) => write!(f, "IO error: {}", e),
-            InvalidType(code) => {
-                let a = code[0] as char;
-                let b = code[1] as char;
-                let c = code[2] as char;
-                let d = code[3] as char;
-
-                // If none of them is an uppercase letter
-                if !a.is_ascii_uppercase()
-                    || !b.is_ascii_uppercase()
-                    || !c.is_ascii_uppercase()
-                    || !d.is_ascii_uppercase()
-                {
-                    return write!(f, "The file is not a ROM: the identifier is invalid");
-                }
-
-                write!(f, "'{}{}{}{}' is not a supported ROM type", a, b, c, d)
-            }
-            InvalidSize(size) => {
-                let bytes = byte_unit::Byte::from_bytes(*size as u64);
-                let bytes = bytes.get_appropriate_unit(true);
-                write!(f, "{} is not a valid ROM size", bytes)
-            }
-        }
-    }
-}
-
 impl Rom {
     /// Loads the ROM into memory.
     pub fn load(path: &str) -> Result<Self, RomError> {
@@ -110,7 +85,17 @@ impl Rom {
             b"BPRE" => RomType::FireRed,
             b"BPGE" => RomType::LeafGreen,
             b"BPEE" => RomType::Emerald,
-            code => return Err(RomError::InvalidType(code.try_into().unwrap())),
+            code => {
+                // If there is any character that is not an ASCII uppercase
+                return if code.iter().any(|x| !x.is_ascii_uppercase()) {
+                    // This is not a rom
+                    Err(RomError::InvalidRomIdentifier)
+                } else {
+                    // Since it's all uppercase, convert the code to a string
+                    let code = String::from_utf8_lossy(code).to_string();
+                    Err(RomError::UnsupportedRomType(code))
+                };
+            }
         };
 
         // Check if the reference file exists
@@ -297,6 +282,18 @@ impl Rom {
         fast_ops::find_free_space(&self.data, size, align)
     }
 
+    /// Returns all offsets in the ROM that contain a reference
+    /// to the given `offset`.
+    pub fn find_references(&self, offset: usize) -> Vec<usize> {
+        fast_ops::find_references(&self.data, offset, 4)
+    }
+
+    /// Returns all offsets in the ROM that contain a reference
+    /// to the given `offset`, ignoring alignment.
+    pub fn find_references_unaligned(&self, offset: usize) -> Vec<usize> {
+        fast_ops::find_references(&self.data, offset, 1)
+    }
+
     /// Find out if the data needs a new place in ROM and if so, find it.
     /// Return the offset of the data in ROM, whether it changed or not.
     /// In case everything succeeds, clear all the old data.
@@ -363,4 +360,10 @@ impl Rom {
     pub fn get_cpu(&self) -> Processor {
         Processor::new(&self.data)
     }
+}
+
+fn with_appropriate_byte_unit(size: &usize) -> String {
+    let bytes = byte_unit::Byte::from_bytes(*size as u64);
+    let bytes = bytes.get_appropriate_unit(true);
+    format!("{}", bytes)
 }
