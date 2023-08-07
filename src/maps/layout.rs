@@ -1,10 +1,9 @@
-use std::fmt::Display;
-
 use serde::Serialize;
 
 use gba_macro::gba_struct;
 use gba_types::pointers::{Nothing, PointedData};
 use gba_types::{GBAIOError, GBAType};
+use thiserror::Error;
 
 use crate::refs::{TableInitError, TablePointer};
 use crate::rom::{Rom, RomType};
@@ -132,46 +131,36 @@ pub struct MapLayoutData {
 }
 
 /// Error type for map layout operations.
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum LayoutError {
+    #[error("Layout table not initialized")]
     LayoutTableNotInitialized,
 
+    #[error("Layout indices start at 1")]
     IndicesStartAtOne,
-    MissingLayout,
+    #[error("Layout {0} is missing the header")]
+    MissingLayout(u16),
+    #[error("Layout {0} is out of bounds")]
     IndexOutOfBounds(u16),
 
+    #[error("Invalid layout offset {0:#010x}")]
     InvalidOffset(u32),
-
-    CannotGetBitsPerBlock,
+    #[error("Invalid map data offset")]
     InvalidMap,
 
+    #[error("Cannot repoint the map layout table")]
     CannotRepointTable,
-    CannotRepointMap,
+    #[error("Cannot repoint layout header")]
     CannotRepointHeader,
+    #[error("Cannot repoint map data")]
+    CannotRepointMap,
+    #[error("The map layout table is full")]
     TableFull,
 
-    IoError(GBAIOError),
-}
-
-impl Display for LayoutError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use LayoutError::*;
-
-        match self {
-            LayoutTableNotInitialized => write!(f, "Layout table not initialized"),
-            IndicesStartAtOne => write!(f, "Layout indices start at 1"),
-            MissingLayout => write!(f, "Missing layout"),
-            IndexOutOfBounds(id) => write!(f, "Layout index {} is out of bounds", id),
-            InvalidOffset(offset) => write!(f, "Invalid layout offset: ${:#08X}", offset),
-            CannotGetBitsPerBlock => write!(f, "Cannot retrieve the number of bits per block"),
-            InvalidMap => write!(f, "Invalid map"),
-            CannotRepointTable => write!(f, "Cannot repoint the layout table"),
-            CannotRepointMap => write!(f, "Cannot repoint the map data"),
-            CannotRepointHeader => write!(f, "Cannot repoint the layout header"),
-            TableFull => write!(f, "Layout table is full"),
-            IoError(err) => write!(f, "IO error: {}", err),
-        }
-    }
+    #[error("Cannot get the number of bits per block")]
+    CannotGetBitsPerBlock,
+    #[error("IO Error")]
+    IoError(#[from] GBAIOError),
 }
 
 /// Table of map layouts. Provides methods for editing the table.
@@ -220,27 +209,23 @@ impl<'rom> MapLayoutsTable<'rom> {
         self.write_offset_to_table(index, None)?;
 
         // Read the header, then delete it from ROM
-        let header = MapLayout::read(self.rom, header_offset).map_err(LayoutError::IoError)?;
+        let header = MapLayout::read(self.rom, header_offset)?;
 
         // Get the correct layout size
-        MapLayout::clear(self.rom, header_offset).map_err(LayoutError::IoError)?;
+        MapLayout::clear(self.rom, header_offset)?;
 
         // If the map data is valid, delete it
         if let Some(map_offset) = header.data.offset() {
             let map_size = (header.width * header.height * 2) as usize;
             // Delete the map data
-            self.rom
-                .clear(map_offset as usize, map_size)
-                .map_err(LayoutError::IoError)?;
+            self.rom.clear(map_offset as usize, map_size)?;
         }
         // If the border data is valid, delete it
         if let Some(border_offset) = header.border.offset() {
             let border_size =
                 (header.border_width as i32 * header.border_height as i32 * 2) as usize;
             // Delete the border data
-            self.rom
-                .clear(border_offset as usize, border_size)
-                .map_err(LayoutError::IoError)?;
+            self.rom.clear(border_offset as usize, border_size)?;
         }
 
         Ok(())
@@ -378,7 +363,7 @@ impl<'rom> MapLayoutsTable<'rom> {
     /// Reads the map layout header at the given index.
     fn read_header(&self, index: u16) -> Result<MapLayout, LayoutError> {
         let offset = self.get_header_offset(index)?;
-        MapLayout::read(self.rom, offset).map_err(LayoutError::IoError)
+        Ok(MapLayout::read(self.rom, offset)?)
     }
 
     /// Writes the map layout header at the given index.
@@ -390,7 +375,7 @@ impl<'rom> MapLayoutsTable<'rom> {
         let offset = match self.get_header_offset(index) {
             Ok(offset) => offset,
             // If the offset is invalid, find new space for the header
-            Err(LayoutError::InvalidOffset(_)) | Err(LayoutError::MissingLayout) => self
+            Err(LayoutError::InvalidOffset(_)) | Err(LayoutError::MissingLayout(_)) => self
                 .rom
                 .find_free_space(MapLayout::size(self.rom), 4)
                 .ok_or_else(|| LayoutError::CannotRepointHeader)?,
@@ -402,7 +387,7 @@ impl<'rom> MapLayoutsTable<'rom> {
         self.write_offset_to_table(index, Some(offset))?;
 
         // Write the header itself
-        header.write(self.rom, offset).map_err(LayoutError::IoError)
+        Ok(header.write(self.rom, offset)?)
     }
 
     // ANCHOR Header offset
@@ -420,10 +405,10 @@ impl<'rom> MapLayoutsTable<'rom> {
 
         // Get the map layout
         let offset = layouts.offset + (index as usize - 1) * 4;
-        if self.rom.read::<u32>(offset).map_err(LayoutError::IoError)? == 0 {
-            return Err(LayoutError::MissingLayout);
+        if self.rom.read::<u32>(offset)? == 0 {
+            return Err(LayoutError::MissingLayout(index));
         }
-        self.rom.read_ptr(offset).map_err(LayoutError::IoError)
+        Ok(self.rom.read_ptr(offset)?)
     }
 
     /// Returns the first free index in the table
@@ -437,7 +422,7 @@ impl<'rom> MapLayoutsTable<'rom> {
 
         for i in 1..=self.len() {
             let offset = table.offset + (i as usize - 1) * 4;
-            if self.rom.read::<u32>(offset).map_err(LayoutError::IoError)? == 0 {
+            if self.rom.read::<u32>(offset)? == 0 {
                 return Ok(i);
             }
         }
@@ -499,20 +484,16 @@ impl<'rom> MapLayoutsTable<'rom> {
         let table = self.get_table()?;
         let offset_offset = table.offset + (index as usize - 1) * 4;
 
-        match offset {
+        Ok(match offset {
             Some(offset) => {
                 // Write the offset to the table
-                self.rom
-                    .write_ptr(offset_offset, offset)
-                    .map_err(LayoutError::IoError)
+                self.rom.write_ptr(offset_offset, offset)?
             }
             None => {
                 // Write 0 to the table
-                self.rom
-                    .write(offset_offset, 0u32)
-                    .map_err(LayoutError::IoError)
+                self.rom.write(offset_offset, 0u32)?
             }
-        }
+        })
     }
 }
 
@@ -628,7 +609,7 @@ fn write_new_map_data(rom: &mut Rom, map: &MapData) -> Result<usize, LayoutError
     for (y, row) in map.iter().enumerate() {
         for (x, tile) in row.iter().enumerate() {
             let offset = offset + (y * map[0].len() + x) * 2;
-            rom.write(offset, *tile).map_err(LayoutError::IoError)?;
+            rom.write(offset, *tile)?;
         }
     }
 
@@ -662,7 +643,7 @@ fn write_over_map_data(
             let block = *metatile | (permission << 10);
 
             let offset = offset + (y * map[0].len() + x) * 2;
-            rom.write(offset, block).map_err(LayoutError::IoError)?;
+            rom.write(offset, block)?;
         }
     }
 
@@ -697,7 +678,7 @@ mod tests {
         ] {
             assert!(matches!(
                 table.read_header(index),
-                Err(LayoutError::MissingLayout),
+                Err(LayoutError::MissingLayout(_)),
             ));
         }
 

@@ -1,14 +1,21 @@
+use thiserror::Error;
+
 use crate::GBAIOError;
 
 // An unreasonable size for a decompressed size of a GBA graphics
 const MAX_DECOMPRESSED_SIZE: u32 = 0x080000;
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Error)]
 pub enum Lz77ReadingError {
+    #[error("Invalid offset: {0}")]
     InvalidOffset(usize),
+    #[error("Invalid Lz77 magic")]
     InvalidMagic,
+    #[error("Invalid compressed length")]
     InvalidLength,
+    #[error("Lookup offset out of bounds")]
     LookupOffsetOutOfBounds,
+    #[error("Unexpected end of input")]
     UnexpectedEndOfInput,
 }
 

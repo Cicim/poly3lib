@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter};
+use thiserror::Error;
 
 /// Provides support for the LZ77 compression algorithm.
 pub mod lz77;
@@ -21,14 +21,20 @@ pub mod colors;
 pub mod tiles;
 
 /// An error that may occur when trying to read data from a ROM.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Error)]
 pub enum GBAIOError {
-    Unknown(&'static str),
+    #[error("Invalid offset: ${0:07X}")]
     InvalidOffset(u32),
+    #[error("Misaligned offset: ${0:07X} (alignment: {1})")]
     MisalignedOffset(u32, u32),
+    #[error("Writing invalid pointer: {0:#010X}")]
     WritingInvalidPointer(u32),
+    #[error("Repointing error")]
     RepointingError,
-    Lz77Error(lz77::Lz77ReadingError),
+    #[error("Lz77 error: {0}")]
+    Lz77Error(#[from] lz77::Lz77ReadingError),
+    #[error("Unknown error: {0}")]
+    Unknown(&'static str),
 }
 
 pub trait GBAType: Sized + std::fmt::Debug {
@@ -38,22 +44,4 @@ pub trait GBAType: Sized + std::fmt::Debug {
     fn read_from(bytes: &[u8], offset: usize) -> Result<Self, GBAIOError>;
     /// Write a value of this type to the given byte slice at the given offset.
     fn write_to(&self, bytes: &mut [u8], offset: usize) -> Result<(), GBAIOError>;
-}
-
-impl Display for GBAIOError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        use GBAIOError::*;
-        match self {
-            Unknown(s) => write!(f, "Unknown error: {}", s),
-            InvalidOffset(offset) => write!(f, "Invalid offset: ${:07X}", offset),
-            MisalignedOffset(offset, alignment) => write!(
-                f,
-                "Misaligned offset: ${:08X} (alignment: {})",
-                offset, alignment
-            ),
-            WritingInvalidPointer(offset) => write!(f, "Writing invalid pointer: {:#010X}", offset),
-            RepointingError => write!(f, "Repointing error"),
-            Lz77Error(e) => write!(f, "Lz77 error: {:?}", e),
-        }
-    }
 }

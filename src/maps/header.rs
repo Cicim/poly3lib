@@ -1,8 +1,8 @@
-use std::fmt::Display;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use gba_macro::gba_struct;
 use gba_types::{pointers::PointedData, GBAIOError, GBAType};
-use serde::{Deserialize, Serialize};
 
 use crate::{
     refs::{TableInitError, TablePointer},
@@ -241,53 +241,32 @@ pub struct MapHeaderData {
     pub map_scripts: Option<MapScripts>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum MapError {
+    #[error("Map table not initialized")]
     MapTableNotInitialized,
 
+    #[error("Invalid map index {0}.{1}")]
     InvalidIndex(u8, u8),
+    #[error("Invalid offset {2:08x} for map {0}.{1}")]
     InvalidOffset(u8, u8, u32),
-
-    InvalidResizeLength(usize),
-    InvalidGroupToResize(u8),
-    CannotRepointTable,
-    CannotRepointHeader,
+    #[error("Invalid map layout id {0}")]
     InvalidLayout(u16),
 
-    IoError(GBAIOError),
-    MissingHeader,
-}
+    #[error("Trying to maps or group table to an invalid size: {0}")]
+    InvalidResizeLength(usize),
+    #[error("Invalid group selected for resizing: {0}")]
+    InvalidGroupToResize(u8),
+    #[error("Cannot repoint map table")]
+    CannotRepointTable,
+    #[error("Cannot repoint map header")]
+    CannotRepointHeader,
 
-impl Display for MapError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use MapError::*;
+    #[error(transparent)]
+    IoError(#[from] GBAIOError),
 
-        match self {
-            MapTableNotInitialized => write!(f, "Map table not initialized"),
-
-            InvalidIndex(group, index) => {
-                write!(f, "{}.{} is not a valid map", group, index)
-            }
-            InvalidOffset(group, index, offset) => write!(
-                f,
-                "{}.{} has an invalid offset: ${:06X}",
-                group, index, offset
-            ),
-
-            InvalidResizeLength(len) => {
-                write!(f, "Invalid length to resize map table: {}", len)
-            }
-            InvalidGroupToResize(group) => {
-                write!(f, "Invalid group to resize: {}", group)
-            }
-            CannotRepointTable => write!(f, "Cannot repoint map table"),
-            CannotRepointHeader => write!(f, "Cannot repoint map header"),
-            InvalidLayout(id) => write!(f, "Invalid layout id: {}", id),
-
-            IoError(err) => write!(f, "IO error: {}", err),
-            MissingHeader => write!(f, "Missing map header"),
-        }
-    }
+    #[error("Map in position {0}.{1} is missing the header")]
+    MissingHeader(u8, u8),
 }
 
 /// Table of map headers. Provides methods for editing the table.
@@ -315,19 +294,19 @@ impl<'rom> MapHeadersTable<'rom> {
 
         // Read the connections
         let connections = match header.connections.offset() {
-            Some(offset) => Some(self.rom.read(offset).map_err(MapError::IoError)?),
+            Some(offset) => Some(self.rom.read(offset)?),
             None => None,
         };
 
         // Read the events
         let events = match header.events.offset() {
-            Some(offset) => Some(self.rom.read(offset).map_err(MapError::IoError)?),
+            Some(offset) => Some(self.rom.read(offset)?),
             None => None,
         };
 
         // Read the map scripts
         let map_scripts = match header.map_scripts.offset() {
-            Some(offset) => Some(MapScripts::read(self.rom, offset).map_err(MapError::IoError)?),
+            Some(offset) => Some(MapScripts::read(self.rom, offset)?),
             None => None,
         };
 
@@ -390,7 +369,7 @@ impl<'rom> MapHeadersTable<'rom> {
     /// Read a [`MapHeader`] from the given offset.
     pub fn read_header(&self, group: u8, index: u8) -> Result<MapHeader, MapError> {
         let header_offset = self.get_header_offset(group, index)?;
-        MapHeader::read(self.rom, header_offset).map_err(MapError::IoError)
+        Ok(MapHeader::read(self.rom, header_offset)?)
     }
 
     /// Write a [`MapHeader`] to the given offset.
@@ -409,7 +388,7 @@ impl<'rom> MapHeadersTable<'rom> {
             // If there was already an header, overwrite it
             Ok(offset) => offset,
             // If there was an IOError related to the header, find a new place for it
-            Err(MapError::IoError(_)) | Err(MapError::MissingHeader) => self
+            Err(MapError::IoError(_)) | Err(MapError::MissingHeader(_, _)) => self
                 .rom
                 .find_free_space(MapHeader::size(self.rom), 4)
                 .ok_or_else(|| MapError::CannotRepointHeader)?,
@@ -417,7 +396,7 @@ impl<'rom> MapHeadersTable<'rom> {
         };
 
         // Write everything
-        header.write(self.rom, offset).map_err(MapError::IoError)?;
+        header.write(self.rom, offset)?;
         self.write_offset_to_table(group, index, Some(offset))
     }
 
@@ -470,10 +449,8 @@ impl<'rom> MapHeadersTable<'rom> {
     pub fn delete_header(&mut self, group: u8, index: u8) -> Result<Vec<ScriptResource>, MapError> {
         // If the header exists, clear it
         if let Ok(header_offset) = self.get_header_offset(group, index) {
-            let scripts_to_clear = MapHeader::read(self.rom, header_offset)
-                .map_err(MapError::IoError)?
-                .clear(self.rom, header_offset)
-                .map_err(MapError::IoError)?;
+            let scripts_to_clear =
+                MapHeader::read(self.rom, header_offset)?.clear(self.rom, header_offset)?;
 
             // In any case, clear the header's offset from the table
             self.write_offset_to_table(group, index, None)?;
@@ -562,8 +539,8 @@ impl<'rom> MapHeadersTable<'rom> {
         let offset = group_table.offset + index as usize * 4;
 
         // If there is a NULL pointer, return a MissingHeader error
-        if self.rom.read::<u32>(offset).map_err(MapError::IoError)? == 0 {
-            return Err(MapError::MissingHeader);
+        if self.rom.read::<u32>(offset)? == 0 {
+            return Err(MapError::MissingHeader(group, index));
         }
         let header_offset = self
             .rom
@@ -586,13 +563,9 @@ impl<'rom> MapHeadersTable<'rom> {
         let write_location = group_table.offset + index as usize * 4;
 
         if let Some(offset) = offset {
-            self.rom
-                .write_ptr(write_location, offset)
-                .map_err(MapError::IoError)?;
+            self.rom.write_ptr(write_location, offset)?
         } else {
-            self.rom
-                .write(write_location, 0u32)
-                .map_err(MapError::IoError)?;
+            self.rom.write(write_location, 0u32)?
         }
 
         Ok(())
@@ -618,9 +591,7 @@ impl<'rom> MapHeadersTable<'rom> {
         // Copy the whole table
         let copy = self.rom.data[old_offset..old_offset + old_num * 4].to_vec();
         // Overwrite the current table
-        self.rom
-            .clear(old_offset, old_num * 4)
-            .map_err(MapError::IoError)?;
+        self.rom.clear(old_offset, old_num * 4)?;
 
         // Find an offset for the new table size
         let new_offset = self
@@ -688,9 +659,7 @@ impl<'rom> MapHeadersTable<'rom> {
             self.rom.data[group_table.offset..group_table.offset + group_table.size * 4].to_vec();
 
         // Overwrite the current group
-        self.rom
-            .clear(group_table.offset, group_table.size * 4)
-            .map_err(MapError::IoError)?;
+        self.rom.clear(group_table.offset, group_table.size * 4)?;
 
         // Find an offset for the new group size
         let new_offset = self
