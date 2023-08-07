@@ -194,21 +194,21 @@ pub enum Instruction {
     LdrPc { rd: u8, imm8: u8 },
 
     // ANCHOR 7 -- Load/store with register offset
-    //     010 1 L B 0 Ro Rn Rd
+    //     010 1 L B 0 Ro Rn Rd/s
     //     L is 0 for store, 1 for load
     //     B is 0 for word, 1 for byte
     /// Pre-indexed word store: Calculate the target address by
     /// adding together the value in Rb and the value in Ro.
-    /// Store the contents of Rd at the address.
+    /// Store the contents of Rs at the address.
     ///
-    /// `STR Rd, [Rb, Ro]` > `0101` `L=0` `B=0` `0` **`Ro`** **`Rb`** **`Rd`**
-    StrReg { rb: u8, ro: u8, rd: u8 },
+    /// `STR Rs, [Rb, Ro]` > `0101` `L=0` `B=0` `0` **`Ro`** **`Rb`** **`Rs`**
+    StrReg { rb: u8, ro: u8, rs: u8 },
     /// Pre-indexed byte store: Calculate the target address by
     /// adding together the value in Rb and the value in Ro.
-    /// Store the byte value in Rd at the resulting address.
+    /// Store the byte value in Rs at the resulting address.
     ///
-    /// `STRB Rd, [Rb, Ro]` > `0101` `L=0` `B=1` `0` **`Ro`** **`Rb`** **`Rd`**
-    StrbReg { rb: u8, ro: u8, rd: u8 },
+    /// `STRB Rs, [Rb, Ro]` > `0101` `L=0` `B=1` `0` **`Ro`** **`Rb`** **`Rs`**
+    StrbReg { rb: u8, ro: u8, rs: u8 },
     /// Pre-indexed word load: Calculate the source address by
     /// adding together the value in Rb and the value in Ro.
     /// Load the contents of the address into Rd.
@@ -223,15 +223,15 @@ pub enum Instruction {
     LdrbReg { rb: u8, ro: u8, rd: u8 },
 
     // ANCHOR 8 -- Load/store sign-extended byte/halfword
-    //     010 1 H S 1 Ro Rn Rd
-    /// Store halfword: Add Ro to base address in Rb. Store bits 0-15 of Rd at the resulting address.
+    //     010 1 H S 1 Ro Rn Rd/s
+    /// Store halfword: Add Ro to base address in Rb. Store bits 0-15 of Rs at the resulting address.
     ///
-    /// `STRH Rd, [Rb, Ro]` > `0101` `H=0` `S=0` `1` **`Ro`** **`Rb`** **`Rd`**
-    StrhReg { rb: u8, ro: u8, rd: u8 },
+    /// `STRH Rs, [Rb, Ro]` > `0101` `H=0` `S=0` `1` **`Ro`** **`Rb`** **`Rs`**
+    StrhReg { rb: u8, ro: u8, rs: u8 },
     /// Load halfword: Add Ro to base address in Rb. Load bits 0-15 of Rd from the resulting address,
     /// and set bits 16-31 of Rd to 0.
     ///
-    /// `LDRH Rd, [Rb, Ro]` > `0101` `H=1` `S=0` `1` **`Ro`** **`Rb`** **`Rd`**
+    /// `LDRH Rd, [Rb, Ro]` > `0101` `H=1` `S=0` `1` **`Ro`** **`Rb`** **`Rs`**
     LdrhReg { rb: u8, ro: u8, rd: u8 },
     /// Load sign-extended byte: Add Ro to base address in Rb. Load bits 0-7 of Rd from the resulting address,
     /// and set bits 8-31 of Rd to bit 7.
@@ -245,14 +245,14 @@ pub enum Instruction {
     LdshReg { rb: u8, ro: u8, rd: u8 },
 
     // ANCHOR 9 -- Load/store with immediate offset
-    //     011 B L Imm5 Rb Rd
+    //     011 B L Imm5 Rb Rd/s
     /// Calculate the target address by adding together the value in Rb and Imm.
-    /// Store the contents of Rd at the address.
+    /// Store the contents of Rs at the address.
     ///
-    /// `STR Rd, [Rb, #Imm]` > `011` `B=0` `L=0` **`Imm`** **`Rb`** **`Rd`**
+    /// `STR Rs, [Rb, #Imm]` > `011` `B=0` `L=0` **`Imm`** **`Rb`** **`Rs`**
     ///
     /// **Note**: `#Imm` is a multiple of 4, therefore `imm5` is shifted right by 2.
-    StrImm { rb: u8, imm5: u8, rd: u8 },
+    StrImm { rb: u8, imm5: u8, rs: u8 },
     /// Calculate the source address by adding together the value in Rb and Imm.
     /// Load Rd from the address.
     ///
@@ -261,10 +261,10 @@ pub enum Instruction {
     /// **Note**: `#Imm` is a multiple of 4, therefore `imm5` is shifted right by 2.
     LdrImm { rb: u8, imm5: u8, rd: u8 },
     /// Calculate the target address by adding together the value in Rb and Imm.
-    /// Store the byte value in Rd at the address.
+    /// Store the byte value in Rs at the address.
     ///
-    /// `STRB Rd, [Rb, #Imm]` > `011` `B=1` `L=0` **`Imm`** **`Rb`** **`Rd`**
-    StrbImm { rb: u8, imm5: u8, rd: u8 },
+    /// `STRB Rs, [Rb, #Imm]` > `011` `B=1` `L=0` **`Imm`** **`Rb`** **`Rs`**
+    StrbImm { rb: u8, imm5: u8, rs: u8 },
     /// Calculate source address by adding together the value in Rb and Imm.
     /// Load the byte value at the address into Rd.
     ///
@@ -272,13 +272,13 @@ pub enum Instruction {
     LdrbImm { rb: u8, imm5: u8, rd: u8 },
 
     // ANCHOR 10 -- Load/store halfword
-    //     100 0 L Imm5 Rb Rd
-    /// Add #Imm to base address in Rb and store bits 0-15 of Rd at the resulting address.
+    //     100 0 L Imm5 Rb Rd/s
+    /// Add #Imm to base address in Rb and store bits 0-15 of Rs at the resulting address.
     ///
-    /// `STRH Rd, [Rb, #Imm]` > `1000` `L=0` **`Imm`** **`Rb`** **`Rd`**
+    /// `STRH Rs, [Rb, #Imm]` > `1000` `L=0` **`Imm`** **`Rb`** **`Rs`**
     ///
     /// **Note**: `#Imm` is a multiple of 2, therefore `imm5` is shifted right by 1.
-    StrhImm { rb: u8, imm5: u8, rd: u8 },
+    StrhImm { rb: u8, imm5: u8, rs: u8 },
     /// Add #Imm to base address in Rb. Load bits 0-15 from the resulting address into Rd
     /// and set bits 16-31 to zero.
     ///
@@ -515,25 +515,25 @@ impl Into<u16> for Instruction {
             LdrPc { rd, imm8 } => bin16!("01001{3}{8}", rd, imm8),
 
             // Format 7
-            StrReg { rb, ro, rd } => bin16!("0101_00_0{3}{3}{3}", ro, rb, rd),
-            StrbReg { rb, ro, rd } => bin16!("0101_01_0{3}{3}{3}", ro, rb, rd),
+            StrReg { rb, ro, rs: rd } => bin16!("0101_00_0{3}{3}{3}", ro, rb, rd),
+            StrbReg { rb, ro, rs: rd } => bin16!("0101_01_0{3}{3}{3}", ro, rb, rd),
             LdrReg { rb, ro, rd } => bin16!("0101_10_0{3}{3}{3}", ro, rb, rd),
             LdrbReg { rb, ro, rd } => bin16!("0101_11_0{3}{3}{3}", ro, rb, rd),
 
             // Format 8
-            StrhReg { rb, ro, rd } => bin16!("0101_00_1{3}{3}{3}", ro, rb, rd),
+            StrhReg { rb, ro, rs: rd } => bin16!("0101_00_1{3}{3}{3}", ro, rb, rd),
             LdrhReg { rb, ro, rd } => bin16!("0101_10_1{3}{3}{3}", ro, rb, rd),
             LdsbReg { rb, ro, rd } => bin16!("0101_01_1{3}{3}{3}", ro, rb, rd),
             LdshReg { rb, ro, rd } => bin16!("0101_11_1{3}{3}{3}", ro, rb, rd),
 
             // Format 9
-            StrImm { rb, imm5, rd } => bin16!("011_00{5}{3}{3}", imm5, rb, rd),
+            StrImm { rb, imm5, rs: rd } => bin16!("011_00{5}{3}{3}", imm5, rb, rd),
             LdrImm { rb, imm5, rd } => bin16!("011_01{5}{3}{3}", imm5, rb, rd),
-            StrbImm { rb, imm5, rd } => bin16!("011_10{5}{3}{3}", imm5, rb, rd),
+            StrbImm { rb, imm5, rs: rd } => bin16!("011_10{5}{3}{3}", imm5, rb, rd),
             LdrbImm { rb, imm5, rd } => bin16!("011_11{5}{3}{3}", imm5, rb, rd),
 
             // Format 10
-            StrhImm { rb, imm5, rd } => bin16!("1000_0{5}{3}{3}", imm5, rb, rd),
+            StrhImm { rb, imm5, rs: rd } => bin16!("1000_0{5}{3}{3}", imm5, rb, rd),
             LdrhImm { rb, imm5, rd } => bin16!("1000_1{5}{3}{3}", imm5, rb, rd),
 
             // Format 11
@@ -721,11 +721,11 @@ impl Instruction {
                         // Match the L and B flags (bits 11 and 10) and
                         // bit 9 differentiating between formats 7 and 8.
                         match (data >> 9) & 0b111 {
-                            0b000 => StrReg { rb, ro, rd },
-                            0b010 => StrbReg { rb, ro, rd },
+                            0b000 => StrReg { rb, ro, rs: rd },
+                            0b010 => StrbReg { rb, ro, rs: rd },
                             0b100 => LdrReg { rb, ro, rd },
                             0b110 => LdrbReg { rb, ro, rd },
-                            0b001 => StrhReg { rb, ro, rd },
+                            0b001 => StrhReg { rb, ro, rs: rd },
                             0b101 => LdrhReg { rb, ro, rd },
                             0b011 => LdsbReg { rb, ro, rd },
                             0b111 => LdshReg { rb, ro, rd },
@@ -745,9 +745,9 @@ impl Instruction {
 
                 // Match the B and L flags (bits 11 and 10).
                 match (data >> 11) & 0b11 {
-                    0b00 => StrImm { rb, imm5, rd },
+                    0b00 => StrImm { rb, imm5, rs: rd },
                     0b01 => LdrImm { rb, imm5, rd },
-                    0b10 => StrbImm { rb, imm5, rd },
+                    0b10 => StrbImm { rb, imm5, rs: rd },
                     0b11 => LdrbImm { rb, imm5, rd },
 
                     _ => unreachable!(),
@@ -764,7 +764,7 @@ impl Instruction {
                         let rb = get_rs(data);
                         let imm5 = get_imm5(data);
                         match next_flag {
-                            false => StrhImm { rb, imm5, rd },
+                            false => StrhImm { rb, imm5, rs: rd },
                             true => LdrhImm { rb, imm5, rd },
                         }
                     }
@@ -1006,25 +1006,31 @@ impl Display for Instruction {
             LdrPc { rd, imm8 } => write!(f, "LDR {}, [pc, #{}]", lreg(rd), imm8 << 2),
 
             // Format 7
-            StrReg { rb, ro, rd } => write!(f, "STR {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
-            StrbReg { rb, ro, rd } => write!(f, "STRB {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
+            StrReg { rb, ro, rs: rd } => {
+                write!(f, "STR {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro))
+            }
+            StrbReg { rb, ro, rs: rd } => {
+                write!(f, "STRB {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro))
+            }
             LdrReg { rb, ro, rd } => write!(f, "LDR {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
             LdrbReg { rb, ro, rd } => write!(f, "LDRB {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
 
             // Format 8
-            StrhReg { rb, ro, rd } => write!(f, "STRH {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
+            StrhReg { rb, ro, rs: rd } => {
+                write!(f, "STRH {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro))
+            }
             LdrhReg { rb, ro, rd } => write!(f, "LDRH {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
             LdsbReg { rb, ro, rd } => write!(f, "LDSB {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
             LdshReg { rb, ro, rd } => write!(f, "LDSH {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
 
             // Format 9
-            StrImm { rb, imm5, rd } => {
+            StrImm { rb, imm5, rs: rd } => {
                 write!(f, "STR {}, [{}, #{}]", lreg(rd), lreg(rb), imm5 << 2)
             }
             LdrImm { rb, imm5, rd } => {
                 write!(f, "LDR {}, [{}, #{}]", lreg(rd), lreg(rb), imm5 << 2)
             }
-            StrbImm { rb, imm5, rd } => {
+            StrbImm { rb, imm5, rs: rd } => {
                 write!(f, "STRB {}, [{}, #{}]", lreg(rd), lreg(rb), imm5)
             }
             LdrbImm { rb, imm5, rd } => {
@@ -1032,7 +1038,7 @@ impl Display for Instruction {
             }
 
             // Format 10
-            StrhImm { rb, imm5, rd } => {
+            StrhImm { rb, imm5, rs: rd } => {
                 write!(f, "STRH {}, [{}, #{}]", lreg(rd), lreg(rb), imm5 << 1)
             }
             LdrhImm { rb, imm5, rd } => {

@@ -9,4 +9,6 @@ pub(crate) mod utils;
 pub use asm::disassembly::Disassembler;
 pub use instructions::Instruction;
 pub use memory::Memory;
-pub use processor::{ExecutionError, Processor};
+pub use processor::{
+    ExecutionError, FunctionCallAction, LoggedEvent, MemoryAccessAction, Processor,
+};

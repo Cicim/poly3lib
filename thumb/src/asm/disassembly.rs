@@ -295,22 +295,22 @@ impl<'a> Disassembler<'a, 'a> {
                 LoadLabel(reg!(rd), self.get_dat_label(target))
             }
             // Format 7
-            StrReg { rb, ro, rd } => Mem("str", reg!(rd), reg!(rb), reg!(ro)),
-            StrbReg { rb, ro, rd } => Mem("strb", reg!(rd), reg!(rb), reg!(ro)),
+            StrReg { rb, ro, rs: rd } => Mem("str", reg!(rd), reg!(rb), reg!(ro)),
+            StrbReg { rb, ro, rs: rd } => Mem("strb", reg!(rd), reg!(rb), reg!(ro)),
             LdrReg { rb, ro, rd } => Mem("ldr", reg!(rd), reg!(rb), reg!(ro)),
             LdrbReg { rb, ro, rd } => Mem("ldrb", reg!(rd), reg!(rb), reg!(ro)),
             // Format 8
-            StrhReg { rb, ro, rd } => Mem("strh", reg!(rd), reg!(rb), reg!(ro)),
+            StrhReg { rb, ro, rs: rd } => Mem("strh", reg!(rd), reg!(rb), reg!(ro)),
             LdrhReg { rb, ro, rd } => Mem("ldrh", reg!(rd), reg!(rb), reg!(ro)),
             LdsbReg { rb, ro, rd } => Mem("ldsb", reg!(rd), reg!(rb), reg!(ro)),
             LdshReg { rb, ro, rd } => Mem("ldsh", reg!(rd), reg!(rb), reg!(ro)),
             // Format 9
-            StrImm { rb, imm5, rd } => Mem("str", reg!(rd), reg!(rb), imm!(imm5, 2)),
+            StrImm { rb, imm5, rs: rd } => Mem("str", reg!(rd), reg!(rb), imm!(imm5, 2)),
             LdrImm { rb, imm5, rd } => Mem("ldr", reg!(rd), reg!(rb), imm!(imm5, 2)),
-            StrbImm { rb, imm5, rd } => Mem("strb", reg!(rd), reg!(rb), imm!(imm5)),
+            StrbImm { rb, imm5, rs: rd } => Mem("strb", reg!(rd), reg!(rb), imm!(imm5)),
             LdrbImm { rb, imm5, rd } => Mem("ldrb", reg!(rd), reg!(rb), imm!(imm5)),
             // Format 10
-            StrhImm { rb, imm5, rd } => Mem("strh", reg!(rd), reg!(rb), imm!(imm5, 1)),
+            StrhImm { rb, imm5, rs: rd } => Mem("strh", reg!(rd), reg!(rb), imm!(imm5, 1)),
             LdrhImm { rb, imm5, rd } => Mem("ldrh", reg!(rd), reg!(rb), imm!(imm5, 1)),
             // Format 11
             StrSpImm { imm8, rs } => Mem("str", reg!(rs), reg!(sp), imm!(imm8, 2)),
