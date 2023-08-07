@@ -571,11 +571,7 @@ impl<'a> Disassembler<'a, 'a> {
             }
             DisassembledLine::Word(word) => {
                 write!(f, "    ")?;
-                if self.options.colored_output {
-                    write!(f, "{}", ".word ".yellow())?;
-                } else {
-                    write!(f, "{}", ".word ")?;
-                }
+                self.print_operator(f, ".word")?;
 
                 if self.options.colored_output {
                     write!(f, "{}", format!("0x{:08x}", word).cyan())?;
@@ -595,7 +591,6 @@ impl<'a> Disassembler<'a, 'a> {
         match i {
             Mem(op, rd, rb, off) => {
                 self.print_operator(f, op)?;
-                write!(f, " ")?;
                 self.print_register(f, *rd)?;
                 write!(f, ", [")?;
                 self.print_register(f, *rb)?;
@@ -605,7 +600,6 @@ impl<'a> Disassembler<'a, 'a> {
             }
             RdRsVal(op, rd, rs, val) => {
                 self.print_operator(f, op)?;
-                write!(f, " ")?;
                 self.print_register(f, *rd)?;
                 write!(f, ", ")?;
                 self.print_register(f, *rs)?;
@@ -614,23 +608,20 @@ impl<'a> Disassembler<'a, 'a> {
             }
             RdVal(op, rd, val) => {
                 self.print_operator(f, op)?;
-                write!(f, " ")?;
                 self.print_register(f, *rd)?;
                 write!(f, ", ")?;
                 self.print_operand(f, val)
             }
             Val(op, val) => {
                 self.print_operator(f, op)?;
-                write!(f, " ")?;
                 self.print_operand(f, val)
             }
             BranchCond(op, label) => {
                 self.print_operator(f, op)?;
-                write!(f, " ")?;
                 self.print_label(f, label)
             }
             LoadLabel(rd, label) => {
-                self.print_operator(f, "mov ")?;
+                self.print_operator(f, "mov")?;
                 self.print_register(f, *rd)?;
                 write!(f, ", =(")?;
                 self.print_label(f, label)?;
@@ -638,7 +629,7 @@ impl<'a> Disassembler<'a, 'a> {
             }
             PushPop(op, regs) => {
                 self.print_operator(f, op)?;
-                write!(f, " {{ ")?;
+                write!(f, "{{ ")?;
                 for (i, r) in regs.iter().enumerate() {
                     self.print_register(f, *r)?;
                     if i != regs.len() - 1 {
@@ -650,7 +641,6 @@ impl<'a> Disassembler<'a, 'a> {
             }
             StmLdmIA(op, r, regs) => {
                 self.print_operator(f, op)?;
-                write!(f, " ")?;
                 self.print_register(f, *r)?;
                 write!(f, "!, {{ ")?;
                 for (i, r) in regs.iter().enumerate() {
@@ -666,9 +656,9 @@ impl<'a> Disassembler<'a, 'a> {
     }
     fn print_operator(&self, f: &mut String, op: Operator) -> std::fmt::Result {
         if self.options.colored_output {
-            write!(f, "{}", op.to_string().yellow())
+            write!(f, "{:<8}", op.to_string().yellow())
         } else {
-            write!(f, "{}", op.to_string())
+            write!(f, "{:<8}", op.to_string())
         }
     }
     fn print_register(&self, f: &mut String, reg: Register) -> std::fmt::Result {

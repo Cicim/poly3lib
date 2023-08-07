@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 use crate::{
     alu::Alu,
@@ -24,6 +24,11 @@ pub struct Processor<'rom> {
 
     /// Memory
     pub memory: Memory<'rom>,
+
+    // Debugging interface
+    /// When the processor jumps to the offset, instead of updating
+    /// PC, it will call this function.
+    replacement_code: HashMap<u32, fn(&mut Self) -> ExecutionResult>,
 }
 
 pub enum ExecutionError {
@@ -48,6 +53,8 @@ impl<'rom> Processor<'rom> {
             alu: Alu::new(),
             registers: [0; 16],
             memory: Memory::new(rom),
+
+            replacement_code: HashMap::new(),
         };
 
         cpu.set_sp(0x03_008_000);
@@ -93,6 +100,16 @@ impl<'rom> Processor<'rom> {
     /// Get the stack pointer
     pub fn get_sp(&self) -> u32 {
         self.registers[13]
+    }
+
+    // ANCHOR Build configurations
+    /// Add a code to execute in place of the given function
+    pub fn add_replacement_code(
+        &mut self,
+        address: u32,
+        callback: fn(&mut Self) -> ExecutionResult,
+    ) {
+        self.replacement_code.insert(address, callback);
     }
 
     // ANCHOR Control functions
@@ -397,7 +414,10 @@ impl<'rom> Processor<'rom> {
             Ble { soffset } => conditional_branch!(is_le, soffset),
 
             // Format 17 -- Software interrupt
-            Swi { imm } => panic!("SWI #{} not implemented", imm),
+            Swi { imm } => println!(
+                "[WARNING] SWI #{} was called, but it is not yet implemented",
+                imm
+            ),
 
             // Format 18 -- Unconditional branch
             B { offset11 } => {
@@ -424,10 +444,10 @@ impl<'rom> Processor<'rom> {
                 // Make the offset into a signed offset
                 let jump_to = ((jump_to as i32) << 9) >> 9;
                 // Combine into the new offset
-                let jump_to = (jump_to as u32).wrapping_add(self.get_pc());
+                let jump_to = (jump_to as u32).wrapping_add(self.get_pc()) & !1;
 
                 // Get the offset to the instruction right after this one
-                let jump_back = self.get_pc();
+                let jump_back = self.get_pc() & !1;
 
                 self.jump_to(jump_to + 1)?;
                 self.set_lr(jump_back + 1);
@@ -503,8 +523,14 @@ impl<'rom> Processor<'rom> {
             return Err(ExecutionError::JumpToArm);
         }
 
-        // Update PC to have that address
-        self.set_pc(addr & 0xFFFF_FFFE);
+        let function = addr & !1;
+
+        // If there is a hook for that function, call the callback
+        if let Some(callback) = self.replacement_code.get(&function) {
+            callback(self)?;
+        } else {
+            self.set_pc(addr & 0xFFFF_FFFE);
+        }
 
         Ok(())
     }
