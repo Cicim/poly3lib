@@ -1,5 +1,7 @@
 use std::{collections::HashMap, fmt::Display};
 
+use thiserror::Error;
+
 use crate::{
     alu::Alu,
     instructions::REGISTER_NAMES,
@@ -126,20 +128,22 @@ impl Display for LoggedEvent {
     }
 }
 
+#[derive(Debug, Error)]
 pub enum ExecutionError {
-    MemoryError(MemoryError),
-    InvalidInstruction,
+    #[error("Memory error: {0}")]
+    MemoryError(#[from] MemoryError),
+    #[error("Invalid instruction {0:#06X}")]
+    InvalidInstruction(u16),
+    #[error("Jumping to ARM mode is not supported")]
     JumpToArm,
+
+    // TODO Find a better way of stopping the processor
+    //      without relying on an error
+    #[error("Not an error: the processor terminated")]
     Terminated,
 }
 
 type ExecutionResult = Result<(), ExecutionError>;
-
-impl From<MemoryError> for ExecutionError {
-    fn from(error: MemoryError) -> Self {
-        ExecutionError::MemoryError(error)
-    }
-}
 
 impl<'rom> Processor<'rom> {
     /// Create a new processor
@@ -239,10 +243,8 @@ impl<'rom> Processor<'rom> {
             .read_halfword(pc)
             .map_err(ExecutionError::MemoryError)?;
 
-        // Let someone else update pc
-
         // Decode the instruction
-        Instruction::decode(data).ok_or(ExecutionError::InvalidInstruction)
+        Instruction::decode(data).ok_or(ExecutionError::InvalidInstruction(data))
     }
 
     /// Decode and execute a single instruction

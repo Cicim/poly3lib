@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use thiserror::Error;
 
 /// Memory of a GBA processor
 pub struct Memory<'rom> {
@@ -30,29 +30,16 @@ pub struct Memory<'rom> {
     sram: Vec<u8>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum MemoryError {
+    #[error("Address is in no range: {0:#010X}")]
     InvalidRange(u32),
+    #[error("Could not access address: {0:#010X}")]
     InvalidAddress(u32),
+    #[error("Attempted to write to ROM")]
     WriteToRom,
+    #[error("Unaligned access to address {0:#010X} with alignment {1}")]
     UnalignedAccess(u32, u8),
-}
-
-impl Display for MemoryError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use MemoryError::*;
-
-        match self {
-            InvalidRange(address) => write!(f, "Invalid address range: {:#010X}", address),
-            InvalidAddress(address) => write!(f, "Invalid address: {:#010X}", address),
-            WriteToRom => write!(f, "Attempted to write to ROM"),
-            UnalignedAccess(address, align) => write!(
-                f,
-                "Unaligned access to address {:#010X} with alignment {}",
-                address, align
-            ),
-        }
-    }
 }
 
 impl<'rom> Memory<'rom> {
