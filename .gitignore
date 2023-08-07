@@ -1,7 +1,7 @@
-**/target
-**/Cargo.lock
-/roms/
-**/src/main.rs
+roms/
+target/
+Cargo.lock
+src/main.rs
 
 # Include only some of VsCodes's configuration files
 .vscode/*

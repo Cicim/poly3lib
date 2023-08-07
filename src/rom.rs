@@ -5,6 +5,7 @@ use std::io::{Read, Write};
 
 use gba_types::lz77::*;
 use gba_types::{GBAIOError, GBAType};
+use thumb::Processor;
 
 use crate::refs::Refs;
 
@@ -354,5 +355,12 @@ impl Rom {
         self.data[new_offset + 4..new_offset + 4 + new_size].copy_from_slice(&data);
 
         Ok(new_offset)
+    }
+
+    /// Create a processor with this ROM in the address space `0x08000000-0x09FFFFFF`.
+    /// This [`Processor`] can be configured for debugging, for example it can be configured
+    /// to log memory accesses or function calls.
+    pub fn get_cpu(&self) -> Processor {
+        Processor::new(&self.data)
     }
 }
