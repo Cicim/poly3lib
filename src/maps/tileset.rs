@@ -1,11 +1,6 @@
-use std::fmt::Display;
+use thiserror::Error;
 
-/* When working with tilesets, we don't really have a universal table that
- * contains all of them, so we will refer to rom.refs.tilesets_table
- * to check information such as tileset size, which we will have to
- * diligently synchronize to keep them consistent. */
 use gba_macro::gba_struct;
-
 use gba_types::{colors::GBAPalette, tiles::MetaTile, GBAIOError};
 
 use crate::{
@@ -89,30 +84,21 @@ pub struct TilesetData {
     // TODO Handle animations
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum TilesetReadingError {
+    #[error("Invalid tileset offset")]
     InvalidTilesetOffset,
+    #[error("Invalid palette offset")]
     InvalidPaletteOffset,
+    #[error("Invalid attributes offset")]
     InvalidAttributesOffset,
+    #[error("Invalid graphics offset")]
     InvalidGraphicsOffset,
+    #[error("Invalid metatile offset")]
     InvalidMetaTileOffset,
 
+    #[error("Cannot read ROM value")]
     CannotReadRomValue,
-}
-
-impl Display for TilesetReadingError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use TilesetReadingError::*;
-
-        match self {
-            InvalidTilesetOffset => write!(f, "Invalid tileset offset"),
-            InvalidPaletteOffset => write!(f, "Invalid palette offset"),
-            InvalidAttributesOffset => write!(f, "Invalid attributes offset"),
-            InvalidGraphicsOffset => write!(f, "Invalid graphics offset"),
-            InvalidMetaTileOffset => write!(f, "Invalid metatile offset"),
-            CannotReadRomValue => write!(f, "Cannot read ROM value"),
-        }
-    }
 }
 
 impl TilesetData {

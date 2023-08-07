@@ -3,6 +3,7 @@ use std::fmt::Display;
 use gba_macro::gba_struct;
 use gba_types::{pointers::PointedData, GBAIOError, GBAType};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::{
     refs::{TableInitError, TablePointer},
@@ -120,7 +121,7 @@ impl WildMonHeader {
 
                         // Write the struct to the ROM
                         let struct_offset = table_offset + COUNT * WildMon::SIZE;
-                        rom.write(struct_offset, mons).map_err(WildError::IoError)?;
+                        rom.write(struct_offset, mons)?;
 
                         PointedData::NoData(struct_offset as u32)
                     }
@@ -131,14 +132,12 @@ impl WildMonHeader {
 
                         // Delete the struct immediately since we have a copy of it
                         let struct_offset = self.$inmons.offset().unwrap();
-                        rom.clear(struct_offset, $strname::SIZE)
-                            .map_err(WildError::IoError)?;
+                        rom.clear(struct_offset, $strname::SIZE)?;
 
                         // Delete the data referenced by the struct
                         if let Some(offset) = info.mons.offset() {
                             // If the data is a valid pointer, clear it
-                            rom.clear(offset, COUNT * WildMon::SIZE)
-                                .map_err(WildError::IoError)?;
+                            rom.clear(offset, COUNT * WildMon::SIZE)?;
                         }
 
                         PointedData::Null
@@ -252,14 +251,18 @@ impl Display for WildEncounters {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum WildError {
+    #[error("The wild encounters table is not initialized")]
     TableNotInitialized,
+    #[error("Repointing error")]
     RepointingError,
 
+    #[error("Wrong encounters count (expected {1}, got {0})")]
     WrongEncountersCount(usize, usize),
 
-    IoError(gba_types::GBAIOError),
+    #[error("IO error")]
+    IoError(#[from] gba_types::GBAIOError),
 }
 
 pub struct WildsTable<'rom> {
@@ -337,7 +340,7 @@ impl<'rom> WildsTable<'rom> {
             (Some(index), None) => {
                 // Read the header to clear its content
                 let header = self.read_header(index)?;
-                header.clear(self.rom).map_err(WildError::IoError)?;
+                header.clear(self.rom)?;
 
                 // Remove the header from the table
                 self.remove_header(index)
@@ -355,7 +358,7 @@ impl<'rom> WildsTable<'rom> {
         let table = self.get_table()?;
         let offset = table.offset + index * WildMonHeader::SIZE;
 
-        self.rom.read(offset).map_err(WildError::IoError)
+        Ok(self.rom.read(offset)?)
     }
 
     /// Remove wild mon header given its index in the table
@@ -414,8 +417,7 @@ impl<'rom> WildsTable<'rom> {
             // Check if this header is empty
             let map_id = self
                 .rom
-                .read::<u16>(table.offset + last_index * WildMonHeader::SIZE)
-                .map_err(WildError::IoError)?;
+                .read::<u16>(table.offset + last_index * WildMonHeader::SIZE)?;
 
             if map_id == 0xFFFF {
                 last_index -= 1;
@@ -436,9 +438,7 @@ impl<'rom> WildsTable<'rom> {
         // In any case, save an header at the index `size`
         let new_header_offset = table_offset + new_index * WildMonHeader::SIZE;
         let new_header = WildMonHeader::new(map_group, map_index);
-        self.rom
-            .write(new_header_offset, new_header)
-            .map_err(WildError::IoError)?;
+        self.rom.write(new_header_offset, new_header)?;
 
         Ok(new_index)
     }
@@ -452,9 +452,7 @@ impl<'rom> WildsTable<'rom> {
 
         // Get the offset to write the header
         let header_offset = self.get_table()?.offset + index * WildMonHeader::SIZE;
-        self.rom
-            .write(header_offset, header)
-            .map_err(WildError::IoError)
+        Ok(self.rom.write(header_offset, header)?)
     }
 
     // ANCHOR Internal
@@ -469,8 +467,7 @@ impl<'rom> WildsTable<'rom> {
         loop {
             let curr_map_id = self
                 .rom
-                .read::<u16>(table.offset + i * WildMonHeader::SIZE)
-                .map_err(WildError::IoError)?;
+                .read::<u16>(table.offset + i * WildMonHeader::SIZE)?;
 
             if curr_map_id == map_id {
                 return Ok(Some(i));
@@ -538,8 +535,7 @@ impl<'rom> WildsTable<'rom> {
             // Read the header
             let header = self
                 .rom
-                .read::<WildMonHeader>(table.offset + i * WildMonHeader::SIZE)
-                .map_err(WildError::IoError)?;
+                .read::<WildMonHeader>(table.offset + i * WildMonHeader::SIZE)?;
 
             if header.map_group == 0xFF && header.map_index == 0xFF {
                 print!("[NULL]");

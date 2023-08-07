@@ -1,6 +1,7 @@
 use std::fmt::Display;
 
 use serde::Serialize;
+use thiserror::Error;
 
 use crate::{
     refs::{TableInitError, TablePointer},
@@ -35,23 +36,14 @@ impl Display for MapSectionDump {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Error)]
 pub enum MapSectionError {
+    #[error("Map section table not initialized")]
     NotInitialized,
+    #[error("No map section bounds found")]
     NoMapsecBounds,
+    #[error("No shift and scale found")]
     NoShiftAndScale,
-}
-
-impl Display for MapSectionError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use MapSectionError::*;
-
-        match self {
-            NotInitialized => write!(f, "Map section table not initialized"),
-            NoMapsecBounds => write!(f, "No map section bounds found"),
-            NoShiftAndScale => write!(f, "No shift and scale found"),
-        }
-    }
 }
 
 pub struct MapSectionTable<'rom> {
