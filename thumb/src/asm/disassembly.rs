@@ -485,10 +485,14 @@ impl<'a> Disassembler<'a, 'a> {
             // Otherwise, build a new one
             None => {
                 self.current_function_branching_sub_count += 1;
-                let new_label = format!(
-                    "lab_{}.{}",
-                    self.current_function_label, self.current_function_branching_sub_count
-                );
+                let new_label = if self.current_function_label == "" {
+                    format!("#0x{:08x}", target)
+                } else {
+                    format!(
+                        "lab_{}.{}",
+                        self.current_function_label, self.current_function_branching_sub_count
+                    )
+                };
                 self.add_label(target, new_label.clone());
                 new_label
             }

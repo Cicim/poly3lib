@@ -24,7 +24,7 @@ pub struct Memory<'rom> {
     oam: Vec<u8>,
 
     /// `08000000-09FFFFFF` Game Pak ROM/FlashROM (max 32MB) - Wait State 0
-    rom: &'rom [u8],
+    pub rom: &'rom [u8],
 
     /// `0E000000-0E00FFFF` Game Pak SRAM (max 64 KBytes) - 8bit Bus width
     sram: Vec<u8>,

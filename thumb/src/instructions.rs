@@ -744,7 +744,7 @@ impl Instruction {
                 let imm5 = get_imm5(data);
 
                 // Match the B and L flags (bits 11 and 10).
-                match (data >> 10) & 0b11 {
+                match (data >> 11) & 0b11 {
                     0b00 => StrImm { rb, imm5, rd },
                     0b01 => LdrImm { rb, imm5, rd },
                     0b10 => StrbImm { rb, imm5, rd },

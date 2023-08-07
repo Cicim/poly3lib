@@ -30,6 +30,7 @@ pub enum ExecutionError {
     MemoryError(MemoryError),
     InvalidInstruction,
     JumpToArm,
+    Terminated,
 }
 
 type ExecutionResult = Result<(), ExecutionError>;
@@ -51,6 +52,8 @@ impl<'rom> Processor<'rom> {
 
         cpu.set_sp(0x03_008_000);
         cpu.set_pc(0x08_000_000);
+        // When the processor returns here, it terminates
+        cpu.set_lr(0xFF_FFF_FFF);
 
         cpu
     }
@@ -174,7 +177,7 @@ impl<'rom> Processor<'rom> {
                 if self.alu.$cond() {
                     let offset = extend_8bit_offset($offset);
                     let pc = self.get_pc();
-                    self.set_pc(pc.wrapping_add(offset as u32));
+                    self.set_pc(pc.wrapping_add(offset as u32 + 2));
                 }
             }};
         );
@@ -231,10 +234,10 @@ impl<'rom> Processor<'rom> {
             // Format 6 -- PC-relative load
             LdrPc { rd, imm8 } => {
                 let offset = (imm8 as u32) << 2;
-                let address = self.get_pc() + offset;
+                let address = self.get_pc() + offset + 2;
 
                 // Make sure the address is word-aligned
-                let address = address & !0b11;
+                let address = address & !0b10;
 
                 let value = self.memory.read_word(address)?;
                 self.set_register(rd, value);
@@ -341,7 +344,7 @@ impl<'rom> Processor<'rom> {
                 get_registers_in_rlist(rlist)
                     .iter()
                     .map(|r| self.push_register(*r))
-                    .collect::<ExecutionResult>()?
+                    .collect::<ExecutionResult>()?;
             }
             Pop { rlist } => get_registers_in_rlist(rlist)
                 .iter()
@@ -354,7 +357,7 @@ impl<'rom> Processor<'rom> {
                     .rev()
                     .map(|r| self.pop_register(*r))
                     .collect::<ExecutionResult>()?;
-                self.pop_register(15)?
+                self.pop_register(15)?;
             }
 
             // Format 15 -- Multiple load/store
@@ -409,19 +412,25 @@ impl<'rom> Processor<'rom> {
             } => {
                 // First part
                 let top = (offset11 as u32) << 12;
-                self.set_lr(self.get_pc() + top - 2);
+                self.set_lr(top);
+                // Run the second part immediately
+                self.next()?;
             }
             BlHalf { hi: true, offset11 } => {
                 // Last part
                 // The offset11 contains the lower 11 bits of the target address
                 let bottom = (offset11 as u32) << 1;
                 let jump_to = bottom + self.get_lr();
+                // Make the offset into a signed offset
+                let jump_to = ((jump_to as i32) << 9) >> 9;
+                // Combine into the new offset
+                let jump_to = (jump_to as u32).wrapping_add(self.get_pc());
 
                 // Get the offset to the instruction right after this one
                 let jump_back = self.get_pc();
 
-                self.jump_to(jump_to)?;
-                self.set_lr(jump_back);
+                self.jump_to(jump_to + 1)?;
+                self.set_lr(jump_back + 1);
             }
         }
 
@@ -452,11 +461,6 @@ impl<'rom> Processor<'rom> {
         let value = self.memory.read_word(address)?;
         // Store it
         self.set_register(rd, value);
-
-        println!(
-            "Loaded {:08X} from 0x{:08X} into {}",
-            value, address, REGISTER_NAMES[rd as usize]
-        );
 
         Ok(())
     }
@@ -489,6 +493,11 @@ impl<'rom> Processor<'rom> {
 
     /// Updates PC so that the next instruction starts at the given value
     fn jump_to(&mut self, addr: u32) -> ExecutionResult {
+        // Check if the program has to terminate
+        if addr == 0xFF_FFF_FFF {
+            return Err(ExecutionError::Terminated);
+        }
+
         // Make sure the address has bit 0 set to 1 (Thumb)
         if addr & 1 == 0 {
             return Err(ExecutionError::JumpToArm);
@@ -503,15 +512,17 @@ impl<'rom> Processor<'rom> {
 
 impl<'rom> Display for Processor<'rom> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use colored::Colorize;
         writeln!(f, "Flags: {}", self.alu)?;
 
         // Print the next register
         for (i, reg) in self.registers.iter().enumerate() {
             // Get the register name
-            let name = REGISTER_NAMES[i];
+            let name = REGISTER_NAMES[i].red();
+            let value = format!("0x{:08x}", reg).yellow();
 
             // Print the register name
-            write!(f, "{:>3}: 0x{:08x} ", name, reg)?;
+            write!(f, "{:>3}: {} ", name, value)?;
 
             // Print the register name
             if i % 4 == 3 {
@@ -519,23 +530,6 @@ impl<'rom> Display for Processor<'rom> {
             }
         }
 
-        // Decode the next instruction
-        match self.decode() {
-            Ok(instruction) => {
-                // Read the value at pc
-                let value = self.memory.read_halfword(self.get_pc()).unwrap();
-                writeln!(f, "{:04X}  {}", value, instruction)
-            }
-
-            Err(ExecutionError::MemoryError(err)) => {
-                writeln!(f, "Memory error: {}", err)
-            }
-            Err(ExecutionError::InvalidInstruction) => {
-                let value = self.memory.read_halfword(self.get_pc()).unwrap();
-                writeln!(f, "Invalid instruction {:04X}", value)
-            }
-
-            _ => writeln!(f, "Cannot fetch next instruction"),
-        }
+        Ok(())
     }
 }
