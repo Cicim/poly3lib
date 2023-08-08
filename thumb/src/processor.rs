@@ -4,11 +4,15 @@ use thiserror::Error;
 
 use crate::{
     alu::Alu,
-    instructions::REGISTER_NAMES,
     memory::{Memory, MemoryError},
     utils::*,
     Instruction,
 };
+
+pub static REGISTER_NAMES: [&str; 16] = [
+    "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "sp", "lr",
+    "pc",
+];
 
 /// Thumb processor
 pub struct Processor<'rom> {
@@ -174,13 +178,21 @@ impl<'rom> Processor<'rom> {
         self.set_sp(0x03_008_000);
         self.set_pc(function & !1);
 
-        self.run()
+        match self.run() {
+            Ok(_) => Ok(()),
+            Err(ExecutionError::Terminated) => Ok(()),
+            Err(e) => Err(e),
+        }
     }
 
     // ANCHOR Registry operations
     /// Set a register to a value
     pub fn set_register(&mut self, register: u8, value: u32) {
-        self.registers[register as usize] = value;
+        if register == 15 {
+            self.set_pc(value);
+        } else {
+            self.registers[register as usize] = value;
+        }
     }
     /// Get a value from a register
     pub fn get_register(&self, register: u8) -> u32 {
@@ -189,7 +201,7 @@ impl<'rom> Processor<'rom> {
 
     /// Set the program counter
     pub fn set_pc(&mut self, value: u32) {
-        self.registers[15] = value;
+        self.registers[15] = value & !1;
     }
     /// Get the program counter
     pub fn get_pc(&self) -> u32 {
@@ -353,8 +365,8 @@ impl<'rom> Processor<'rom> {
 
             // Format 2 -- Add/subtract
             AddReg { rd, rs, rn } => alu_op!(rd, rs, add, REG, rn),
-            AddImm3 { rd, rs, imm3 } => alu_op!(rd, rs, add, IMM, imm3),
             SubReg { rd, rs, rn } => alu_op!(rd, rs, sub, REG, rn),
+            AddImm3 { rd, rs, imm3 } => alu_op!(rd, rs, add, IMM, imm3),
             SubImm3 { rd, rs, imm3 } => alu_op!(rd, rs, sub, IMM, imm3),
 
             // Format 3 -- Move/compare/add/subtract immediate

@@ -2,11 +2,7 @@
 //!
 //! ARMv7TDMI has 19 different instruction formats in Thumb mode.
 
-use std::fmt::Display;
-
 use bin16_macro::bin16;
-
-use crate::utils::*;
 
 /// A Thumb instruction.
 #[derive(Debug)]
@@ -30,22 +26,22 @@ pub enum Instruction {
     AsrImm { rd: u8, rs: u8, imm5: u8 },
 
     // ANCHOR 2 -- Add/subtract
-    //     000 11 O1 I1 imm3_or_Rn Rs Rd
+    //     000 11 I1 O1 imm3_or_Rn Rs Rd
     /// Add contents of Rn to contents of Rs. Place result in Rd.
     ///
-    /// `ADD Rd, Rs, Rn` > `000` `11` `O=0` `I=0` **`Rn`** **`Rs`** **`Rd`**
+    /// `ADD Rd, Rs, Rn` > `000` `11` `I=0` `O=0` **`Rn`** **`Rs`** **`Rd`**
     AddReg { rd: u8, rs: u8, rn: u8 },
-    /// Add 3-bit immediate value to contents of Rs. Place result in Rd.
-    ///
-    /// `ADD Rd, Rs, #imm3` > `000` `11` `O=0` `I=1` **`imm3`** **`Rs`** **`Rd`**
-    AddImm3 { rd: u8, rs: u8, imm3: u8 },
     /// Subtract contents of Rn from contents of Rs. Place result in Rd.
     ///
-    /// `SUB Rd, Rs, Rn` > `000` `11` `O=1` `I=0` **`Rn`** **`Rs`** **`Rd`**
+    /// `SUB Rd, Rs, Rn` > `000` `11` `I=0` `O=1` **`Rn`** **`Rs`** **`Rd`**
     SubReg { rd: u8, rs: u8, rn: u8 },
+    /// Add 3-bit immediate value to contents of Rs. Place result in Rd.
+    ///
+    /// `ADD Rd, Rs, #imm3` > `000` `11` `I=1` `O=0` **`imm3`** **`Rs`** **`Rd`**
+    AddImm3 { rd: u8, rs: u8, imm3: u8 },
     /// Subtract 3-bit immediate value from contents of Rs. Place result in Rd.
     ///
-    /// `SUB Rd, Rs, #imm3` > `000` `11` `O=1` `I=1` **`imm3`** **`Rs`** **`Rd`**
+    /// `SUB Rd, Rs, #imm3` > `000` `11` `I=1` `O=1` **`imm3`** **`Rs`** **`Rd`**
     SubImm3 { rd: u8, rs: u8, imm3: u8 },
 
     // ANCHOR 3 -- Move/compare/add/subtract immediate
@@ -470,8 +466,8 @@ impl Into<u16> for Instruction {
 
             // Format 2
             AddReg { rd, rs, rn } => bin16!("00011_00{3}{3}{3}", rn, rs, rd),
-            AddImm3 { rd, rs, imm3 } => bin16!("00011_01{3}{3}{3}", imm3, rs, rd),
-            SubReg { rd, rs, rn } => bin16!("00011_10{3}{3}{3}", rn, rs, rd),
+            SubReg { rd, rs, rn } => bin16!("00011_01{3}{3}{3}", rn, rs, rd),
+            AddImm3 { rd, rs, imm3 } => bin16!("00011_10{3}{3}{3}", imm3, rs, rd),
             SubImm3 { rd, rs, imm3 } => bin16!("00011_11{3}{3}{3}", imm3, rs, rd),
 
             // Format 3
@@ -625,8 +621,8 @@ impl Instruction {
                         // Get the OI flag combo.
                         match (data >> 9) & 0b11 {
                             0b00 => AddReg { rd, rs, rn },
-                            0b10 => SubReg { rd, rs, rn },
-                            0b01 => AddImm3 { rd, rs, imm3 },
+                            0b01 => SubReg { rd, rs, rn },
+                            0b10 => AddImm3 { rd, rs, imm3 },
                             0b11 => SubImm3 { rd, rs, imm3 },
                             _ => unreachable!(),
                         }
@@ -921,195 +917,4 @@ fn get_rd(data: u16) -> u8 {
 #[inline]
 fn get_imm5(data: u16) -> u8 {
     ((data >> 6) & 0b11111) as u8
-}
-
-pub static REGISTER_NAMES: [&str; 16] = [
-    "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "r8", "r9", "r10", "r11", "r12", "sp", "lr",
-    "pc",
-];
-
-/// Convert low register index to its name
-#[inline]
-fn lreg(reg: &u8) -> &'static str {
-    REGISTER_NAMES[*reg as usize]
-}
-/// Convert high register index to its name
-#[inline]
-fn hreg(reg: &u8) -> &'static str {
-    REGISTER_NAMES[(*reg + 8) as usize]
-}
-
-/// Crates the interior of the {} braces of a PUSH/POP-like expression
-/// given the flags representing the registers to be pushed/popped.
-fn reglist(rlist: &u8) -> String {
-    get_registers_in_rlist(*rlist)
-        .iter()
-        .map(|x| lreg(x))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
-
-impl Display for Instruction {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use Instruction::*;
-
-        match self {
-            // Format 1
-            LslImm { rd, rs, imm5 } => write!(f, "LSL {}, {}, #{}", lreg(rd), lreg(rs), imm5),
-            LsrImm { rd, rs, imm5 } => write!(f, "LSR {}, {}, #{}", lreg(rd), lreg(rs), imm5),
-            AsrImm { rd, rs, imm5 } => write!(f, "ASR {}, {}, #{}", lreg(rd), lreg(rs), imm5),
-
-            // Format 2
-            AddReg { rd, rs, rn } => write!(f, "ADD {}, {}, {}", lreg(rd), lreg(rs), lreg(rn)),
-            AddImm3 { rd, rs, imm3 } => write!(f, "ADD {}, {}, #{}", lreg(rd), lreg(rs), imm3),
-            SubReg { rd, rs, rn } => write!(f, "SUB {}, {}, {}", lreg(rd), lreg(rs), lreg(rn)),
-            SubImm3 { rd, rs, imm3 } => write!(f, "SUB {}, {}, #{}", lreg(rd), lreg(rs), imm3),
-
-            // Format 3
-            MovImm { rd, imm8 } => write!(f, "MOV {}, #{}", lreg(rd), imm8),
-            CmpImm { rd, imm8 } => write!(f, "CMP {}, #{}", lreg(rd), imm8),
-            AddImm8 { rd, imm8 } => write!(f, "ADD {}, #{}", lreg(rd), imm8),
-            SubImm8 { rd, imm8 } => write!(f, "SUB {}, #{}", lreg(rd), imm8),
-
-            // Format 4
-            And { rd, rs } => write!(f, "AND {}, {}", lreg(rd), lreg(rs)),
-            Eor { rd, rs } => write!(f, "EOR {}, {}", lreg(rd), lreg(rs)),
-            Lsl { rd, rs } => write!(f, "LSL {}, {}", lreg(rd), lreg(rs)),
-            Lsr { rd, rs } => write!(f, "LSR {}, {}", lreg(rd), lreg(rs)),
-            Asr { rd, rs } => write!(f, "ASR {}, {}", lreg(rd), lreg(rs)),
-            Adc { rd, rs } => write!(f, "ADC {}, {}", lreg(rd), lreg(rs)),
-            Sbc { rd, rs } => write!(f, "SBC {}, {}", lreg(rd), lreg(rs)),
-            Ror { rd, rs } => write!(f, "ROR {}, {}", lreg(rd), lreg(rs)),
-            Tst { rd, rs } => write!(f, "TST {}, {}", lreg(rd), lreg(rs)),
-            Neg { rd, rs } => write!(f, "NEG {}, {}", lreg(rd), lreg(rs)),
-            Cmp { rd, rs } => write!(f, "CMP {}, {}", lreg(rd), lreg(rs)),
-            Cmn { rd, rs } => write!(f, "CMN {}, {}", lreg(rd), lreg(rs)),
-            Orr { rd, rs } => write!(f, "ORR {}, {}", lreg(rd), lreg(rs)),
-            Mul { rd, rs } => write!(f, "MUL {}, {}", lreg(rd), lreg(rs)),
-            Bic { rd, rs } => write!(f, "BIC {}, {}", lreg(rd), lreg(rs)),
-            Mvn { rd, rs } => write!(f, "MVN {}, {}", lreg(rd), lreg(rs)),
-
-            // Format 5
-            AddLowHi { rd, hs } => write!(f, "ADD {}, {}", lreg(rd), hreg(hs)),
-            AddHiLow { hd, rs } => write!(f, "ADD {}, {}", hreg(hd), lreg(rs)),
-            AddHiHi { hd, hs } => write!(f, "ADD {}, {}", hreg(hd), hreg(hs)),
-            CmpLowHi { rd, hs } => write!(f, "CMP {}, {}", lreg(rd), hreg(hs)),
-            CmpHiLow { hd, rs } => write!(f, "CMP {}, {}", hreg(hd), lreg(rs)),
-            CmpHiHi { hd, hs } => write!(f, "CMP {}, {}", hreg(hd), hreg(hs)),
-            MovLowHi { rd, hs } => write!(f, "MOV {}, {}", lreg(rd), hreg(hs)),
-            MovHiLow { hd, rs } => write!(f, "MOV {}, {}", hreg(hd), lreg(rs)),
-            MovHiHi { hd, hs } => write!(f, "MOV {}, {}", hreg(hd), hreg(hs)),
-            Bx { rs } => write!(f, "BX {}", lreg(rs)),
-            BxHi { hs } => write!(f, "BX {}", hreg(hs)),
-
-            // Format 6
-            LdrPc { rd, imm8 } => write!(f, "LDR {}, [pc, #{}]", lreg(rd), imm8 << 2),
-
-            // Format 7
-            StrReg { rb, ro, rs: rd } => {
-                write!(f, "STR {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro))
-            }
-            StrbReg { rb, ro, rs: rd } => {
-                write!(f, "STRB {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro))
-            }
-            LdrReg { rb, ro, rd } => write!(f, "LDR {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
-            LdrbReg { rb, ro, rd } => write!(f, "LDRB {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
-
-            // Format 8
-            StrhReg { rb, ro, rs: rd } => {
-                write!(f, "STRH {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro))
-            }
-            LdrhReg { rb, ro, rd } => write!(f, "LDRH {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
-            LdsbReg { rb, ro, rd } => write!(f, "LDSB {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
-            LdshReg { rb, ro, rd } => write!(f, "LDSH {}, [{}, {}]", lreg(rd), lreg(rb), lreg(ro)),
-
-            // Format 9
-            StrImm { rb, imm5, rs: rd } => {
-                write!(f, "STR {}, [{}, #{}]", lreg(rd), lreg(rb), imm5 << 2)
-            }
-            LdrImm { rb, imm5, rd } => {
-                write!(f, "LDR {}, [{}, #{}]", lreg(rd), lreg(rb), imm5 << 2)
-            }
-            StrbImm { rb, imm5, rs: rd } => {
-                write!(f, "STRB {}, [{}, #{}]", lreg(rd), lreg(rb), imm5)
-            }
-            LdrbImm { rb, imm5, rd } => {
-                write!(f, "LDRB {}, [{}, #{}]", lreg(rd), lreg(rb), imm5)
-            }
-
-            // Format 10
-            StrhImm { rb, imm5, rs: rd } => {
-                write!(f, "STRH {}, [{}, #{}]", lreg(rd), lreg(rb), imm5 << 1)
-            }
-            LdrhImm { rb, imm5, rd } => {
-                write!(f, "LDRH {}, [{}, #{}]", lreg(rd), lreg(rb), imm5 << 1)
-            }
-
-            // Format 11
-            StrSpImm { imm8, rs: rd } => write!(f, "STR {}, [sp, #{}]", lreg(rd), imm8 << 2),
-            LdrSpImm { imm8, rd } => write!(f, "LDR {}, [sp, #{}]", lreg(rd), imm8 << 2),
-
-            // Format 12
-            AddPcImm { imm8, rd } => write!(f, "ADD {}, pc, #{}", lreg(rd), imm8 << 2),
-            AddSpImm { imm8, rd } => write!(f, "ADD {}, sp, #{}", lreg(rd), imm8 << 2),
-
-            // Format 13
-            AddSpPosImm { imm7 } => write!(f, "ADD sp, #{}", imm7 << 2),
-            AddSpNegImm { imm7 } => write!(f, "ADD sp, #-{}", imm7 << 2),
-
-            // Format 14
-            Push { rlist } => write!(f, "PUSH {{ {} }}", reglist(rlist)),
-            PushLr { rlist } => write!(
-                f,
-                "PUSH {{ {}{}lr }}",
-                reglist(rlist),
-                if *rlist == 0 { "" } else { ", " }
-            ),
-            Pop { rlist } => write!(f, "POP {{ {} }}", reglist(rlist)),
-            PopPc { rlist } => write!(
-                f,
-                "POP {{ {}{}pc }}",
-                reglist(rlist),
-                if *rlist == 0 { "" } else { ", " }
-            ),
-
-            // Format 15
-            Stmia { rb, rlist } => write!(f, "STMIA {}!, {{ {} }}", lreg(rb), reglist(rlist)),
-            Ldmia { rb, rlist } => write!(f, "LDMIA {}!, {{ {} }}", lreg(rb), reglist(rlist)),
-
-            // Format 16
-            Beq { soffset } => write!(f, "BEQ <{}>", extend_8bit_offset(*soffset)),
-            Bne { soffset } => write!(f, "BNE <{}>", extend_8bit_offset(*soffset)),
-            Bcs { soffset } => write!(f, "BCS <{}>", extend_8bit_offset(*soffset)),
-            Bcc { soffset } => write!(f, "BCC <{}>", extend_8bit_offset(*soffset)),
-            Bmi { soffset } => write!(f, "BMI <{}>", extend_8bit_offset(*soffset)),
-            Bpl { soffset } => write!(f, "BPL <{}>", extend_8bit_offset(*soffset)),
-            Bvs { soffset } => write!(f, "BVS <{}>", extend_8bit_offset(*soffset)),
-            Bvc { soffset } => write!(f, "BVC <{}>", extend_8bit_offset(*soffset)),
-            Bhi { soffset } => write!(f, "BHI <{}>", extend_8bit_offset(*soffset)),
-            Bls { soffset } => write!(f, "BLS <{}>", extend_8bit_offset(*soffset)),
-            Bge { soffset } => write!(f, "BGE <{}>", extend_8bit_offset(*soffset)),
-            Blt { soffset } => write!(f, "BLT <{}>", extend_8bit_offset(*soffset)),
-            Bgt { soffset } => write!(f, "BGT <{}>", extend_8bit_offset(*soffset)),
-            Ble { soffset } => write!(f, "BLE <{}>", extend_8bit_offset(*soffset)),
-
-            // Format 17
-            Swi { imm } => write!(f, "SWI #{}", imm),
-
-            // Format 18
-            // TODO Compute the offset correctly
-            B { offset11 } => write!(f, "B <{}>", extend_11bit_offset(*offset11)),
-
-            // Format 19
-            // TODO Compute the offset correctly
-            BlHalf { hi, offset11 } => {
-                write!(
-                    f,
-                    "BL <{:011b}-{}>",
-                    (*offset11 as u32) << 1,
-                    if *hi { "ready" } else { "prep" }
-                )
-            }
-        }
-    }
 }
