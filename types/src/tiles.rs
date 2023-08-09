@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{GBAType, GBAIOError};
+use crate::{GBAIOError, GBAType};
 
 /// Data for a single 8x8 tile in a map.
 ///
@@ -9,7 +9,7 @@ use crate::{GBAType, GBAIOError};
 /// + Bit 10-13: palette index
 /// + Bit 14: horizontal flip
 /// + Bit 15: vertical flip
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct Tile(u16);
 
 impl Tile {
@@ -83,8 +83,7 @@ impl GBAType for Tile {
     }
 }
 
-
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Copy, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct MetaTile {
     pub tiles: [Tile; 8],
 }
@@ -120,8 +119,6 @@ impl GBAType for MetaTile {
         self.tiles.write_to(bytes, offset)
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {
@@ -188,5 +185,4 @@ mod tests {
         assert_eq!(meta_tile.tiles[7].hflip(), true);
         assert_eq!(meta_tile.tiles[7].vflip(), true);
     }
-
 }

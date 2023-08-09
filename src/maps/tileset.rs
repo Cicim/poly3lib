@@ -1,14 +1,16 @@
+use serde::Serialize;
 use thiserror::Error;
 
 use gba_macro::gba_struct;
 use gba_types::{colors::GBAPalette, tiles::MetaTile, GBAIOError};
 
 use crate::{
-    graphics::Graphic,
+    graphics::{Graphic, GraphicTile},
     rom::{Rom, RomType},
+    values::ValueGrabError,
 };
 
-use super::tileset_anims::TilesetAnimationList;
+use super::{render::TilesetsPair, tileset_anims::TilesetAnimationList};
 
 const DEFAULT_TILESET_BLOCKS: usize = 256;
 
@@ -102,8 +104,8 @@ pub enum TilesetReadingError {
     #[error("Invalid metatile offset")]
     InvalidMetaTileOffset,
 
-    #[error("Cannot read ROM value")]
-    CannotReadRomValue,
+    #[error("Cannot read ROM value: {0}")]
+    CannotReadRomValue(#[from] ValueGrabError),
 }
 
 impl TilesetData {
@@ -231,10 +233,7 @@ impl TilesetHeader {
             None
         } else {
             // This 1024 should be stable
-            let num_tiles_in_secondary_gfx = 1024
-                - rom
-                    .get_primary_tiles_count()
-                    .map_err(|_| TilesetReadingError::CannotReadRomValue)?;
+            let num_tiles_in_secondary_gfx = 1024 - rom.get_primary_tiles_count()?;
 
             Some(num_tiles_in_secondary_gfx)
         };
@@ -343,5 +342,115 @@ impl Into<MetatileLayerType> for u8 {
             3 => MetatileLayerType::ThreeLayers,
             _ => unreachable!("The layer type compared after a modulo 4 operation"),
         }
+    }
+}
+
+/// Contains everything that is needed to draw a tileset from scratch.
+#[derive(Debug, Serialize)]
+pub struct TilesetsRenderData {
+    /// Every single tile in both tilesets, including missing tiles
+    /// inbetween, which are just filled with all zeros
+    pub tiles: Vec<GraphicTile>,
+    /// Every single metatile in both tilesets, including missing metatiles
+    /// inbetween, which are just filled with all zeros
+    pub metatiles: Vec<MetaTile>,
+    /// Layer type attribute for every metatile in both tilesets.
+    /// Exported as u8 for convenience
+    pub metatile_layers: Vec<u8>,
+    /// The palettes combined from the two tilesets already
+    /// converted to RGBA.
+    pub palettes: [GBAPalette; 16],
+
+    /// When the secondary tileset starts
+    pub tile_limit: usize,
+    /// When the secondary tileset starts
+    pub metatile_limit: usize,
+}
+
+impl TilesetsRenderData {
+    pub fn new(
+        rom: &Rom,
+        primary: TilesetData,
+        secondary: TilesetData,
+    ) -> Result<Self, TilesetReadingError> {
+        // Read the number of palettes in the primary tileset and the total number of palettes
+        let pals_in_primary = rom.get_primary_palettes_count()?;
+        let total_pals = rom.get_palettes_count()?;
+
+        /* Palettes */
+        // Combine the two palettes
+        let mut palettes: [GBAPalette; 16] = [GBAPalette::default(); 16];
+        // Read the palettes from the primary tileset
+        for i in 0..pals_in_primary {
+            palettes[i] = primary.palettes[i];
+        }
+        // Read the palettes from the secondary tileset
+        for i in pals_in_primary..total_pals {
+            palettes[i] = secondary.palettes[i];
+        }
+
+        /* Tiles */
+        // Read the number of tiles after which the secondary tileset starts
+        let tile_limit = rom.get_primary_tiles_count()?;
+        // Merge the tiles
+        let mut tiles = vec![];
+        // Get the tiles from the primary tileset
+        for tile in primary.graphics.tiles {
+            tiles.push(tile);
+        }
+        // Fill with 0s until you arrive to the second tileset
+        while tiles.len() < tile_limit {
+            tiles.push([[0; 8]; 8]);
+        }
+        // Get the rest of the tiles from the secondary tileset
+        for tile in secondary.graphics.tiles {
+            tiles.push(tile);
+        }
+
+        /* Metatiles */
+        // Read primary and secondary tileset max sizes
+        let (metatile_limit, _) = rom.get_metatiles_count()?;
+        // Merge the metatiles
+        let mut metatiles = vec![];
+        // Merge the metatiles layer types
+        let mut metatile_layers = vec![];
+
+        // Get the first part from the primary
+        for mt in primary.metatiles {
+            metatiles.push(mt);
+        }
+        for attr in primary.attributes {
+            let layer_type = attr.layer_type as u8;
+            metatile_layers.push(layer_type);
+        }
+        // Fill with 0s until you arrive to the second tileset
+        while metatiles.len() < metatile_limit {
+            metatiles.push(MetaTile::default());
+            metatile_layers.push(0);
+        }
+        // Get the last part from the secondary
+        for mt in secondary.metatiles {
+            metatiles.push(mt);
+        }
+        for attr in secondary.attributes {
+            let layer_type = attr.layer_type as u8;
+            metatile_layers.push(layer_type);
+        }
+
+        Ok(Self {
+            metatiles,
+            metatile_layers,
+            palettes,
+            tile_limit,
+            metatile_limit,
+            tiles,
+        })
+    }
+}
+
+impl TilesetsPair {
+    /// Get the render data for these tilesets
+    pub fn get_render_data(self, rom: &Rom) -> Result<TilesetsRenderData, TilesetReadingError> {
+        TilesetsRenderData::new(rom, self.primary, self.secondary)
     }
 }

@@ -8,7 +8,7 @@ use crate::{GBAIOError, GBAType};
 /// + Bits 0-4: red
 /// + Bits 5-9: green
 /// + Bits 10-14: blue
-#[derive(Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GBAColor(u16);
 
 impl GBAColor {
@@ -97,7 +97,7 @@ impl GBAType for GBAColor {
 ///
 /// Palettes are stored in the ROM as 32-byte blocks, where each color is stored
 /// as a 16-bit value in the GBA's 15-bit BGR color format.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct GBAPalette {
     colors: [GBAColor; 16],
 }

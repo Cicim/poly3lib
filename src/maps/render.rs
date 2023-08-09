@@ -93,12 +93,8 @@ impl TilesetsPair {
         let secondary = TilesetData::read(rom, tileset_2)?;
 
         // Read the number of palettes in the primary tileset and the total number of palettes
-        let pals_in_primary =
-            rom.get_primary_palettes_count()
-                .map_err(|_| TilesetReadingError::CannotReadRomValue)? as usize;
-        let total_pals =
-            rom.get_palettes_count()
-                .map_err(|_| TilesetReadingError::CannotReadRomValue)? as usize;
+        let pals_in_primary = rom.get_primary_palettes_count()?;
+        let total_pals = rom.get_palettes_count()?;
 
         // Combine the two palettes
         let mut palettes: Vec<RgbaPalette> = Vec::with_capacity(16);
@@ -117,14 +113,10 @@ impl TilesetsPair {
         }
 
         // Read the number of tiles after which the secondary tileset starts
-        let tile_limit = rom
-            .get_primary_tiles_count()
-            .map_err(|_| TilesetReadingError::CannotReadRomValue)?;
+        let tile_limit = rom.get_primary_tiles_count()?;
 
         // Read primary and secondary tileset max sizes
-        let (metatile_limit, metatile_count) = rom
-            .get_metatiles_count()
-            .map_err(|_| TilesetReadingError::CannotReadRomValue)?;
+        let (metatile_limit, metatile_count) = rom.get_metatiles_count()?;
 
         // Read the number of metatiles after which the secondary tileset starts
         let metatile_limit = metatile_limit as usize;
