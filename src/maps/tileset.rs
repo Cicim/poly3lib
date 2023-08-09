@@ -8,6 +8,8 @@ use crate::{
     rom::{Rom, RomType},
 };
 
+use super::tileset_anims::TilesetAnimationList;
+
 const DEFAULT_TILESET_BLOCKS: usize = 256;
 
 gba_struct!(TilesetHeader {
@@ -81,7 +83,10 @@ pub struct TilesetData {
     pub attributes: Vec<MetatileAttributes>,
     /// The metatiles that make up the tileset
     pub metatiles: Vec<MetaTile>,
-    // TODO Handle animations
+    /// Animation data for the tileset
+    ///
+    /// This is loaded at a later time explicitly
+    pub animations: Option<TilesetAnimationList>,
 }
 
 #[derive(Debug, Error)]
@@ -123,6 +128,9 @@ impl TilesetData {
             palettes,
             attributes,
             metatiles,
+
+            // Loading animations is optional
+            animations: None,
         })
     }
 

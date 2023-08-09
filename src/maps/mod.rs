@@ -14,6 +14,7 @@ pub mod layout;
 pub mod mapsec;
 pub mod render;
 pub mod tileset;
+pub mod tileset_anims;
 pub mod wilds;
 
 impl Rom {
