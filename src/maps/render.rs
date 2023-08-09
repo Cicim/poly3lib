@@ -163,8 +163,8 @@ impl TilesetsPair {
         // Get the attributes for this tile
         let attributes = self.get_attributes_nocheck(index);
 
-        let top_tiles = &metatile.tiles[4..8];
-        let bot_tiles = &metatile.tiles[0..4];
+        let top_tiles = &metatile.0[4..8];
+        let bot_tiles = &metatile.0[0..4];
 
         match attributes.layer_type {
             // TODO Change if you find the difference
@@ -187,7 +187,7 @@ impl TilesetsPair {
                     Some(metatile) => metatile,
                     None => return RenderedMetatile(bot, top),
                 };
-                let top_tiles = &next_metatile.tiles[4..8];
+                let top_tiles = &next_metatile.0[4..8];
                 self.draw_layer(&mut top, top_tiles, true);
             }
         }

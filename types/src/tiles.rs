@@ -1,5 +1,7 @@
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 use crate::{GBAIOError, GBAType};
 
 /// Data for a single 8x8 tile in a map.
@@ -9,7 +11,7 @@ use crate::{GBAIOError, GBAType};
 /// + Bit 10-13: palette index
 /// + Bit 14: horizontal flip
 /// + Bit 15: vertical flip
-#[derive(Copy, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Copy, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Tile(u16);
 
 impl Tile {
@@ -83,21 +85,19 @@ impl GBAType for Tile {
     }
 }
 
-#[derive(Copy, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct MetaTile {
-    pub tiles: [Tile; 8],
-}
+#[derive(Copy, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MetaTile(pub [Tile; 8]);
 
 impl MetaTile {
     pub fn new(tiles: [Tile; 8]) -> MetaTile {
-        MetaTile { tiles }
+        MetaTile(tiles)
     }
 }
 
 impl fmt::Debug for MetaTile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "MetaTile[")?;
-        for (i, tile) in self.tiles.iter().enumerate() {
+        for (i, tile) in self.0.iter().enumerate() {
             write!(f, "{:?}", tile)?;
             if i != 7 {
                 write!(f, " ")?;
@@ -116,7 +116,7 @@ impl GBAType for MetaTile {
     }
 
     fn write_to(&self, bytes: &mut [u8], offset: usize) -> Result<(), GBAIOError> {
-        self.tiles.write_to(bytes, offset)
+        self.0.write_to(bytes, offset)
     }
 }
 
@@ -152,37 +152,37 @@ mod tests {
         ];
 
         let meta_tile = MetaTile::new(tiles);
-        assert_eq!(meta_tile.tiles[0].index(), 0x000);
-        assert_eq!(meta_tile.tiles[0].palette(), 0xA);
-        assert_eq!(meta_tile.tiles[0].hflip(), true);
-        assert_eq!(meta_tile.tiles[0].vflip(), false);
-        assert_eq!(meta_tile.tiles[1].index(), 0x000);
-        assert_eq!(meta_tile.tiles[1].palette(), 0xF);
-        assert_eq!(meta_tile.tiles[1].hflip(), true);
-        assert_eq!(meta_tile.tiles[1].vflip(), true);
-        assert_eq!(meta_tile.tiles[2].index(), 0x000);
-        assert_eq!(meta_tile.tiles[2].palette(), 0x8);
-        assert_eq!(meta_tile.tiles[2].hflip(), false);
-        assert_eq!(meta_tile.tiles[2].vflip(), true);
-        assert_eq!(meta_tile.tiles[3].index(), 0x000);
-        assert_eq!(meta_tile.tiles[3].palette(), 0xA);
-        assert_eq!(meta_tile.tiles[3].hflip(), true);
-        assert_eq!(meta_tile.tiles[3].vflip(), false);
-        assert_eq!(meta_tile.tiles[4].index(), 0x000);
-        assert_eq!(meta_tile.tiles[4].palette(), 0x8);
-        assert_eq!(meta_tile.tiles[4].hflip(), false);
-        assert_eq!(meta_tile.tiles[4].vflip(), true);
-        assert_eq!(meta_tile.tiles[5].index(), 0x000);
-        assert_eq!(meta_tile.tiles[5].palette(), 0x3);
-        assert_eq!(meta_tile.tiles[5].hflip(), false);
-        assert_eq!(meta_tile.tiles[5].vflip(), false);
-        assert_eq!(meta_tile.tiles[6].index(), 0x000);
-        assert_eq!(meta_tile.tiles[6].palette(), 0x3);
-        assert_eq!(meta_tile.tiles[6].hflip(), false);
-        assert_eq!(meta_tile.tiles[6].vflip(), false);
-        assert_eq!(meta_tile.tiles[7].index(), 0x000);
-        assert_eq!(meta_tile.tiles[7].palette(), 0xF);
-        assert_eq!(meta_tile.tiles[7].hflip(), true);
-        assert_eq!(meta_tile.tiles[7].vflip(), true);
+        assert_eq!(meta_tile.0[0].index(), 0x000);
+        assert_eq!(meta_tile.0[0].palette(), 0xA);
+        assert_eq!(meta_tile.0[0].hflip(), true);
+        assert_eq!(meta_tile.0[0].vflip(), false);
+        assert_eq!(meta_tile.0[1].index(), 0x000);
+        assert_eq!(meta_tile.0[1].palette(), 0xF);
+        assert_eq!(meta_tile.0[1].hflip(), true);
+        assert_eq!(meta_tile.0[1].vflip(), true);
+        assert_eq!(meta_tile.0[2].index(), 0x000);
+        assert_eq!(meta_tile.0[2].palette(), 0x8);
+        assert_eq!(meta_tile.0[2].hflip(), false);
+        assert_eq!(meta_tile.0[2].vflip(), true);
+        assert_eq!(meta_tile.0[3].index(), 0x000);
+        assert_eq!(meta_tile.0[3].palette(), 0xA);
+        assert_eq!(meta_tile.0[3].hflip(), true);
+        assert_eq!(meta_tile.0[3].vflip(), false);
+        assert_eq!(meta_tile.0[4].index(), 0x000);
+        assert_eq!(meta_tile.0[4].palette(), 0x8);
+        assert_eq!(meta_tile.0[4].hflip(), false);
+        assert_eq!(meta_tile.0[4].vflip(), true);
+        assert_eq!(meta_tile.0[5].index(), 0x000);
+        assert_eq!(meta_tile.0[5].palette(), 0x3);
+        assert_eq!(meta_tile.0[5].hflip(), false);
+        assert_eq!(meta_tile.0[5].vflip(), false);
+        assert_eq!(meta_tile.0[6].index(), 0x000);
+        assert_eq!(meta_tile.0[6].palette(), 0x3);
+        assert_eq!(meta_tile.0[6].hflip(), false);
+        assert_eq!(meta_tile.0[6].vflip(), false);
+        assert_eq!(meta_tile.0[7].index(), 0x000);
+        assert_eq!(meta_tile.0[7].palette(), 0xF);
+        assert_eq!(meta_tile.0[7].hflip(), true);
+        assert_eq!(meta_tile.0[7].vflip(), true);
     }
 }

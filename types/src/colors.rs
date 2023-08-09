@@ -1,5 +1,7 @@
 use std::fmt::{self, Formatter};
 
+use serde::{Deserialize, Serialize};
+
 use crate::{GBAIOError, GBAType};
 
 /// A color in the GBA's 15-bit BGR color format.
@@ -8,7 +10,7 @@ use crate::{GBAIOError, GBAType};
 /// + Bits 0-4: red
 /// + Bits 5-9: green
 /// + Bits 10-14: blue
-#[derive(Default, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GBAColor(u16);
 
 impl GBAColor {
@@ -97,15 +99,13 @@ impl GBAType for GBAColor {
 ///
 /// Palettes are stored in the ROM as 32-byte blocks, where each color is stored
 /// as a 16-bit value in the GBA's 15-bit BGR color format.
-#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct GBAPalette {
-    colors: [GBAColor; 16],
-}
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GBAPalette([GBAColor; 16]);
 
 impl fmt::Debug for GBAPalette {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "Palette: [ ")?;
-        for color in self.colors.iter() {
+        for color in self.0.iter() {
             write!(f, "{:?} ", color)?;
         }
         write!(f, "]")?;
@@ -115,31 +115,29 @@ impl fmt::Debug for GBAPalette {
 
 impl Default for GBAPalette {
     fn default() -> Self {
-        GBAPalette {
-            colors: [GBAColor::default(); 16],
-        }
+        GBAPalette([GBAColor::default(); 16])
     }
 }
 
 impl GBAPalette {
     /// Creates a new [`Palette`] from the given colors.
     pub fn new(colors: [GBAColor; 16]) -> GBAPalette {
-        GBAPalette { colors }
+        GBAPalette(colors)
     }
 
     /// Returns the color at the given index.
     pub fn get(&self, index: usize) -> GBAColor {
-        self.colors[index]
+        self.0[index]
     }
 
     /// Sets the color at the given index.
     pub fn set(&mut self, index: usize, color: GBAColor) {
-        self.colors[index] = color;
+        self.0[index] = color;
     }
 
     /// Returns an iterator over the colors in the palette.
     pub fn iter(&self) -> impl Iterator<Item = GBAColor> + '_ {
-        self.colors.iter().copied()
+        self.0.iter().copied()
     }
 }
 
@@ -152,6 +150,6 @@ impl GBAType for GBAPalette {
     }
 
     fn write_to(&self, bytes: &mut [u8], offset: usize) -> Result<(), GBAIOError> {
-        self.colors.write_to(bytes, offset)
+        self.0.write_to(bytes, offset)
     }
 }
