@@ -226,6 +226,18 @@ impl Rom {
         self.data[offset]
     }
 
+    pub fn read_halfword(&self, offset: usize) -> u16 {
+        let byte1 = self.read_byte(offset);
+        let byte2 = self.read_byte(offset + 1);
+
+        (byte1 as u16) | ((byte2 as u16) << 8)
+    }
+
+    pub fn write_halfword(&mut self, offset: usize, value: u16) {
+        self.data[offset] = (value & 0xFF) as u8;
+        self.data[offset + 1] = (value >> 8) as u8;
+    }
+
     /// Reads an halfword (u16) from the ROM, ignoring the alignment.
     pub fn read_unaligned_halfword(&self, offset: usize) -> Result<u16, GBAIOError> {
         let byte1 = self.read::<u8>(offset)?;

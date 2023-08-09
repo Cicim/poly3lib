@@ -400,7 +400,7 @@ impl MapLayoutData {
         // Loop over the map data
         for x in 0..width {
             for y in 0..height {
-                let tile_index = self.map_data[y as usize][x as usize][0];
+                let tile_index = self.map_data.get_metatile(x, y);
                 let tile = &rendered_tp[tile_index as usize];
                 tile.draw(&mut image, x, y);
             }

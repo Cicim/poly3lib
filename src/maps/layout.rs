@@ -102,13 +102,119 @@ impl MapLayout {
     }
 }
 
-/// A block in the map data. Already divided in block and permission.
-/// The permission part is itself composed of two parts:
-/// - The 8 least significant bits are the level
-/// - The ninth bit is 1 if the block is an obstacle, 0 otherwise
-pub type BlockInfo = [u16; 2];
 /// Map data to pass to the writer as a matrix of `BlockInfo`
-pub type MapData = Vec<Vec<BlockInfo>>;
+#[derive(Serialize, Debug)]
+pub struct BlocksData {
+    // List of Tiles
+    metatiles: Vec<u16>,
+    // List of Levels
+    levels: Vec<u16>,
+    // Width of the map
+    width: usize,
+    // Height of the map
+    height: usize,
+}
+
+impl BlocksData {
+    pub fn new(width: usize, height: usize) -> BlocksData {
+        BlocksData {
+            metatiles: vec![0; width * height],
+            levels: vec![0; width * height],
+            width,
+            height,
+        }
+    }
+    pub fn get_metatile(&self, x: u32, y: u32) -> u16 {
+        self.metatiles[(y * self.width as u32 + x) as usize]
+    }
+
+    /// Reads the blocks data of the given size from the ROM at the
+    /// given offset into a [BlocksData] struct
+    fn read(
+        rom: &Rom,
+        offset: usize,
+        width: usize,
+        height: usize,
+    ) -> Result<BlocksData, LayoutError> {
+        let size = width * height;
+        let mut metatiles = Vec::with_capacity(size);
+        let mut levels = Vec::with_capacity(size);
+
+        if offset + size * 2 > rom.data.len() {
+            return Err(LayoutError::InvalidMap);
+        }
+
+        for y in 0..height {
+            for x in 0..width {
+                let index = y * width + x;
+                let block = rom.read_halfword(offset + index * 2);
+
+                // TODO Read the correct number of bits (or better, read it somewhere else and pass it here)
+                let permission = block >> 10;
+                let metatile = block & 0x3ff;
+
+                // Compose the permission bit
+                let level = permission >> 1;
+                let obstacle = permission & 1;
+                let permission = level | (obstacle << 8);
+
+                metatiles.push(metatile);
+                levels.push(permission);
+            }
+        }
+
+        Ok(BlocksData {
+            metatiles,
+            levels,
+            width,
+            height,
+        })
+    }
+
+    /// Writes this [BlocksData] to the ROM at the given offset.
+    fn write(&self, rom: &mut Rom, offset: usize) {
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let index = y * self.width + x;
+                let metatile = self.metatiles[index];
+                let level = self.levels[index];
+
+                // TODO Write the blocks data as required by the game
+                let permission = ((level & 0xff) << 1) | (level >> 8);
+                let block = metatile | (permission << 10);
+
+                rom.write_halfword(offset + index * 2, block);
+            }
+        }
+    }
+
+    /// Gets the old and new size of a map and decides whether to repoint it or not.
+    fn repoint(
+        &self,
+        rom: &mut Rom,
+        old_offset_and_size: Option<(usize, usize)>,
+    ) -> Result<usize, LayoutError> {
+        let new_size = self.get_byte_size();
+
+        let offset = match old_offset_and_size {
+            // If the map did not have an offset, allocate space for a new map data
+            None => rom
+                .find_free_space(new_size, 2)
+                .ok_or_else(|| LayoutError::CannotRepointMap)?,
+            // If it did have an offset, repoint it
+            Some((old_offset, old_size)) => rom
+                .repoint_offset(old_offset, old_size, new_size)
+                .ok_or_else(|| LayoutError::CannotRepointMap)?,
+        };
+
+        self.write(rom, offset);
+        Ok(offset)
+    }
+
+    pub fn get_byte_size(&self) -> usize {
+        self.metatiles.len() * 2
+    }
+}
 
 /// Struct for passing around the map layout header
 /// and the map and border data.
@@ -119,9 +225,9 @@ pub struct MapLayoutData {
     /// The `MapLayout` header.
     pub header: MapLayout,
     /// The map data (blocks and permissions)
-    pub map_data: MapData,
+    pub map_data: BlocksData,
     /// The border data (blocks and permissions)
-    pub border_data: MapData,
+    pub border_data: BlocksData,
     /// The number of bits that are used to index a block in the tilesets
     ///
     /// `16 - tile_index_bits` = number of bits used for permission information.
@@ -241,33 +347,28 @@ impl<'rom> MapLayoutsTable<'rom> {
         let (map_offset, border_offset) = match self.read_header(data.index) {
             Ok(old) => {
                 // If the header exists, read the old map and border sizes
-                let old_map_size = old.width * old.height * 2;
-                let old_border_size = old.border_width as i32 * old.border_height as i32 * 2;
+                let old_map_size = (old.width * old.height * 2) as usize;
+                let old_border_size = old.border_width as usize * old.border_height as usize * 2;
 
                 // Repoint if necessary
-                let old_map_offset = old.data.offset();
-                let old_border_offset = old.border.offset();
+                let old_map_offset_and_size =
+                    old.data.offset().map(|offset| (offset, old_map_size));
+                let old_border_offset_and_size =
+                    old.border.offset().map(|offset| (offset, old_border_size));
 
-                let new_map_offset = write_over_map_data(
-                    &mut self.rom,
-                    old_map_offset,
-                    old_map_size as usize,
-                    &data.map_data,
-                )?;
+                let new_map_offset = data
+                    .map_data
+                    .repoint(&mut self.rom, old_map_offset_and_size)?;
 
-                let new_border_offset = write_over_map_data(
-                    &mut self.rom,
-                    old_border_offset,
-                    old_border_size as usize,
-                    &data.border_data,
-                )?;
+                let new_border_offset = data
+                    .border_data
+                    .repoint(&mut self.rom, old_border_offset_and_size)?;
 
                 (new_map_offset, new_border_offset)
             }
             Err(_) => {
-                // Allocate the map data and the border data
-                let map_offset = write_new_map_data(self.rom, &data.map_data)?;
-                let border_offset = write_new_map_data(self.rom, &data.border_data)?;
+                let map_offset = data.map_data.repoint(&mut self.rom, None)?;
+                let border_offset = data.border_data.repoint(&mut self.rom, None)?;
 
                 (map_offset, border_offset)
             }
@@ -299,12 +400,17 @@ impl<'rom> MapLayoutsTable<'rom> {
             .offset()
             .ok_or_else(|| LayoutError::InvalidMap)? as usize;
 
-        let map_data = read_map_data(self.rom, map_offset, layout.width, layout.height)?;
-        let border_data = read_map_data(
+        let map_data = BlocksData::read(
+            self.rom,
+            map_offset,
+            layout.width as usize,
+            layout.height as usize,
+        )?;
+        let border_data = BlocksData::read(
             self.rom,
             border_offset,
-            layout.border_width as i32,
-            layout.border_height as i32,
+            layout.border_width as usize,
+            layout.border_height as usize,
         )?;
 
         Ok(MapLayoutData {
@@ -340,8 +446,8 @@ impl<'rom> MapLayoutsTable<'rom> {
         };
 
         // Create a new map and border data
-        let map_data = vec![vec![[0, 0]; width as usize]; height as usize];
-        let border_data = vec![vec![[0, 0]; 2]; 2];
+        let map_data = BlocksData::new(width as usize, height as usize);
+        let border_data = BlocksData::new(2, 2);
 
         // Write the data (finds offset for new data)
         let data = MapLayoutData {
@@ -560,94 +666,6 @@ fn init_layouts_table(rom: &Rom) -> Result<TablePointer, TableInitError> {
         size: table_size,
         references: rom.find_references(table_offset),
     })
-}
-
-/// Reads a map data from the ROM, formatting it as a 2D array.
-fn read_map_data(
-    rom: &Rom,
-    offset: usize,
-    width: i32,
-    height: i32,
-) -> Result<MapData, LayoutError> {
-    let mut data = Vec::with_capacity(height as usize);
-
-    for y in 0..height {
-        let mut row = Vec::with_capacity(width as usize);
-
-        for x in 0..width {
-            let offset = offset + (y * width + x) as usize * 2;
-            let block = rom
-                .read::<u16>(offset)
-                .map_err(|_| LayoutError::InvalidOffset(offset as u32))?;
-
-            // TODO Read the correct number of bits (or better, read it somewhere else and pass it here)
-            let permission = block >> 10;
-            let metatile = block & 0x3ff;
-
-            // Compose the permission bit
-            let level = permission >> 1;
-            let obstacle = permission & 1;
-            let permission = level | (obstacle << 8);
-
-            row.push([metatile, permission]);
-        }
-
-        data.push(row);
-    }
-
-    Ok(data)
-}
-
-/// Allocates space for the map data and writes it to the ROM, returning the offset.
-fn write_new_map_data(rom: &mut Rom, map: &MapData) -> Result<usize, LayoutError> {
-    let size = map.len() * map[0].len() * 2;
-
-    let offset = rom
-        .find_free_space(size, 2)
-        .ok_or_else(|| LayoutError::CannotRepointMap)?;
-
-    for (y, row) in map.iter().enumerate() {
-        for (x, tile) in row.iter().enumerate() {
-            let offset = offset + (y * map[0].len() + x) * 2;
-            rom.write(offset, *tile)?;
-        }
-    }
-
-    Ok(offset)
-}
-
-/// Gets the old and new size of a map and decides whether to repoint it or not.
-fn write_over_map_data(
-    rom: &mut Rom,
-    old_offset: Option<usize>,
-    old_size: usize,
-    map: &MapData,
-) -> Result<usize, LayoutError> {
-    if old_offset.is_none() {
-        return write_new_map_data(rom, map);
-    }
-
-    // Get the new map size
-    let new_size = map.len() * map[0].len() * 2;
-    // Repoint
-    let offset = rom
-        .repoint_offset(old_offset.unwrap() as usize, old_size, new_size)
-        .ok_or_else(|| LayoutError::CannotRepointMap)?;
-
-    // Write the new map data
-    for (y, row) in map.iter().enumerate() {
-        for (x, block) in row.iter().enumerate() {
-            // TODO Use the correct masks and everything
-            let [metatile, permission] = block;
-            let permission = ((permission & 0x1f) << 1) | (permission >> 8);
-            let block = *metatile | (permission << 10);
-
-            let offset = offset + (y * map[0].len() + x) * 2;
-            rom.write(offset, block)?;
-        }
-    }
-
-    Ok(offset)
 }
 
 #[cfg(test)]
