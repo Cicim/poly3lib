@@ -6,4 +6,5 @@ pub mod values;
 
 // Modules in refs
 pub mod maps;
+pub mod object_events;
 pub mod scripts;

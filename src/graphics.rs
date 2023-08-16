@@ -1,10 +1,12 @@
 use gba_types::{colors::GBAPalette, GBAIOError};
+use image::RgbaImage;
+use serde::{Deserialize, Serialize};
 
 use crate::rom::Rom;
 
 pub type GraphicTile = [[u8; 8]; 8];
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Graphic {
     /// The offset of the graphic in the ROM
     pub offset: usize,
@@ -85,6 +87,50 @@ impl Graphic {
                 write_tile(tile, &mut rom.data, new_offset + i * 32);
             }
             Ok(new_offset)
+        }
+    }
+
+    /// Draw the graphic onto an Rgba image with the given size.
+    pub fn draw(&self, img: &mut RgbaImage, palette: &GBAPalette, hflip: bool, vflip: bool) {
+        let tiles = &self.tiles;
+        let tile_width = img.width() as usize / 8;
+        let tile_height = img.height() as usize / 8;
+
+        for (i, tile) in tiles.iter().enumerate() {
+            let mut tx = i % tile_width;
+            let mut ty = i / tile_width;
+
+            if hflip {
+                tx = tile_width - tx - 1;
+            }
+            if vflip {
+                ty = tile_height - ty - 1;
+            }
+
+            for mut y in 0..8 {
+                for mut x in 0..8 {
+                    let color = tile[y][x] as usize;
+
+                    // Consider transparency
+                    if color == 0 {
+                        continue;
+                    }
+
+                    let (r, g, b) = palette.get(color).to_rgb888();
+
+                    if hflip {
+                        x = 7 - x;
+                    }
+                    if vflip {
+                        y = 7 - y;
+                    }
+                    img.put_pixel(
+                        (tx * 8 + x) as u32,
+                        (ty * 8 + y) as u32,
+                        image::Rgba([r, g, b, 255]),
+                    );
+                }
+            }
         }
     }
 

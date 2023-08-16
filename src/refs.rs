@@ -75,6 +75,11 @@ pub struct Refs {
     pub mapsec_name_table: Option<TablePointer>,
     /// The table of wild encounters.
     pub wilds_table: Option<TablePointer>,
+
+    /// The table of object events graphics.
+    pub object_event_gfx_table: Option<TablePointer>,
+    /// The table of object event sprite palettes
+    pub object_event_pal_table: Option<TablePointer>,
 }
 
 impl Display for Refs {
@@ -108,6 +113,7 @@ impl Display for Refs {
         write_field!(map_layouts_table, f, self.map_layouts_table);
         write_field!(mapsec_name_table, f, self.mapsec_name_table);
         write_field!(wilds_table, f, self.wilds_table);
+        write_field!(object_event_gfx_table, f, self.object_event_gfx_table);
 
         if let Some(table) = &self.tilesets_table {
             writeln!(f, "  tilesets_table:")?;
