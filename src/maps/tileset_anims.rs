@@ -57,6 +57,35 @@ pub struct TilesetAnimationList {
     pub animations: Vec<TilesetAnimation>,
 }
 
+impl std::fmt::Display for TilesetAnimationList {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use colored::Colorize;
+
+        writeln!(
+            f,
+            "Timer interval: {}",
+            format!("{} - {}", self.start_frame, self.max_frames).green()
+        )?;
+        writeln!(f, "Animations:")?;
+        for (i, anim) in self.animations.iter().enumerate() {
+            let i = format!("{}", i).red();
+            let frames = format!("{}", anim.frame_graphics.len()).red();
+
+            writeln!(f, " - [{}]: {} frames", i, frames)?;
+
+            let tile = format!("{}", anim.start_tile).green();
+            let length = format!("{}", anim.frame_graphics[0].tiles.len()).green();
+            writeln!(f, "   - tile {} length {}", tile, length)?;
+
+            let interval = format!("{}", anim.interval).blue();
+            let start_time = format!("{}", anim.start_time).blue();
+            writeln!(f, "   - if (timer % {} == {})", interval, start_time)?;
+        }
+
+        Ok(())
+    }
+}
+
 impl TilesetsPair {
     /// Load animations for both tilesets in this pair.
     pub fn load_animations(&mut self, rom: &Rom) -> Result<(), TilesetAnimationError> {
@@ -69,7 +98,7 @@ impl TilesetsPair {
 
 impl TilesetData {
     /// Loads the animations for this tileset into the `animations` field.
-    fn load_animations(&mut self, rom: &Rom) -> Result<(), TilesetAnimationError> {
+    pub fn load_animations(&mut self, rom: &Rom) -> Result<(), TilesetAnimationError> {
         // Get the offset to the animation list
         let header_offset = match self.header.animations.offset() {
             Some(ptr) => ptr,
@@ -117,6 +146,12 @@ fn load_anims_from_init_function(
             LoggedEvent::WordWritten(_, w) => callback = *w,
             _ => {}
         }
+    }
+
+    // In Emerald, the start and max frames are copied from the primary animation data.
+    // However we cannot read it now, so we can just give it a default value.
+    if max_frames == 0 {
+        max_frames = 240;
     }
 
     // Start creating the animations list
