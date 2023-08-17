@@ -1,8 +1,11 @@
-use gba_types::{colors::GBAPalette, GBAIOError};
-use image::RgbaImage;
+use std::io::Cursor;
+
+use base64::{engine::general_purpose, Engine};
+use image::{ImageFormat, RgbImage, RgbaImage};
 use serde::{Deserialize, Serialize};
 
 use crate::rom::Rom;
+use gba_types::{colors::GBAPalette, GBAIOError};
 
 pub type GraphicTile = [[u8; 8]; 8];
 
@@ -134,6 +137,7 @@ impl Graphic {
         }
     }
 
+    // Methods printing to console for debugging
     pub fn print_large(&self, col: usize, headers: bool, palette: &GBAPalette) {
         use colored::Colorize;
 
@@ -253,4 +257,26 @@ fn write_tile(tile: &GraphicTile, bytes: &mut [u8], offset: usize) {
             }
         }
     }
+}
+
+/// Serializes a [`RgbaImage`] to a base64 string for use in HTML.
+pub fn rgba_image_to_base64(image: &RgbaImage) -> String {
+    // Create a buffer that looks like a file (a cursor over a vector)
+    let mut buffer = Cursor::new(Vec::new());
+    // Write the image as png to that buffer
+    image.write_to(&mut buffer, ImageFormat::Png).unwrap();
+    // Encode the buffer as base64
+    let b64 = general_purpose::STANDARD.encode(&buffer.into_inner());
+
+    // Return the base64 string with the header
+    format!("data:image/png;base64,{}", b64)
+}
+
+/// Serializes a [`RgbImage`] to a base64 string for use in HTML.
+pub fn rgb_image_to_base64(image: &RgbImage) -> String {
+    // Same as above
+    let mut buffer = Cursor::new(Vec::new());
+    image.write_to(&mut buffer, ImageFormat::Png).unwrap();
+    let b64 = general_purpose::STANDARD.encode(&buffer.into_inner());
+    format!("data:image/png;base64,{}", b64)
 }

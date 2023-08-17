@@ -278,8 +278,8 @@ fn init_object_events_table(rom: &Rom) -> Result<TablePointer, TableInitError> {
 
 fn init_object_event_sprite_palettes(rom: &Rom) -> Result<TablePointer, TableInitError> {
     let reference = match rom.rom_type {
-        RomType::Ruby => 0x5beb8,
-        RomType::Sapphire => 0x5beb4,
+        RomType::Ruby => 0x5beb4,
+        RomType::Sapphire => 0x5beb8,
         RomType::LeafGreen | RomType::FireRed => 0x5f570,
         RomType::Emerald => 0x8e950,
     };

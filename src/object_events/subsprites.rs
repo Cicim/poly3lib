@@ -114,22 +114,22 @@ impl std::fmt::Display for SubspriteTables {
             }
 
             // Compose it as a table
-            writeln!(f, "┏━━━━━┳━━━━━┳━━━━━━━┳━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━┓")?;
-            writeln!(f, "┃  x  ┃  y  ┃ Shape ┃ Size ┃ Tile Offset ┃ Priority ┃")?;
-            writeln!(f, "┡━━━━━╇━━━━━╇━━━━━━━╇━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━┩")?;
+            writeln!(f, "┏━━━━━┳━━━━━┳━━━━━━━━━━┳━━━━━━━━━━━━━┳━━━━━━━━━━┓")?;
+            writeln!(f, "┃  x  ┃  y  ┃   Size   ┃ Tile Offset ┃ Priority ┃")?;
+            writeln!(f, "┡━━━━━╇━━━━━╇━━━━━━━━━━╇━━━━━━━━━━━━━╇━━━━━━━━━━┩")?;
             for subsprite in table.iter() {
+                let (width, height) = get_shape(subsprite.size, subsprite.shape);
                 writeln!(
                     f,
-                    "│{:>4} │{:>4} │ {:>5} │ {:>4} │ {:>11} │ {:>8} │",
+                    "│{:>4} │{:>4} │ {:>8} │ {:>11} │ {:>8} │",
                     subsprite.x,
                     subsprite.y,
-                    subsprite.shape,
-                    subsprite.size,
+                    format!("{}x{}", width, height),
                     subsprite.tile_offset,
                     subsprite.priority
                 )?;
             }
-            writeln!(f, "└─────┴─────┴───────┴──────┴─────────────┴──────────┘")?;
+            writeln!(f, "└─────┴─────┴──────────┴─────────────┴──────────┘")?;
         }
 
         Ok(())

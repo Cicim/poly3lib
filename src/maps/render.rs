@@ -1,15 +1,15 @@
-use std::io::Cursor;
-
-use base64::{engine::general_purpose, Engine};
 use gba_types::{
     colors::GBAPalette,
     pointers::PointedData,
     tiles::{MetaTile, Tile},
 };
-use image::{ImageFormat, Rgb, RgbImage, Rgba, RgbaImage};
+use image::{Rgb, RgbImage, Rgba, RgbaImage};
 use serde::{ser::SerializeTuple, Serialize};
 
-use crate::rom::Rom;
+use crate::{
+    graphics::{rgb_image_to_base64, rgba_image_to_base64},
+    rom::Rom,
+};
 
 use super::{
     layout::{MapLayout, MapLayoutData},
@@ -423,26 +423,4 @@ fn convert_pal_to_rgba(pal: GBAPalette) -> RgbaPalette {
     }
 
     rgba
-}
-
-/// Serializes a [`RgbaImage`] to a base64 string for use in HTML.
-pub fn rgba_image_to_base64(image: &RgbaImage) -> String {
-    // Create a buffer that looks like a file (a cursor over a vector)
-    let mut buffer = Cursor::new(Vec::new());
-    // Write the image as png to that buffer
-    image.write_to(&mut buffer, ImageFormat::Png).unwrap();
-    // Encode the buffer as base64
-    let b64 = general_purpose::STANDARD.encode(&buffer.into_inner());
-
-    // Return the base64 string with the header
-    format!("data:image/png;base64,{}", b64)
-}
-
-/// Serializes a [`RgbImage`] to a base64 string for use in HTML.
-pub fn rgb_image_to_base64(image: &RgbImage) -> String {
-    // Same as above
-    let mut buffer = Cursor::new(Vec::new());
-    image.write_to(&mut buffer, ImageFormat::Png).unwrap();
-    let b64 = general_purpose::STANDARD.encode(&buffer.into_inner());
-    format!("data:image/png;base64,{}", b64)
 }
