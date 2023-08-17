@@ -13,7 +13,7 @@ use crate::refs::Refs;
 
 const MAX_ROM_SIZE: usize = 1 << 25;
 
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum RomType {
     FireRed,
     LeafGreen,

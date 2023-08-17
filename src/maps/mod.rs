@@ -11,6 +11,7 @@ pub mod connection;
 pub mod events;
 pub mod header;
 pub mod layout;
+pub mod mapgrid;
 pub mod mapsec;
 pub mod render;
 pub mod tileset;
