@@ -1,9 +1,153 @@
+use serde::Serialize;
+use thiserror::Error;
+
 use crate::{
     rom::{Rom, RomType},
     values::RomValueError,
 };
 
-#[derive(Debug)]
+use super::layout::{LayoutError, MapLayoutData};
+
+#[derive(Debug, Error)]
+pub enum MapGridError {
+    #[error("Cannot repoint map grid data")]
+    CannotRepointMap,
+    #[error("The map grid data goes out of bounds")]
+    OutOfBounds,
+    #[error("Map size is too big, found {0}x{1}")]
+    MapAreaTooBig(u32, u32),
+    #[error("Map area cannot be 0, found {0}x{1}")]
+    MapAreaCannotBeZero(u32, u32),
+}
+
+/// Map data to pass to the writer as a matrix of `BlockInfo`
+#[derive(Serialize, Debug)]
+pub struct MapGrid {
+    // List of Tiles
+    metatiles: Vec<u16>,
+    // List of Levels
+    levels: Vec<u16>,
+    // Width of the map
+    width: usize,
+    // Height of the map
+    height: usize,
+}
+
+impl MapGrid {
+    pub fn new(width: usize, height: usize) -> MapGrid {
+        MapGrid {
+            metatiles: vec![0; width * height],
+            levels: vec![0; width * height],
+            width,
+            height,
+        }
+    }
+    pub fn get_metatile(&self, x: u32, y: u32) -> u16 {
+        self.metatiles[(y * self.width as u32 + x) as usize]
+    }
+
+    /// Reads the blocks data of the given size from the ROM at the
+    /// given offset into a [BlocksData] struct
+    pub fn read(
+        rom: &Rom,
+        offset: usize,
+        width: usize,
+        height: usize,
+        masks: &MapGridMasks,
+    ) -> Result<MapGrid, MapGridError> {
+        if width * height == 0 {
+            return Err(MapGridError::MapAreaCannotBeZero(
+                width as u32,
+                height as u32,
+            ));
+        }
+        if (width + 15) * (height + 14) > 0x2800 {
+            return Err(MapGridError::MapAreaTooBig(width as u32, height as u32));
+        }
+
+        let size = width * height;
+        let mut metatiles = Vec::with_capacity(size);
+        let mut levels = Vec::with_capacity(size);
+
+        if offset + size * 2 > rom.data.len() {
+            return Err(MapGridError::OutOfBounds);
+        }
+
+        for y in 0..height {
+            for x in 0..width {
+                let index = y * width + x;
+                let block = rom.read_halfword(offset + index * 2);
+
+                // Use the masks to extract everything from the block
+                let metatile = block & masks.metatile_id_mask;
+                let elevation = (block & masks.elevation_mask) >> masks.elevation_shift;
+                let collision = (block & masks.collision_mask) >> masks.collision_shift;
+
+                // Compose the permission bit
+                let permission = (collision << 8) | elevation;
+                metatiles.push(metatile);
+                levels.push(permission);
+            }
+        }
+
+        Ok(MapGrid {
+            metatiles,
+            levels,
+            width,
+            height,
+        })
+    }
+
+    /// Writes this [BlocksData] to the ROM at the given offset.
+    pub(crate) fn write(&self, rom: &mut Rom, offset: usize, masks: &MapGridMasks) {
+        for y in 0..self.height {
+            for x in 0..self.width {
+                let index = y * self.width + x;
+                let level = self.levels[index];
+
+                let metatile = self.metatiles[index];
+                let obstacle = level >> 8;
+                let elevation = level & 0xFF;
+
+                let block = metatile
+                    | ((obstacle << masks.collision_shift) & masks.collision_mask)
+                    | ((elevation << masks.elevation_shift) & masks.elevation_mask);
+
+                rom.write_halfword(offset + index * 2, block);
+            }
+        }
+    }
+
+    /// Gets the old and new size of a map and decides whether to repoint it or not.
+    pub(crate) fn repoint(
+        &self,
+        rom: &mut Rom,
+        old_offset_and_size: Option<(usize, usize)>,
+        masks: &MapGridMasks,
+    ) -> Result<usize, MapGridError> {
+        let new_size = self.get_byte_size();
+
+        let offset = match old_offset_and_size {
+            // If the map did not have an offset, allocate space for a new map data
+            None => rom
+                .find_free_space(new_size, 2)
+                .ok_or_else(|| MapGridError::CannotRepointMap)?,
+            // If it did have an offset, repoint it
+            Some((old_offset, old_size)) => rom
+                .repoint_offset(old_offset, old_size, new_size)
+                .ok_or_else(|| MapGridError::CannotRepointMap)?,
+        };
+
+        self.write(rom, offset, masks);
+        Ok(offset)
+    }
+
+    pub fn get_byte_size(&self) -> usize {
+        self.metatiles.len() * 2
+    }
+}
+
+#[derive(Debug, Copy, Clone)]
 /// Values to extract all parts of a map grid entry
 pub struct MapGridMasks {
     /// Same as `MAPGRID_UNDEFINED`
@@ -25,7 +169,49 @@ impl Default for MapGridMasks {
     }
 }
 
+#[derive(Debug, Error)]
+pub enum MapGridMasksPatchError {
+    #[error("The patch was already applied")]
+    PatchAlreadyApplied,
+    #[error("Could not read the previous Map Grid Masks: {0}")]
+    CannotReadOldData(RomValueError),
+    #[error("Error while applything the patch: {0}")]
+    CannotApplyPatch(RomValueError),
+    #[error("Could not update a layout that was previously read: {0}")]
+    CannotUpdateLayout(#[from] LayoutError),
+}
+
 impl MapGridMasks {
+    /// Applies the patch to have double the metatiles.
+    pub fn apply_patch(rom: &mut Rom) -> Result<(), MapGridMasksPatchError> {
+        // Try to read the values already there.
+        let old = MapGridMasks::read(rom).map_err(MapGridMasksPatchError::CannotReadOldData)?;
+        if old.collision_shift == 11 {
+            Err(MapGridMasksPatchError::PatchAlreadyApplied)?;
+        }
+
+        // Read all the layouts that can be read
+        let layouts_table = rom.map_layouts();
+        let mut read_data: Vec<MapLayoutData> = Vec::new();
+
+        for index in 1..layouts_table.len() {
+            if let Ok(layout) = layouts_table.read_data(index) {
+                read_data.push(layout);
+            }
+        }
+
+        // Apply the patch
+        MapGridMasks::set_one_collision_bit(rom)
+            .map_err(MapGridMasksPatchError::CannotApplyPatch)?;
+
+        // Rewrite all the layouts
+        for data in read_data {
+            rom.map_layouts().write_data(data)?;
+        }
+
+        Ok(())
+    }
+
     /// There are only two currently possible configurations.
     ///
     /// The one in which there are two collision bits (default on every ROM, but inefficient)
@@ -35,7 +221,7 @@ impl MapGridMasks {
     ///
     /// Having less level bits could be supported in the future, but requires more
     /// work for very little gain.
-    pub fn set_one_collision_bit(rom: &mut Rom) -> Result<(), RomValueError> {
+    fn set_one_collision_bit(rom: &mut Rom) -> Result<(), RomValueError> {
         let rom_type = rom.rom_type;
 
         // Compute every value to set
@@ -123,6 +309,12 @@ impl MapGridMasks {
             elevation_shift,
             elevation_mask,
         })
+    }
+
+    /// Get the metatile id masks, and if you cannot, return the default
+    /// which is the one used in the ROMs with no patch applied.
+    pub fn read_or_default(rom: &Rom) -> Self {
+        Self::read(rom).unwrap_or_default()
     }
 }
 

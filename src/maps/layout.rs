@@ -8,6 +8,8 @@ use thiserror::Error;
 use crate::refs::{TableInitError, TablePointer};
 use crate::rom::{Rom, RomType};
 
+use super::mapgrid::{MapGrid, MapGridError, MapGridMasks};
+
 gba_struct!(EmeraldMapLayout {
     i32 width;
     i32 height;
@@ -46,7 +48,7 @@ impl MapLayout {
                     border_width: 2,
                     border_height: 2,
                 }
-            } // _ => Err(GBAIOError::Unknown("Invalid ROM type"))?,
+            }
         };
 
         Ok(res)
@@ -66,7 +68,7 @@ impl MapLayout {
                     secondary_tileset: self.secondary_tileset,
                 };
                 rom.write::<EmeraldMapLayout>(offset, value)?;
-            } // _ => Err(GBAIOError::Unknown("Invalid ROM type"))?,
+            }
         };
 
         Ok(())
@@ -82,7 +84,6 @@ impl MapLayout {
         match rom.rom_type {
             RomType::FireRed | RomType::LeafGreen => MapLayout::SIZE,
             RomType::Emerald | RomType::Ruby | RomType::Sapphire => EmeraldMapLayout::SIZE,
-            // _ => panic!("Unsupported ROM type"),
         }
     }
 
@@ -102,120 +103,6 @@ impl MapLayout {
     }
 }
 
-/// Map data to pass to the writer as a matrix of `BlockInfo`
-#[derive(Serialize, Debug)]
-pub struct BlocksData {
-    // List of Tiles
-    metatiles: Vec<u16>,
-    // List of Levels
-    levels: Vec<u16>,
-    // Width of the map
-    width: usize,
-    // Height of the map
-    height: usize,
-}
-
-impl BlocksData {
-    pub fn new(width: usize, height: usize) -> BlocksData {
-        BlocksData {
-            metatiles: vec![0; width * height],
-            levels: vec![0; width * height],
-            width,
-            height,
-        }
-    }
-    pub fn get_metatile(&self, x: u32, y: u32) -> u16 {
-        self.metatiles[(y * self.width as u32 + x) as usize]
-    }
-
-    /// Reads the blocks data of the given size from the ROM at the
-    /// given offset into a [BlocksData] struct
-    fn read(
-        rom: &Rom,
-        offset: usize,
-        width: usize,
-        height: usize,
-    ) -> Result<BlocksData, LayoutError> {
-        let size = width * height;
-        let mut metatiles = Vec::with_capacity(size);
-        let mut levels = Vec::with_capacity(size);
-
-        if offset + size * 2 > rom.data.len() {
-            return Err(LayoutError::InvalidMap);
-        }
-
-        for y in 0..height {
-            for x in 0..width {
-                let index = y * width + x;
-                let block = rom.read_halfword(offset + index * 2);
-
-                // TODO Read the correct number of bits (or better, read it somewhere else and pass it here)
-                let permission = block >> 10;
-                let metatile = block & 0x3ff;
-
-                // Compose the permission bit
-                let level = permission >> 1;
-                let obstacle = permission & 1;
-                let permission = level | (obstacle << 8);
-
-                metatiles.push(metatile);
-                levels.push(permission);
-            }
-        }
-
-        Ok(BlocksData {
-            metatiles,
-            levels,
-            width,
-            height,
-        })
-    }
-
-    /// Writes this [BlocksData] to the ROM at the given offset.
-    fn write(&self, rom: &mut Rom, offset: usize) {
-        for y in 0..self.height {
-            for x in 0..self.width {
-                let index = y * self.width + x;
-                let metatile = self.metatiles[index];
-                let level = self.levels[index];
-
-                // TODO Write the blocks data as required by the game
-                let permission = ((level & 0xff) << 1) | (level >> 8);
-                let block = metatile | (permission << 10);
-
-                rom.write_halfword(offset + index * 2, block);
-            }
-        }
-    }
-
-    /// Gets the old and new size of a map and decides whether to repoint it or not.
-    fn repoint(
-        &self,
-        rom: &mut Rom,
-        old_offset_and_size: Option<(usize, usize)>,
-    ) -> Result<usize, LayoutError> {
-        let new_size = self.get_byte_size();
-
-        let offset = match old_offset_and_size {
-            // If the map did not have an offset, allocate space for a new map data
-            None => rom
-                .find_free_space(new_size, 2)
-                .ok_or_else(|| LayoutError::CannotRepointMap)?,
-            // If it did have an offset, repoint it
-            Some((old_offset, old_size)) => rom
-                .repoint_offset(old_offset, old_size, new_size)
-                .ok_or_else(|| LayoutError::CannotRepointMap)?,
-        };
-
-        self.write(rom, offset);
-        Ok(offset)
-    }
-
-    pub fn get_byte_size(&self) -> usize {
-        self.metatiles.len() * 2
-    }
-}
-
 /// Struct for passing around the map layout header
 /// and the map and border data.
 #[derive(Serialize, Debug)]
@@ -224,16 +111,10 @@ pub struct MapLayoutData {
     pub index: u16,
     /// The `MapLayout` header.
     pub header: MapLayout,
-    /// The map data (blocks and permissions)
-    pub map_data: BlocksData,
-    /// The border data (blocks and permissions)
-    pub border_data: BlocksData,
-    /// The number of bits that are used to index a block in the tilesets
-    ///
-    /// `16 - tile_index_bits` = number of bits used for permission information.
-    ///
-    /// They are not needed to write the map data.
-    pub bits_per_block: u8,
+    /// The map grid data (metatile, elevation and collision)
+    pub map_data: MapGrid,
+    /// The border grid data (metatile, elevation and collision)
+    pub border_data: MapGrid,
 }
 
 /// Error type for map layout operations.
@@ -258,13 +139,13 @@ pub enum LayoutError {
     CannotRepointTable,
     #[error("Cannot repoint layout header")]
     CannotRepointHeader,
-    #[error("Cannot repoint map data")]
-    CannotRepointMap,
     #[error("The map layout table is full")]
     TableFull,
 
     #[error("Cannot get the number of bits per block")]
     CannotGetBitsPerBlock,
+    #[error("Map grid error: {0}")]
+    MapGridError(#[from] MapGridError),
     #[error("IO Error")]
     IoError(#[from] GBAIOError),
 }
@@ -342,6 +223,8 @@ impl<'rom> MapLayoutsTable<'rom> {
     pub fn write_data(&mut self, mut data: MapLayoutData) -> Result<(), LayoutError> {
         // Make sure the table is big enough to house the new header
         self.increase_table_size(data.index + 1)?;
+        // Get the masks for reading MapGrid data
+        let masks = MapGridMasks::read_or_default(self.rom);
 
         // Read the old map and border sizes
         let (map_offset, border_offset) = match self.read_header(data.index) {
@@ -356,19 +239,19 @@ impl<'rom> MapLayoutsTable<'rom> {
                 let old_border_offset_and_size =
                     old.border.offset().map(|offset| (offset, old_border_size));
 
-                let new_map_offset = data
-                    .map_data
-                    .repoint(&mut self.rom, old_map_offset_and_size)?;
+                let new_map_offset =
+                    data.map_data
+                        .repoint(&mut self.rom, old_map_offset_and_size, &masks)?;
 
-                let new_border_offset = data
-                    .border_data
-                    .repoint(&mut self.rom, old_border_offset_and_size)?;
+                let new_border_offset =
+                    data.border_data
+                        .repoint(&mut self.rom, old_border_offset_and_size, &masks)?;
 
                 (new_map_offset, new_border_offset)
             }
             Err(_) => {
-                let map_offset = data.map_data.repoint(&mut self.rom, None)?;
-                let border_offset = data.border_data.repoint(&mut self.rom, None)?;
+                let map_offset = data.map_data.repoint(&mut self.rom, None, &masks)?;
+                let border_offset = data.border_data.repoint(&mut self.rom, None, &masks)?;
 
                 (map_offset, border_offset)
             }
@@ -385,11 +268,6 @@ impl<'rom> MapLayoutsTable<'rom> {
     pub fn read_data(&self, index: u16) -> Result<MapLayoutData, LayoutError> {
         let layout = self.read_header(index)?;
 
-        let bits_per_block = self
-            .rom
-            .get_block_index_bits()
-            .map_err(|_| LayoutError::CannotGetBitsPerBlock)?;
-
         let map_offset = layout
             .data
             .offset()
@@ -400,17 +278,20 @@ impl<'rom> MapLayoutsTable<'rom> {
             .offset()
             .ok_or_else(|| LayoutError::InvalidMap)? as usize;
 
-        let map_data = BlocksData::read(
+        let masks = MapGridMasks::read_or_default(self.rom);
+        let map_data = MapGrid::read(
             self.rom,
             map_offset,
             layout.width as usize,
             layout.height as usize,
+            &masks,
         )?;
-        let border_data = BlocksData::read(
+        let border_data = MapGrid::read(
             self.rom,
             border_offset,
             layout.border_width as usize,
             layout.border_height as usize,
+            &masks,
         )?;
 
         Ok(MapLayoutData {
@@ -418,7 +299,6 @@ impl<'rom> MapLayoutsTable<'rom> {
             header: layout,
             map_data,
             border_data,
-            bits_per_block,
         })
     }
 
@@ -446,8 +326,8 @@ impl<'rom> MapLayoutsTable<'rom> {
         };
 
         // Create a new map and border data
-        let map_data = BlocksData::new(width as usize, height as usize);
-        let border_data = BlocksData::new(2, 2);
+        let map_data = MapGrid::new(width as usize, height as usize);
+        let border_data = MapGrid::new(2, 2);
 
         // Write the data (finds offset for new data)
         let data = MapLayoutData {
@@ -455,8 +335,6 @@ impl<'rom> MapLayoutsTable<'rom> {
             header,
             map_data,
             border_data,
-            // Don't care about this value
-            bits_per_block: 0,
         };
 
         // Try and write the layout to ROM.
@@ -467,7 +345,7 @@ impl<'rom> MapLayoutsTable<'rom> {
 
     // ANCHOR Headers
     /// Reads the map layout header at the given index.
-    fn read_header(&self, index: u16) -> Result<MapLayout, LayoutError> {
+    pub(super) fn read_header(&self, index: u16) -> Result<MapLayout, LayoutError> {
         let offset = self.get_header_offset(index)?;
         Ok(MapLayout::read(self.rom, offset)?)
     }
