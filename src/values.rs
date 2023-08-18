@@ -97,7 +97,7 @@ impl Rom {
         }
     }
     /// Writes the shift value to an already existing LSR instruction at the given offset.
-    pub fn replace_lsr_shift(&mut self, offset: usize, shift: u8) -> Result<(), RomValueError> {
+    pub fn write_lsr_shift(&mut self, offset: usize, shift: u8) -> Result<(), RomValueError> {
         // Decode the instruction at the offset
         let data: u16 = self.read(offset)?;
         let instr = Instruction::decode(data);
@@ -152,11 +152,7 @@ impl Rom {
     /// lsl rx, #B
     /// ```
     /// given the value `V = A << B`.
-    pub fn replace_mov_lsl_value(
-        &mut self,
-        offset: usize,
-        value: u32,
-    ) -> Result<(), RomValueError> {
+    pub fn write_mov_lsl_value(&mut self, offset: usize, value: u32) -> Result<(), RomValueError> {
         // Get the base and shift
         let left_shift = value.trailing_zeros();
         let base = value >> left_shift;
@@ -205,6 +201,11 @@ impl Rom {
         let value: u32 = self.read(offset)?;
         Ok(value)
     }
+    /// Writes a word returing `RomValueError`s instead of `GBAIOError`s
+    pub fn write_word_value(&mut self, offset: usize, value: u32) -> Result<(), RomValueError> {
+        self.write(offset, value)?;
+        Ok(())
+    }
 
     /// Reads a values from multiple references.
     ///
@@ -237,5 +238,28 @@ impl Rom {
         }
 
         Ok(saved_value.unwrap())
+    }
+    /// Writes a value to multiple locations using the given function
+    /// If any of the writes fail, an error is returned.
+    ///
+    /// # Example
+    /// ```no_run
+    /// rom.write_same(vec![0, 4, 8], Rom::replace_lsr_shift, 0x1F)
+    /// ```
+    pub fn write_same<T, F>(
+        &mut self,
+        refs: &Vec<usize>,
+        f: F,
+        value: T,
+    ) -> Result<(), RomValueError>
+    where
+        F: Fn(&mut Rom, usize, T) -> Result<(), RomValueError>,
+        T: Copy,
+    {
+        for offset in refs {
+            f(self, *offset, value)?;
+        }
+
+        Ok(())
     }
 }

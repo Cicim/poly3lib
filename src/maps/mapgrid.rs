@@ -8,9 +8,9 @@ use crate::{
 pub struct MapGridMasks {
     /// Same as `MAPGRID_UNDEFINED`
     pub metatile_id_mask: u16,
-    pub collision_shift: u16,
+    pub collision_shift: u8,
     pub collision_mask: u16,
-    pub elevation_shift: u16,
+    pub elevation_shift: u8,
     pub elevation_mask: u16,
 }
 impl Default for MapGridMasks {
@@ -35,13 +35,48 @@ impl MapGridMasks {
     ///
     /// Having less level bits could be supported in the future, but requires more
     /// work for very little gain.
-    pub fn set_one_collision_bit() -> Result<(), RomValueError> {
+    pub fn set_one_collision_bit(rom: &mut Rom) -> Result<(), RomValueError> {
+        let rom_type = rom.rom_type;
+
         // Compute every value to set
-        // let mapgrid_metatile_id_mask = 0x07FF;
-        // let mapgrid_collision_mask = 0x0800;
-        // let mapgrid_elevation_mask = 0xF000;
-        // let mapgrid_collision_shift = 11;
-        // let mapgrid_elevation_shift = 12;
+        let mapgrid_metatile_id_mask = 0x07FF;
+        let mapgrid_collision_mask = 0x0800;
+        let mapgrid_elevation_mask: u16 = 0xF000;
+        let mapgrid_collision_shift: u8 = 11;
+        let mapgrid_elevation_shift: u8 = 12;
+
+        let neg_mapgrid_elevation_mask = !mapgrid_elevation_mask;
+        let temp = mapgrid_metatile_id_mask as u32;
+        let cpu_fill_value = (temp << 16) | temp;
+
+        // Write the values
+        // Metatile id mask
+        rom.write(get_cpu_fill_value_ref(rom_type), cpu_fill_value)?;
+        rom.write_same(
+            &get_metatile_id_mask_refs(rom_type),
+            Rom::write_word_value,
+            mapgrid_metatile_id_mask,
+        )?;
+
+        // Collision mask and shift
+        rom.write_same(
+            &get_collision_mask_refs(rom_type),
+            Rom::write_mov_lsl_value,
+            mapgrid_collision_mask,
+        )?;
+        rom.write_lsr_shift(get_collision_shift_ref(rom_type), mapgrid_collision_shift)?;
+
+        // Elevation mask and shift
+        rom.write_word_value(
+            get_neg_elevation_mask_ref(rom_type),
+            neg_mapgrid_elevation_mask as u32,
+        )?;
+        rom.write_mov_lsl_value(
+            get_elevation_mask_ref(rom_type),
+            mapgrid_elevation_mask as u32,
+        )?;
+
+        rom.write_lsr_shift(get_elevation_shift_ref(rom_type), mapgrid_elevation_shift)?;
 
         Ok(())
     }
@@ -68,7 +103,7 @@ impl MapGridMasks {
         let collision_mask = rom.read_and_assert_all_equal(
             &get_collision_mask_refs(rom_type),
             Rom::read_mov_lsl_value,
-        )?;
+        )? as u16;
 
         let collision_shift = rom.read_lsr_shift(get_collision_shift_ref(rom_type))?;
 
@@ -83,10 +118,10 @@ impl MapGridMasks {
 
         Ok(MapGridMasks {
             metatile_id_mask: metatile_id_mask as u16,
-            collision_shift: collision_shift as u16,
-            collision_mask: collision_mask as u16,
-            elevation_shift: elevation_shift as u16,
-            elevation_mask: elevation_mask,
+            collision_mask,
+            collision_shift,
+            elevation_shift,
+            elevation_mask,
         })
     }
 }
