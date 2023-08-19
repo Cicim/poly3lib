@@ -26,7 +26,7 @@ pub struct MapGrid {
     // List of Tiles
     metatiles: Vec<u16>,
     // List of Levels
-    levels: Vec<u16>,
+    levels: Vec<u8>,
     // Width of the map
     width: usize,
     // Height of the map
@@ -84,7 +84,7 @@ impl MapGrid {
                 let collision = (block & masks.collision_mask) >> masks.collision_shift;
 
                 // Compose the permission bit
-                let permission = (collision << 8) | elevation;
+                let permission = ((elevation << 1) | collision) as u8;
                 metatiles.push(metatile);
                 levels.push(permission);
             }
@@ -103,14 +103,14 @@ impl MapGrid {
         for y in 0..self.height {
             for x in 0..self.width {
                 let index = y * self.width + x;
-                let level = self.levels[index];
+                let level = self.levels[index] as u16;
 
                 let metatile = self.metatiles[index];
-                let obstacle = level >> 8;
-                let elevation = level & 0xFF;
+                let collision = level & 1;
+                let elevation = level >> 1;
 
                 let block = metatile
-                    | ((obstacle << masks.collision_shift) & masks.collision_mask)
+                    | ((collision << masks.collision_shift) & masks.collision_mask)
                     | ((elevation << masks.elevation_shift) & masks.elevation_mask);
 
                 rom.write_halfword(offset + index * 2, block);
