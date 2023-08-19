@@ -7,6 +7,8 @@ use std::{
 use colored::Colorize;
 use thiserror::Error;
 
+use crate::{RomClearableType, RomReadableType, RomWritableType};
+
 /// Maximum space in the ROM section of GBA memory.
 const MAX_ROM_SIZE: usize = 1 << 25;
 
@@ -308,6 +310,28 @@ impl RomData {
         Ok(())
     }
 
+    // ANCHOR Any RomType
+    /// Reads a value at the given offset.
+    ///
+    /// The type of the value being written must implement [`RomReadableType`].
+    pub fn read<T: RomReadableType>(&self, offset: Offset) -> RomIoResult<T> {
+        T::read(self, offset)
+    }
+
+    /// Writes a value at the given offset.
+    ///
+    /// The type of the value being written must implement [`RomWritableType`].
+    pub fn write<T: RomWritableType>(&mut self, offset: Offset, value: T) -> RomIoResult {
+        value.write(self, offset)
+    }
+
+    /// Clears a value at the given offset.
+    ///
+    /// The type of the value being cleared must implement [`RomClearableType`].
+    pub fn clear<T: RomClearableType>(&mut self, offset: Offset) -> RomIoResult {
+        T::clear(self, offset)
+    }
+
     // ANCHOR Utilities
     #[inline]
     /// Checks if the given offset is in bounds for this ROM.
@@ -324,6 +348,23 @@ impl RomData {
     /// ```
     pub fn in_bounds(&self, offset: Offset) -> bool {
         offset < self.size()
+    }
+
+    /// Clears the bytes at the given offset and size.
+    ///
+    /// In the context of this library, "clearing" means setting the bytes to `0xFF`.
+    pub fn clear_bytes(&mut self, offset: Offset, size: usize) -> RomIoResult {
+        // Check bounds
+        if !self.in_bounds(offset + size - 1) {
+            return Err(RomIoError::OutOfBounds(offset));
+        }
+
+        // Clear the bytes
+        for i in offset..offset + size {
+            self.bytes[i] = 0xFF;
+        }
+
+        Ok(())
     }
 }
 
@@ -350,6 +391,8 @@ pub enum RomIoError {
     WritingOutOfBoundsOffset(Offset),
     #[error("The pointer read at ${0:07x} (0x{1:08x}) does not point to anything in this ROM")]
     InvalidPointer(Offset, Pointer),
+    #[error("The offset ${0:07x} is not aligned to {1} bytes")]
+    Misaligned(Offset, u8),
 }
 
 #[cfg(test)]
@@ -445,5 +488,61 @@ mod test_romdata_methods {
         assert_eq!(data.bytes[3], 0x08);
 
         assert_eq!(data.read_offset(0).unwrap(), 0x08);
+    }
+
+    #[test]
+    fn test_general_errors() {
+        let mut data = create_rom();
+
+        assert_eq!(
+            data.clear_bytes(0x10, 0x10),
+            Err(RomIoError::OutOfBounds(0x10))
+        );
+
+        assert_eq!(data.clear_bytes(0x0, 0x10), Ok(()));
+
+        assert_eq!(data.bytes[0], 0xFF);
+        assert_eq!(data.bytes[1], 0xFF);
+        assert_eq!(data.bytes[2], 0xFF);
+        assert_eq!(data.bytes[3], 0xFF);
+    }
+
+    #[test]
+    fn test_general_read() {
+        let rom = create_rom();
+
+        assert_eq!(rom.read::<u8>(0), rom.read_byte(0));
+        assert_eq!(rom.read::<u16>(0), rom.read_halfword(0));
+        assert_eq!(rom.read::<u32>(0), rom.read_word(0));
+
+        assert_eq!(rom.read::<u16>(0x10), Err(RomIoError::OutOfBounds(0x10)));
+        assert_eq!(rom.read::<u16>(1), Err(RomIoError::Misaligned(1, 2)));
+    }
+
+    #[test]
+    fn test_general_write() {
+        let mut rom = create_rom();
+
+        rom.write::<u8>(0, 0x12).unwrap();
+        assert_eq!(rom.bytes[0], 0x12);
+
+        rom.write::<u16>(0, 0x1234).unwrap();
+        assert_eq!(rom.bytes[0], 0x34);
+        assert_eq!(rom.bytes[1], 0x12);
+
+        rom.write::<u32>(0, 0x12345678).unwrap();
+        assert_eq!(rom.bytes[0], 0x78);
+        assert_eq!(rom.bytes[1], 0x56);
+        assert_eq!(rom.bytes[2], 0x34);
+        assert_eq!(rom.bytes[3], 0x12);
+
+        assert_eq!(
+            rom.write::<u16>(0x10, 0x1234),
+            Err(RomIoError::OutOfBounds(0x10))
+        );
+        assert_eq!(
+            rom.write::<u16>(1, 0x1234),
+            Err(RomIoError::Misaligned(1, 2))
+        );
     }
 }
