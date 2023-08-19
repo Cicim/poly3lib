@@ -134,6 +134,12 @@ impl<'a> Disassembler<'a, 'a> {
         self
     }
 
+    /// Shows the offsets for each instruction at the start of each line.
+    pub fn show_offsets(mut self) -> Self {
+        self.options.show_offsets = true;
+        self
+    }
+
     /// Print the output with all special options
     pub fn pretty_string(&mut self) -> String {
         self.options.colored_output = true;
