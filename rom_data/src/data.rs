@@ -265,6 +265,49 @@ impl RomData {
         Ok(())
     }
 
+    // ANCHOR Offset values
+    /// Reads a pointer at the given offset while checking bounds.
+    /// Converts that pointer to an offset.
+    ///
+    /// Does not check whether the offset is aligned to 4 bytes.
+    pub fn read_offset(&self, offset: Offset) -> RomIoResult<Offset> {
+        let word = self.read_word(offset)?;
+        let pointer = word as usize;
+
+        // Convert the word to an offset
+        if pointer >= 0x08_000_000 && pointer < 0x08_0000_000 + self.size() {
+            Ok(pointer - 0x08_000_000)
+        } else {
+            Err(RomIoError::InvalidPointer(offset, word))
+        }
+    }
+
+    /// Writes an offset as a pointer at the given offset while checking bounds.
+    ///
+    /// Does not check whether the offset is aligned to 4 bytes.
+    pub fn write_offset(&mut self, offset: Offset, value: Offset) -> RomIoResult {
+        // Check bounds
+        if !self.in_bounds(offset + 3) {
+            return Err(RomIoError::OutOfBounds(offset));
+        }
+
+        // Check that the value is in bounds
+        if !self.in_bounds(value) {
+            return Err(RomIoError::WritingOutOfBoundsOffset(value));
+        }
+
+        // Convert the offset to a pointer
+        let pointer = value + 0x08_000_000;
+        // Convert the pointer to bytes
+        let bytes = pointer.to_le_bytes();
+        // Write the bytes
+        self.bytes[offset] = bytes[0];
+        self.bytes[offset + 1] = bytes[1];
+        self.bytes[offset + 2] = bytes[2];
+        self.bytes[offset + 3] = bytes[3];
+        Ok(())
+    }
+
     // ANCHOR Utilities
     #[inline]
     /// Checks if the given offset is in bounds for this ROM.
@@ -291,8 +334,7 @@ impl RomData {
 /// When shown in debug functions, it is padded to 7 digits and prepended by `$`
 pub type Offset = usize;
 
-/// A pointer value as read from ROM. This means that the pointer.
-///
+/// A pointer is a value as read from ROM. This means that the pointer
 /// is relative to the ROM's base address (`0x08_000_000`)
 pub type Pointer = u32;
 
@@ -300,15 +342,19 @@ type RomIoResult<T = ()> = Result<T, RomIoError>;
 
 /// An error that occurs when there is a problem writing or
 /// reading a value from a loaded [`RomData`].
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum RomIoError {
     #[error("The offset ${0:07x} is out of bounds for this ROM")]
     OutOfBounds(Offset),
+    #[error("Writing an offset (${0:07x}) that is out of bounds for this ROM")]
+    WritingOutOfBoundsOffset(Offset),
+    #[error("The pointer read at ${0:07x} (0x{1:08x}) does not point to anything in this ROM")]
+    InvalidPointer(Offset, Pointer),
 }
 
 #[cfg(test)]
 mod test_romdata_methods {
-    use crate::{RomBase, RomData};
+    use crate::{RomBase, RomData, RomIoError};
 
     // Create a standard ROM for testing
     fn create_rom() -> RomData {
@@ -321,7 +367,7 @@ mod test_romdata_methods {
     }
 
     #[test]
-    fn test_value_reading() {
+    fn test_primitive_reading() {
         let data = create_rom();
 
         assert_eq!(data.read_byte(0).unwrap(), 0xAB);
@@ -338,7 +384,7 @@ mod test_romdata_methods {
     }
 
     #[test]
-    fn test_value_writing() {
+    fn test_primitive_writing() {
         let mut data = create_rom();
 
         data.write_byte(0, 0x12).unwrap();
@@ -355,5 +401,49 @@ mod test_romdata_methods {
         assert_eq!(data.bytes[1], 0x56);
         assert_eq!(data.bytes[2], 0x34);
         assert_eq!(data.bytes[3], 0x12);
+    }
+
+    #[test]
+    fn test_primitive_errors() {
+        let data = create_rom();
+
+        assert_eq!(data.read_byte(0x10), Err(RomIoError::OutOfBounds(0x10)));
+        assert_eq!(data.read_halfword(0x10), Err(RomIoError::OutOfBounds(0x10)));
+        assert_eq!(data.read_word(0x10), Err(RomIoError::OutOfBounds(0x10)));
+    }
+
+    #[test]
+    fn test_offset_reading() {
+        let data = create_rom();
+
+        assert_eq!(data.read_offset(0).unwrap(), 0xEFCDAB);
+        assert_eq!(
+            data.read_offset(1),
+            Err(RomIoError::InvalidPointer(1, 0xFF08EFCD))
+        );
+        assert_eq!(data.read_offset(0x100), Err(RomIoError::OutOfBounds(0x100)));
+    }
+
+    #[test]
+    fn test_offset_writing() {
+        let mut data = create_rom();
+
+        assert_eq!(
+            data.write_offset(0, 0x123456),
+            Err(RomIoError::WritingOutOfBoundsOffset(0x123456))
+        );
+
+        assert_eq!(
+            data.write_offset(0x10, 0),
+            Err(RomIoError::OutOfBounds(0x10))
+        );
+
+        data.write_offset(0, 0x08).unwrap();
+        assert_eq!(data.bytes[0], 0x08);
+        assert_eq!(data.bytes[1], 0x00);
+        assert_eq!(data.bytes[2], 0x00);
+        assert_eq!(data.bytes[3], 0x08);
+
+        assert_eq!(data.read_offset(0).unwrap(), 0x08);
     }
 }
