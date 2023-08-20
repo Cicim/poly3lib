@@ -1,12 +1,16 @@
-use crate::{Offset, RomClearableType, RomData, RomIoError, RomReadableType, RomWritableType};
+//! Provides implemntations of [`RomReadableType`], [`RomWritableType`], and
+//! [`RomClearableType`] for primitive types ([u8], [u16], [u32], [i8], [i16], [i32]).
 
-use std::mem::size_of;
+use crate::types::{RomClearableType, RomReadableType, RomSizedType, RomWritableType};
+use crate::{Offset, RomData, RomIoError};
 
 macro_rules! impl_rom_type_for_integer {
     ($target:ty, $unsigned:ty, $read_method:ident, $write_method:ident) => {
-        impl RomReadableType for $target {
-            const SIZE: usize = size_of::<$target>();
+        impl RomSizedType for $target {
+            const SIZE: usize = std::mem::size_of::<$target>();
+        }
 
+        impl RomReadableType for $target {
             fn read(data: &RomData, offset: Offset) -> Result<Self, RomIoError> {
                 if offset % Self::SIZE != 0 {
                     return Err(RomIoError::Misaligned(offset, Self::SIZE as u8));

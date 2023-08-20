@@ -7,7 +7,7 @@ use std::{
 use colored::Colorize;
 use thiserror::Error;
 
-use crate::{RomClearableType, RomReadableType, RomWritableType};
+use crate::types::{RomClearableType, RomReadableType, RomWritableType};
 
 /// Maximum space in the ROM section of GBA memory.
 const MAX_ROM_SIZE: usize = 1 << 25;
@@ -59,6 +59,10 @@ impl Display for RomBase {
 /// The ROM data.
 ///
 /// This struct contains the ROM type and the bytes of the ROM.
+///
+/// REVIEW *May have support for custom settable attributes
+/// in the future for more options while handling structs,
+/// for example a way of knowing whether a patch was applied*
 pub struct RomData {
     pub base: RomBase,
     bytes: Vec<u8>,
@@ -183,7 +187,7 @@ impl RomData {
     pub fn read_byte(&self, offset: Offset) -> RomIoResult<u8> {
         // Check bounds
         if !self.in_bounds(offset) {
-            return Err(RomIoError::OutOfBounds(offset));
+            return Err(RomIoError::OutOfBounds(offset, 1));
         }
 
         Ok(self.bytes[offset])
@@ -195,7 +199,7 @@ impl RomData {
     pub fn read_halfword(&self, offset: Offset) -> RomIoResult<u16> {
         // Check bounds
         if !self.in_bounds(offset + 1) {
-            return Err(RomIoError::OutOfBounds(offset));
+            return Err(RomIoError::OutOfBounds(offset, 2));
         }
 
         // Read the bytes
@@ -210,7 +214,7 @@ impl RomData {
     pub fn read_word(&self, offset: Offset) -> RomIoResult<u32> {
         // Check bounds
         if !self.in_bounds(offset + 3) {
-            return Err(RomIoError::OutOfBounds(offset));
+            return Err(RomIoError::OutOfBounds(offset, 4));
         }
 
         // Read the bytes
@@ -224,7 +228,7 @@ impl RomData {
     pub fn write_byte(&mut self, offset: Offset, value: u8) -> RomIoResult {
         // Check bounds
         if !self.in_bounds(offset) {
-            return Err(RomIoError::OutOfBounds(offset));
+            return Err(RomIoError::OutOfBounds(offset, 1));
         }
 
         self.bytes[offset] = value;
@@ -237,7 +241,7 @@ impl RomData {
     pub fn write_halfword(&mut self, offset: Offset, value: u16) -> RomIoResult {
         // Check bounds
         if !self.in_bounds(offset + 1) {
-            return Err(RomIoError::OutOfBounds(offset));
+            return Err(RomIoError::OutOfBounds(offset, 2));
         }
 
         // Convert to bytes
@@ -254,7 +258,7 @@ impl RomData {
     pub fn write_word(&mut self, offset: Offset, value: u32) -> RomIoResult {
         // Check bounds
         if !self.in_bounds(offset + 3) {
-            return Err(RomIoError::OutOfBounds(offset));
+            return Err(RomIoError::OutOfBounds(offset, 4));
         }
 
         // Convert to bytes
@@ -290,7 +294,7 @@ impl RomData {
     pub fn write_offset(&mut self, offset: Offset, value: Offset) -> RomIoResult {
         // Check bounds
         if !self.in_bounds(offset + 3) {
-            return Err(RomIoError::OutOfBounds(offset));
+            return Err(RomIoError::OutOfBounds(offset, 4));
         }
 
         // Check that the value is in bounds
@@ -314,6 +318,29 @@ impl RomData {
     /// Reads a value at the given offset.
     ///
     /// The type of the value being written must implement [`RomReadableType`].
+    ///
+    /// # Example
+    /// You can call it with the turbofish syntax:
+    /// ```
+    /// use rom_data::{RomData, RomBase};
+    ///
+    /// // New initializes everything with 0xff
+    /// let data = RomData::new(RomBase::FireRed, 0x04);
+    /// let halfword = data.read::<u16>(0x00).unwrap();
+    /// assert_eq!(halfword, 0xffff);
+    ///
+    /// let signed = data.read::<i16>(0x00).unwrap();
+    /// assert_eq!(signed, -1);
+    /// ```
+    ///
+    /// Or you can use type inference:
+    /// ```
+    /// use rom_data::{RomData, RomBase};
+    ///
+    /// let data = RomData::new(RomBase::FireRed, 0x04);
+    /// let halfword: u16 = data.read(0x00).unwrap();
+    /// assert_eq!(halfword, 0xffff);
+    /// ```
     pub fn read<T: RomReadableType>(&self, offset: Offset) -> RomIoResult<T> {
         T::read(self, offset)
     }
@@ -321,6 +348,25 @@ impl RomData {
     /// Writes a value at the given offset.
     ///
     /// The type of the value being written must implement [`RomWritableType`].
+    ///
+    /// # Example
+    /// You can call it with the turbofish syntax:
+    /// ```
+    /// use rom_data::{RomData, RomBase};
+    ///
+    /// let mut data = RomData::new(RomBase::FireRed, 0x04);
+    /// data.write::<u16>(0x00, 0x1234).unwrap();
+    /// assert_eq!(data.read_halfword(0x00).unwrap(), 0x1234);
+    /// ```
+    ///
+    /// Or you can use type inference:
+    /// ```
+    /// use rom_data::{RomData, RomBase};
+    ///
+    /// let mut data = RomData::new(RomBase::FireRed, 0x04);
+    /// data.write(0x00, 0x1234_u16).unwrap();
+    /// assert_eq!(data.read_halfword(0x00).unwrap(), 0x1234);
+    /// ```
     pub fn write<T: RomWritableType>(&mut self, offset: Offset, value: T) -> RomIoResult {
         value.write(self, offset)
     }
@@ -356,7 +402,7 @@ impl RomData {
     pub fn clear_bytes(&mut self, offset: Offset, size: usize) -> RomIoResult {
         // Check bounds
         if !self.in_bounds(offset + size - 1) {
-            return Err(RomIoError::OutOfBounds(offset));
+            return Err(RomIoError::OutOfBounds(offset, size));
         }
 
         // Clear the bytes
@@ -385,14 +431,17 @@ type RomIoResult<T = ()> = Result<T, RomIoError>;
 /// reading a value from a loaded [`RomData`].
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum RomIoError {
-    #[error("The offset ${0:07x} is out of bounds for this ROM")]
-    OutOfBounds(Offset),
+    #[error("A type of size {1} at ${0:07x} will go out of bounds for this ROM")]
+    OutOfBounds(Offset, usize),
     #[error("Writing an offset (${0:07x}) that is out of bounds for this ROM")]
     WritingOutOfBoundsOffset(Offset),
     #[error("The pointer read at ${0:07x} (0x{1:08x}) does not point to anything in this ROM")]
     InvalidPointer(Offset, Pointer),
     #[error("The offset ${0:07x} is not aligned to {1} bytes")]
     Misaligned(Offset, u8),
+
+    #[error("Writing {0} elements to a RomArray of length {1}")]
+    InvalidArrayLength(usize, usize),
 }
 
 #[cfg(test)]
@@ -450,9 +499,12 @@ mod test_romdata_methods {
     fn test_primitive_errors() {
         let data = create_rom();
 
-        assert_eq!(data.read_byte(0x10), Err(RomIoError::OutOfBounds(0x10)));
-        assert_eq!(data.read_halfword(0x10), Err(RomIoError::OutOfBounds(0x10)));
-        assert_eq!(data.read_word(0x10), Err(RomIoError::OutOfBounds(0x10)));
+        assert_eq!(data.read_byte(0x10), Err(RomIoError::OutOfBounds(0x10, 1)));
+        assert_eq!(
+            data.read_halfword(0x10),
+            Err(RomIoError::OutOfBounds(0x10, 2))
+        );
+        assert_eq!(data.read_word(0x10), Err(RomIoError::OutOfBounds(0x10, 4)));
     }
 
     #[test]
@@ -464,7 +516,10 @@ mod test_romdata_methods {
             data.read_offset(1),
             Err(RomIoError::InvalidPointer(1, 0xFF08EFCD))
         );
-        assert_eq!(data.read_offset(0x100), Err(RomIoError::OutOfBounds(0x100)));
+        assert_eq!(
+            data.read_offset(0x100),
+            Err(RomIoError::OutOfBounds(0x100, 4))
+        );
     }
 
     #[test]
@@ -478,7 +533,7 @@ mod test_romdata_methods {
 
         assert_eq!(
             data.write_offset(0x10, 0),
-            Err(RomIoError::OutOfBounds(0x10))
+            Err(RomIoError::OutOfBounds(0x10, 4))
         );
 
         data.write_offset(0, 0x08).unwrap();
@@ -495,8 +550,8 @@ mod test_romdata_methods {
         let mut data = create_rom();
 
         assert_eq!(
-            data.clear_bytes(0x10, 0x10),
-            Err(RomIoError::OutOfBounds(0x10))
+            data.clear_bytes(0x10, 0x20),
+            Err(RomIoError::OutOfBounds(0x10, 0x20))
         );
 
         assert_eq!(data.clear_bytes(0x0, 0x10), Ok(()));
@@ -515,7 +570,7 @@ mod test_romdata_methods {
         assert_eq!(rom.read::<u16>(0), rom.read_halfword(0));
         assert_eq!(rom.read::<u32>(0), rom.read_word(0));
 
-        assert_eq!(rom.read::<u16>(0x10), Err(RomIoError::OutOfBounds(0x10)));
+        assert_eq!(rom.read::<u16>(0x10), Err(RomIoError::OutOfBounds(0x10, 2)));
         assert_eq!(rom.read::<u16>(1), Err(RomIoError::Misaligned(1, 2)));
     }
 
@@ -538,7 +593,7 @@ mod test_romdata_methods {
 
         assert_eq!(
             rom.write::<u16>(0x10, 0x1234),
-            Err(RomIoError::OutOfBounds(0x10))
+            Err(RomIoError::OutOfBounds(0x10, 2))
         );
         assert_eq!(
             rom.write::<u16>(1, 0x1234),

@@ -7,4 +7,5 @@ edition = "2021"
 
 [dependencies]
 colored = "2.0.4"
+serde = { version = "1.0.183", features = ["derive"] }
 thiserror = "1.0.47"

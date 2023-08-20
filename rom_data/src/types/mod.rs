@@ -1,6 +1,9 @@
 use crate::{Offset, RomData, RomIoError};
 
+mod arrays;
 mod primitives;
+
+pub use arrays::RomArray;
 
 /// A type that can be read, written to [`RomData`].
 pub trait RomType: RomReadableType + RomWritableType {}
@@ -8,10 +11,7 @@ pub trait RomType: RomReadableType + RomWritableType {}
 /// A type that can be read from [`RomData`].
 ///
 /// Is always automatically implemented for structs.
-pub trait RomReadableType: Sized {
-    /// The size of this type in bytes.
-    const SIZE: usize;
-
+pub trait RomReadableType: RomSizedType {
     /// Read this type from `data` at `offset`.
     fn read(data: &RomData, offset: Offset) -> Result<Self, RomIoError>;
 }
@@ -19,7 +19,7 @@ pub trait RomReadableType: Sized {
 /// A type that can be written to [`RomData`].
 ///
 /// Is always automatically implemented for structs.
-pub trait RomWritableType {
+pub trait RomWritableType: RomSizedType {
     /// Write this type to `data` at `offset`.
     fn write(self, data: &mut RomData, offset: Offset) -> Result<(), RomIoError>;
 }
@@ -37,4 +37,10 @@ pub trait RomWritableType {
 pub trait RomClearableType {
     /// Clear this type in `data` at `offset`.
     fn clear(data: &mut RomData, offset: Offset) -> Result<(), RomIoError>;
+}
+
+/// Defines the size of a RomType in bytes.
+pub trait RomSizedType: Sized {
+    /// The size of this type in bytes.
+    const SIZE: usize;
 }
