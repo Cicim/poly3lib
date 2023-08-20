@@ -281,10 +281,10 @@ impl RomData {
         let pointer = word as usize;
 
         // Convert the word to an offset
-        if pointer >= 0x08_000_000 && pointer < 0x08_0000_000 + self.size() {
+        if pointer >= 0x08_000_000 && pointer < 0x08_000_000 + self.size() {
             Ok(pointer - 0x08_000_000)
         } else {
-            Err(RomIoError::InvalidPointer(offset, word))
+            Err(RomIoError::ReadingInvalidPointer(offset, word))
         }
     }
 
@@ -435,10 +435,13 @@ pub enum RomIoError {
     OutOfBounds(Offset, usize),
     #[error("Writing an offset (${0:07x}) that is out of bounds for this ROM")]
     WritingOutOfBoundsOffset(Offset),
-    #[error("The pointer read at ${0:07x} (0x{1:08x}) does not point to anything in this ROM")]
-    InvalidPointer(Offset, Pointer),
     #[error("The offset ${0:07x} is not aligned to {1} bytes")]
     Misaligned(Offset, u8),
+
+    #[error("The pointer read at ${0:07x} (0x{1:08x}) does not point to anything in this ROM")]
+    ReadingInvalidPointer(Offset, Pointer),
+    #[error("The pointer written at ${0:07x} (0x{1:08x}) does not point to anything in this ROM")]
+    WritingInvalidPointer(Offset, Pointer),
 
     #[error("Writing {0} elements to a RomArray of length {1}")]
     InvalidArrayLength(usize, usize),
@@ -508,13 +511,24 @@ mod test_romdata_methods {
     }
 
     #[test]
-    fn test_offset_reading() {
+    fn test_valid_offset_reading() {
+        let mut data = create_rom();
+        data.write_word(0, 0x08_000_004).unwrap();
+
+        assert_eq!(data.read_offset(0).unwrap(), 4);
+    }
+
+    #[test]
+    fn test_invalid_offset_reading() {
         let data = create_rom();
 
-        assert_eq!(data.read_offset(0).unwrap(), 0xEFCDAB);
+        assert_eq!(
+            data.read_offset(0),
+            Err(RomIoError::ReadingInvalidPointer(0, 0x08EFCDAB))
+        );
         assert_eq!(
             data.read_offset(1),
-            Err(RomIoError::InvalidPointer(1, 0xFF08EFCD))
+            Err(RomIoError::ReadingInvalidPointer(1, 0xFF08EFCD))
         );
         assert_eq!(
             data.read_offset(0x100),

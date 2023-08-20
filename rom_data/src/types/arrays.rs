@@ -50,11 +50,8 @@ impl<T, const N: usize> std::ops::IndexMut<usize> for RomArray<T, N> {
     }
 }
 
-// ANCHOR RomType trait implementations
-impl<T, const N: usize> RomReadableType for RomArray<T, N>
-where
-    T: RomReadableType,
-{
+// ANCHOR RomType impls
+impl<T: RomReadableType, const N: usize> RomReadableType for RomArray<T, N> {
     fn read(data: &RomData, offset: Offset) -> Result<Self, RomIoError> {
         // Check out of bounds before reading the first element
         // to avoid useless computation reading possibly expensive
@@ -73,10 +70,7 @@ where
     }
 }
 
-impl<T, const N: usize> RomWritableType for RomArray<T, N>
-where
-    T: RomWritableType,
-{
+impl<T: RomWritableType, const N: usize> RomWritableType for RomArray<T, N> {
     fn write(self, data: &mut RomData, offset: Offset) -> Result<(), RomIoError> {
         if self.0.len() != N {
             return Err(RomIoError::InvalidArrayLength(self.0.len(), N));
@@ -90,10 +84,7 @@ where
     }
 }
 
-impl<T, const N: usize> RomSizedType for RomArray<T, N>
-where
-    T: RomSizedType,
-{
+impl<T: RomSizedType, const N: usize> RomSizedType for RomArray<T, N> {
     const SIZE: usize = N * T::SIZE;
 }
 
@@ -215,5 +206,20 @@ mod test_array {
             array.write(&mut rom, 0),
             Err(RomIoError::InvalidArrayLength(2, 3))
         );
+    }
+
+    #[test]
+    fn test_json_serialize() {
+        let array: RomArray<i32, 4> = RomArray::new(vec![1, -2, 3, -4]);
+        assert_eq!(serde_json::to_string(&array).unwrap(), "[1,-2,3,-4]");
+    }
+
+    #[test]
+    fn test_json_deserialize() {
+        let array: RomArray<i32, 4> = serde_json::from_str("[1,-2,3,-4]").unwrap();
+        assert_eq!(array[0], 1);
+        assert_eq!(array[1], -2);
+        assert_eq!(array[2], 3);
+        assert_eq!(array[3], -4);
     }
 }

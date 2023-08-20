@@ -1,9 +1,11 @@
 use crate::{Offset, RomData, RomIoError};
 
 mod arrays;
+mod pointers;
 mod primitives;
 
 pub use arrays::RomArray;
+pub use pointers::{RomPointer, Void};
 
 /// A type that can be read, written to [`RomData`].
 pub trait RomType: RomReadableType + RomWritableType {}
