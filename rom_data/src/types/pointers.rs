@@ -69,9 +69,9 @@ impl RomPointer {
 
 // ANCHOR RomType impls for RomPointer
 impl<T: RomReadableType> RomReadableType for RomPointer<T> {
-    fn read(data: &RomData, offset: Offset) -> Result<Self, RomIoError> {
+    fn read_from(rom: &RomData, offset: Offset) -> Result<Self, RomIoError> {
         // Read a u32 (checking alignment)
-        let word: u32 = data.read(offset)?;
+        let word: u32 = rom.read(offset)?;
         let pointer = word as usize;
 
         // Null pointer
@@ -79,13 +79,13 @@ impl<T: RomReadableType> RomReadableType for RomPointer<T> {
             Ok(RomPointer::Null)
         }
         // Valid pointer
-        else if pointer >= 0x08_000_000 && pointer < 0x08_000_000 + data.size() {
+        else if pointer >= 0x08_000_000 && pointer < 0x08_000_000 + rom.size() {
             // Convert it to an offset
             let offset: Offset = pointer - 0x08_000_000;
 
             // If the inner type is not void, read it
-            if T::SIZE != 0 {
-                let data = T::read(data, offset)?;
+            if T::get_size(rom) != 0 {
+                let data = T::read_from(rom, offset)?;
                 Ok(RomPointer::Valid(offset, data))
             }
             // Else, read without data
@@ -100,53 +100,52 @@ impl<T: RomReadableType> RomReadableType for RomPointer<T> {
     }
 }
 
-impl<T> RomWritableType for RomPointer<T>
-where
-    T: RomWritableType,
-{
-    fn write(self, data: &mut RomData, offset: Offset) -> Result<(), RomIoError> {
+impl<T: RomWritableType> RomWritableType for RomPointer<T> {
+    fn write_to(self, rom: &mut RomData, offset: Offset) -> Result<(), RomIoError> {
         match self {
             // Null pointer (just write 0)
-            RomPointer::Null => data.write(offset, 0_u32),
+            RomPointer::Null => rom.write(offset, 0_u32),
 
             // For invalid pointers, you could try to write them, but it would
             // result in an error, so we can just return the error directly.
             RomPointer::Invalid(pointer) => Err(RomIoError::WritingInvalidPointer(offset, pointer)),
 
             // Valid pointer
-            RomPointer::Valid(pointer_offset, pointer_data) => {
+            RomPointer::Valid(pointer_offset, data) => {
                 // Write the data at the offset
-                pointer_data.write(data, pointer_offset)?;
+                data.write_to(rom, pointer_offset)?;
 
                 // Write the offset
-                data.write_offset(offset, pointer_offset)
+                rom.write_offset(offset, pointer_offset)
             }
 
             // No data (just write the offset)
-            RomPointer::NoData(pointer_offset) => data.write_offset(offset, pointer_offset),
+            RomPointer::NoData(pointer_offset) => rom.write_offset(offset, pointer_offset),
         }
     }
 }
 
-impl<T> RomSizedType for RomPointer<T>
-where
-    T: RomSizedType,
-{
-    const SIZE: usize = 4;
+impl<T: RomSizedType> RomSizedType for RomPointer<T> {
+    fn get_size(_: &RomData) -> usize {
+        4
+    }
+    fn get_alignment(_: &RomData) -> usize {
+        4
+    }
 }
 
 impl<T: RomClearableType> RomClearableType for RomPointer<T> {
-    fn clear(data: &mut RomData, offset: Offset) -> Result<(), RomIoError> {
+    fn clear_in(rom: &mut RomData, offset: Offset) -> Result<(), RomIoError> {
         // Read this pointer without data
-        let pointer = RomPointer::<Void>::read(data, offset)?;
+        let pointer = RomPointer::<Void>::read_from(rom, offset)?;
 
         // Clear the data if it exists
         if let Some(offset) = pointer.offset() {
-            T::clear(data, offset)?;
+            T::clear_in(rom, offset)?;
         }
 
         // Clear this pointer
-        u32::clear(data, offset)?;
+        u32::clear_in(rom, offset)?;
 
         Ok(())
     }
@@ -154,20 +153,25 @@ impl<T: RomClearableType> RomClearableType for RomPointer<T> {
 
 // ANCHOR RomType impls for Void
 impl RomSizedType for Void {
-    const SIZE: usize = 0;
+    fn get_size(_: &RomData) -> usize {
+        0
+    }
+    fn get_alignment(_: &RomData) -> usize {
+        0
+    }
 }
 impl RomReadableType for Void {
-    fn read(_: &RomData, _: Offset) -> Result<Self, RomIoError> {
+    fn read_from(_: &RomData, _: Offset) -> Result<Self, RomIoError> {
         Ok(Void)
     }
 }
 impl RomWritableType for Void {
-    fn write(self, _: &mut RomData, _: Offset) -> Result<(), RomIoError> {
+    fn write_to(self, _: &mut RomData, _: Offset) -> Result<(), RomIoError> {
         Ok(())
     }
 }
 impl RomClearableType for Void {
-    fn clear(_: &mut RomData, _: Offset) -> Result<(), RomIoError> {
+    fn clear_in(_: &mut RomData, _: Offset) -> Result<(), RomIoError> {
         Ok(())
     }
 }
@@ -322,22 +326,22 @@ mod tests {
         rom.write_word(0x4, 0x12345678).unwrap();
 
         // Read a u32 pointer
-        let pointer: RomPointer<u32> = RomPointer::read(&rom, 0x0).unwrap();
+        let pointer: RomPointer<u32> = RomPointer::read_from(&rom, 0x0).unwrap();
         assert_eq!(pointer, RomPointer::Valid(0x4, 0x12345678));
 
         // Read a void pointer
-        let pointer: RomPointer = RomPointer::read(&rom, 0x0).unwrap();
+        let pointer: RomPointer = RomPointer::read_from(&rom, 0x0).unwrap();
         assert_eq!(pointer, RomPointer::NoData(0x4));
 
         // Read a null pointer
         rom.write_word(0x0, 0).unwrap();
 
         // Read a u32 pointer
-        let pointer: RomPointer<u32> = RomPointer::read(&rom, 0x0).unwrap();
+        let pointer: RomPointer<u32> = RomPointer::read_from(&rom, 0x0).unwrap();
         assert_eq!(pointer, RomPointer::Null);
 
         // Read a void pointer
-        let pointer: RomPointer = RomPointer::read(&rom, 0x0).unwrap();
+        let pointer: RomPointer = RomPointer::read_from(&rom, 0x0).unwrap();
         assert_eq!(pointer, RomPointer::Null);
     }
 
@@ -349,11 +353,11 @@ mod tests {
         rom.write_word(0x0, 0x1234567).unwrap();
 
         // Read a u32 pointer
-        let pointer: RomPointer<u32> = RomPointer::read(&rom, 0x0).unwrap();
+        let pointer: RomPointer<u32> = RomPointer::read_from(&rom, 0x0).unwrap();
         assert_eq!(pointer, RomPointer::Invalid(0x1234567));
 
         // Read a void pointer
-        let pointer: RomPointer = RomPointer::read(&rom, 0x0).unwrap();
+        let pointer: RomPointer = RomPointer::read_from(&rom, 0x0).unwrap();
         assert_eq!(pointer, RomPointer::Invalid(0x1234567));
     }
 
@@ -362,11 +366,11 @@ mod tests {
         let rom = create_rom();
 
         // Read misaligned
-        let pointer: Result<RomPointer<u32>, RomIoError> = RomPointer::read(&rom, 0x1);
+        let pointer: Result<RomPointer<u32>, RomIoError> = RomPointer::read_from(&rom, 0x1);
         assert_eq!(pointer, Err(RomIoError::Misaligned(0x1, 4)));
 
         // Read out of bounds
-        let pointer: Result<RomPointer<u32>, RomIoError> = RomPointer::read(&rom, 0x20);
+        let pointer: Result<RomPointer<u32>, RomIoError> = RomPointer::read_from(&rom, 0x20);
         assert_eq!(pointer, Err(RomIoError::OutOfBounds(0x20, 4)));
     }
 
@@ -376,7 +380,7 @@ mod tests {
 
         // Write a u32 pointer
         let pointer = RomPointer::Valid(0x4, 0x12345678);
-        pointer.write(&mut rom, 0x0).unwrap();
+        pointer.write_to(&mut rom, 0x0).unwrap();
 
         // Assert that the pointer was written
         assert_eq!(rom.read_word(0x0).unwrap(), 0x08_000_004);
@@ -385,7 +389,7 @@ mod tests {
         let mut rom = create_rom();
         // Write a pointer with no data
         let pointer: RomPointer<u32> = RomPointer::NoData(0x4);
-        pointer.write(&mut rom, 0x0).unwrap();
+        pointer.write_to(&mut rom, 0x0).unwrap();
 
         // Assert that the pointer was written
         assert_eq!(rom.read_word(0x0).unwrap(), 0x08_000_004);
@@ -395,7 +399,7 @@ mod tests {
         let mut rom = create_rom();
         // Write a null pointer
         let pointer: RomPointer<u32> = RomPointer::Null;
-        pointer.write(&mut rom, 0x0).unwrap();
+        pointer.write_to(&mut rom, 0x0).unwrap();
 
         // Assert that the pointer was written
         assert_eq!(rom.read_word(0x0).unwrap(), 0x00_000_000);
@@ -434,14 +438,14 @@ mod tests {
         assert_eq!(rom.read_word(0x8).unwrap(), 0x12345678);
 
         // Read outer from rom
-        let outer: RomPointer<RomPointer<u32>> = RomPointer::read(&rom, 0x0).unwrap();
+        let outer: RomPointer<RomPointer<u32>> = RomPointer::read_from(&rom, 0x0).unwrap();
         assert_eq!(
             outer,
             RomPointer::Valid(0x4, RomPointer::Valid(0x8, 0x12345678))
         );
 
         // Read a void pointer from rom
-        let outer: RomPointer<RomPointer> = RomPointer::read(&rom, 0x0).unwrap();
+        let outer: RomPointer<RomPointer> = RomPointer::read_from(&rom, 0x0).unwrap();
         assert_eq!(outer, RomPointer::Valid(0x4, RomPointer::NoData(0x8)));
     }
 

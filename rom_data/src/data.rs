@@ -342,7 +342,7 @@ impl RomData {
     /// assert_eq!(halfword, 0xffff);
     /// ```
     pub fn read<T: RomReadableType>(&self, offset: Offset) -> RomIoResult<T> {
-        T::read(self, offset)
+        T::read_from(self, offset)
     }
 
     /// Writes a value at the given offset.
@@ -368,14 +368,14 @@ impl RomData {
     /// assert_eq!(data.read_halfword(0x00).unwrap(), 0x1234);
     /// ```
     pub fn write<T: RomWritableType>(&mut self, offset: Offset, value: T) -> RomIoResult {
-        value.write(self, offset)
+        value.write_to(self, offset)
     }
 
     /// Clears a value at the given offset.
     ///
     /// The type of the value being cleared must implement [`RomClearableType`].
     pub fn clear<T: RomClearableType>(&mut self, offset: Offset) -> RomIoResult {
-        T::clear(self, offset)
+        T::clear_in(self, offset)
     }
 
     // ANCHOR Utilities

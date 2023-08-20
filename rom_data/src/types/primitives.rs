@@ -4,39 +4,50 @@
 use crate::types::{RomClearableType, RomReadableType, RomSizedType, RomWritableType};
 use crate::{Offset, RomData, RomIoError};
 
+macro_rules! get_size {
+    ($target:ty) => {
+        std::mem::size_of::<$target>()
+    };
+}
+
 macro_rules! impl_rom_type_for_integer {
     ($target:ty, $unsigned:ty, $read_method:ident, $write_method:ident) => {
         impl RomSizedType for $target {
-            const SIZE: usize = std::mem::size_of::<$target>();
+            fn get_size(_: &RomData) -> usize {
+                get_size!($target)
+            }
+            fn get_alignment(_: &RomData) -> usize {
+                get_size!($target)
+            }
         }
 
         impl RomReadableType for $target {
-            fn read(data: &RomData, offset: Offset) -> Result<Self, RomIoError> {
-                if offset % Self::SIZE != 0 {
-                    return Err(RomIoError::Misaligned(offset, Self::SIZE as u8));
+            fn read_from(rom: &RomData, offset: Offset) -> Result<Self, RomIoError> {
+                if offset % get_size!($target) != 0 {
+                    return Err(RomIoError::Misaligned(offset, get_size!($target) as u8));
                 }
 
-                Ok(data.$read_method(offset)? as $target)
+                Ok(rom.$read_method(offset)? as $target)
             }
         }
 
         impl RomWritableType for $target {
-            fn write(self, data: &mut RomData, offset: Offset) -> Result<(), RomIoError> {
-                if offset % Self::SIZE != 0 {
-                    return Err(RomIoError::Misaligned(offset, Self::SIZE as u8));
+            fn write_to(self, rom: &mut RomData, offset: Offset) -> Result<(), RomIoError> {
+                if offset % get_size!($target) != 0 {
+                    return Err(RomIoError::Misaligned(offset, get_size!($target) as u8));
                 }
 
-                data.$write_method(offset, self as $unsigned)
+                rom.$write_method(offset, self as $unsigned)
             }
         }
 
         impl RomClearableType for $target {
-            fn clear(data: &mut RomData, offset: Offset) -> Result<(), RomIoError> {
-                if offset % Self::SIZE != 0 {
-                    return Err(RomIoError::Misaligned(offset, Self::SIZE as u8));
+            fn clear_in(rom: &mut RomData, offset: Offset) -> Result<(), RomIoError> {
+                if offset % get_size!($target) != 0 {
+                    return Err(RomIoError::Misaligned(offset, get_size!($target) as u8));
                 }
 
-                data.clear_bytes(offset, Self::SIZE)
+                rom.clear_bytes(offset, get_size!($target))
             }
         }
     };
@@ -61,11 +72,11 @@ mod tests {
         let rom = RomData::new(crate::RomBase::FireRed, 0x10);
 
         assert_eq!(
-            u16::read(&rom, 0x01).unwrap_err(),
+            u16::read_from(&rom, 0x01).unwrap_err(),
             RomIoError::Misaligned(0x01, 2)
         );
         assert_eq!(
-            u32::read(&rom, 0x01).unwrap_err(),
+            u32::read_from(&rom, 0x01).unwrap_err(),
             RomIoError::Misaligned(0x01, 4)
         );
     }
@@ -74,12 +85,12 @@ mod tests {
     fn test_signed_integers() {
         let mut rom = RomData::new(crate::RomBase::FireRed, 0x10);
 
-        assert_eq!(i8::read(&rom, 0x00).unwrap(), -1);
-        assert_eq!(i16::read(&rom, 0x00).unwrap(), -1);
-        assert_eq!(i32::read(&rom, 0x00).unwrap(), -1);
+        assert_eq!(i8::read_from(&rom, 0x00).unwrap(), -1);
+        assert_eq!(i16::read_from(&rom, 0x00).unwrap(), -1);
+        assert_eq!(i32::read_from(&rom, 0x00).unwrap(), -1);
 
         rom.write_word(0, 0xFFFF_FFFE).unwrap();
 
-        assert_eq!(i8::read(&rom, 0x00).unwrap(), -2);
+        assert_eq!(i8::read_from(&rom, 0x00).unwrap(), -2);
     }
 }

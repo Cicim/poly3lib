@@ -52,18 +52,21 @@ impl<T, const N: usize> std::ops::IndexMut<usize> for RomArray<T, N> {
 
 // ANCHOR RomType impls
 impl<T: RomReadableType, const N: usize> RomReadableType for RomArray<T, N> {
-    fn read(data: &RomData, offset: Offset) -> Result<Self, RomIoError> {
+    fn read_from(rom: &RomData, offset: Offset) -> Result<Self, RomIoError> {
+        let size = Self::get_size(rom);
+        let elsize = T::get_size(rom);
+
         // Check out of bounds before reading the first element
         // to avoid useless computation reading possibly expensive
         // types if the array is invalid.
-        if !data.in_bounds(offset + Self::SIZE - 1) {
-            return Err(RomIoError::OutOfBounds(offset, Self::SIZE));
+        if !rom.in_bounds(offset + Self::get_size(rom) - 1) {
+            return Err(RomIoError::OutOfBounds(offset, size));
         }
 
         let mut vec = Vec::with_capacity(N);
 
         for i in 0..N {
-            vec.push(T::read(data, offset + i * T::SIZE)?);
+            vec.push(T::read_from(rom, offset + i * elsize)?);
         }
 
         Ok(Self(vec))
@@ -71,13 +74,14 @@ impl<T: RomReadableType, const N: usize> RomReadableType for RomArray<T, N> {
 }
 
 impl<T: RomWritableType, const N: usize> RomWritableType for RomArray<T, N> {
-    fn write(self, data: &mut RomData, offset: Offset) -> Result<(), RomIoError> {
+    fn write_to(self, rom: &mut RomData, offset: Offset) -> Result<(), RomIoError> {
         if self.0.len() != N {
             return Err(RomIoError::InvalidArrayLength(self.0.len(), N));
         }
 
+        let elsize = T::get_size(rom);
         for (i, value) in self.0.into_iter().enumerate() {
-            value.write(data, offset + i * T::SIZE)?;
+            value.write_to(rom, offset + i * elsize)?;
         }
 
         Ok(())
@@ -85,7 +89,12 @@ impl<T: RomWritableType, const N: usize> RomWritableType for RomArray<T, N> {
 }
 
 impl<T: RomSizedType, const N: usize> RomSizedType for RomArray<T, N> {
-    const SIZE: usize = N * T::SIZE;
+    fn get_size(rom: &RomData) -> usize {
+        N * T::get_size(rom)
+    }
+    fn get_alignment(rom: &RomData) -> usize {
+        T::get_alignment(rom)
+    }
 }
 
 #[cfg(test)]
@@ -152,14 +161,14 @@ mod test_array {
     #[test]
     fn test_read() {
         let rom = get_rom();
-        let array = RomArray::<u8, 4>::read(&rom, 0).unwrap();
+        let array = RomArray::<u8, 4>::read_from(&rom, 0).unwrap();
 
         assert_eq!(array[0], 0x10);
         assert_eq!(array[1], 0x11);
         assert_eq!(array[2], 0x12);
         assert_eq!(array[3], 0x13);
 
-        let array = RomArray::<i16, 2>::read(&rom, 0).unwrap();
+        let array = RomArray::<i16, 2>::read_from(&rom, 0).unwrap();
         assert_eq!(array[0], 0x1110);
         assert_eq!(array[1], 0x1312);
     }
@@ -169,12 +178,12 @@ mod test_array {
         let rom = get_rom();
 
         assert_eq!(
-            RomArray::<u16, 2>::read(&rom, 1),
+            RomArray::<u16, 2>::read_from(&rom, 1),
             Err(RomIoError::Misaligned(1, 2))
         );
 
         assert_eq!(
-            RomArray::<u32, 0x20>::read(&rom, 0),
+            RomArray::<u32, 0x20>::read_from(&rom, 0),
             Err(RomIoError::OutOfBounds(0, 0x20 * 4))
         )
     }
@@ -184,7 +193,7 @@ mod test_array {
         let mut rom = get_rom();
         let array = RomArray::<u8, 4>::new(vec![0x20, 0x21, 0x22, 0x23]);
 
-        array.write(&mut rom, 0).unwrap();
+        array.write_to(&mut rom, 0).unwrap();
 
         assert_eq!(rom.read_byte(0).unwrap(), 0x20);
         assert_eq!(rom.read_byte(1).unwrap(), 0x21);
@@ -197,13 +206,16 @@ mod test_array {
         let mut rom = get_rom();
         let array = RomArray::<u16, 1>::new(vec![0x20]);
 
-        assert_eq!(array.write(&mut rom, 1), Err(RomIoError::Misaligned(1, 2)));
+        assert_eq!(
+            array.write_to(&mut rom, 1),
+            Err(RomIoError::Misaligned(1, 2))
+        );
 
         let mut array = RomArray::<u16, 3>::new(vec![0x20, 0x21, 0x22]);
         array.0.pop();
 
         assert_eq!(
-            array.write(&mut rom, 0),
+            array.write_to(&mut rom, 0),
             Err(RomIoError::InvalidArrayLength(2, 3))
         );
     }

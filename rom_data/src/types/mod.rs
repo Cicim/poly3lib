@@ -15,7 +15,7 @@ pub trait RomType: RomReadableType + RomWritableType {}
 /// Is always automatically implemented for structs.
 pub trait RomReadableType: RomSizedType {
     /// Read this type from `data` at `offset`.
-    fn read(data: &RomData, offset: Offset) -> Result<Self, RomIoError>;
+    fn read_from(rom: &RomData, offset: Offset) -> Result<Self, RomIoError>;
 }
 
 /// A type that can be written to [`RomData`].
@@ -23,7 +23,7 @@ pub trait RomReadableType: RomSizedType {
 /// Is always automatically implemented for structs.
 pub trait RomWritableType: RomSizedType {
     /// Write this type to `data` at `offset`.
-    fn write(self, data: &mut RomData, offset: Offset) -> Result<(), RomIoError>;
+    fn write_to(self, rom: &mut RomData, offset: Offset) -> Result<(), RomIoError>;
 }
 
 /// A type that can be cleared from the ROM.
@@ -38,11 +38,23 @@ pub trait RomWritableType: RomSizedType {
 /// `CLEAR` is specified.
 pub trait RomClearableType {
     /// Clear this type in `data` at `offset`.
-    fn clear(data: &mut RomData, offset: Offset) -> Result<(), RomIoError>;
+    fn clear_in(rom: &mut RomData, offset: Offset) -> Result<(), RomIoError>;
 }
 
-/// Defines the size of a RomType in bytes.
+/// Defines a method for obtaining the size of a type.
+///
+/// The ROM size of a type cannot be known at compile time because of differences
+/// in the various ROM bases, however they must still be Sized in Rust.
 pub trait RomSizedType: Sized {
-    /// The size of this type in bytes.
-    const SIZE: usize;
+    /// Returns the size of the type in bytes based on things it can
+    /// read of the ROM. This includes the ROM base.
+    ///
+    /// REVIEW *In the future, it may also include specific attributes*
+    fn get_size(rom: &RomData) -> usize;
+
+    /// Returns the alignment of the type in bytes based on things it can
+    /// read of the ROM. This includes the ROM base.
+    ///
+    /// REVIEW *In the future, it may also include specific attributes*
+    fn get_alignment(rom: &RomData) -> usize;
 }
