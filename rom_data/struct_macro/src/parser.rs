@@ -1,137 +1,79 @@
 //! First parsing step. Produces a struct containing struct name and flags
 //! as well as tokens for each fields as well as annotations.
 
+use std::collections::HashSet;
+
 use proc_macro2::{
     token_stream::IntoIter, Delimiter, Group, Ident, Literal, Punct, Span, TokenStream, TokenTree,
 };
 use proc_macro_error::{abort, abort_call_site};
 
+// ANCHOR Exported types
 /// The parsed data for this struct.
 #[derive(Debug)]
 pub struct ParsedStruct {
     /// The name of the struct.
-    name: Ident,
+    pub name: Ident,
     /// The fields of the struct.
-    fields: Vec<ParsedField>,
+    pub fields: Vec<StructField>,
     /// The flags for the struct.
-    flags: ParsedFlags,
+    pub flags: StructFlags,
 }
 
-/// The parsed data for a field.
-#[derive(Debug)]
-pub struct ParsedField {
-    /// The name of the field.
-    name: Ident,
-    /// The type of the field.
-    ty: ParsedFieldType,
-    /// The attributes of the field.
-    attributes: Vec<ParsedAttribute>,
-}
-
+/// Flags for the struct.
 #[derive(Default, Debug)]
-pub struct ParsedFlags {
+pub struct StructFlags {
     /// Whether to **not** set this struct as public, effectively making it private
-    private: bool,
+    pub private: bool,
     /// Whether to **not** derive `Debug` for this struct
-    no_debug: bool,
-}
-
-#[derive(Debug, Clone)]
-/// Type that can be found at the start of a type definition
-pub enum ParsedBaseType {
-    // TODO Support for Unions
-    /// A struct with the identifier given as name
-    Struct(Ident),
-
-    /// A void type (only used with pointers)
-    Void,
-    /// A sized integer type (valid for bitfields)
-    Integer(SizedBaseType),
-}
-
-impl ParsedBaseType {
-    /// Returns whether the type is an integer (excluding boolean)
-    pub fn is_integer(&self) -> bool {
-        match self {
-            ParsedBaseType::Integer(SizedBaseType::Boolean(_)) => false,
-            ParsedBaseType::Integer(_) => true,
-            _ => false,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum SizedBaseType {
-    /// An unsigned integer with the given number of bits (8, 16 or 32)
-    Unsigned(u8),
-    /// A signed integer with the given number of bits (8, 16 or 32)
-    Signed(u8),
-    /// A boolean with the given number of bits (8, 16 or 32)
-    Boolean(u8),
-}
-
-impl SizedBaseType {
-    /// Returns the number of bits this integer type has.
-    pub fn bits(&self) -> u8 {
-        match self {
-            SizedBaseType::Unsigned(x) => *x,
-            SizedBaseType::Signed(x) => *x,
-            SizedBaseType::Boolean(x) => *x,
-        }
-    }
+    pub no_debug: bool,
 }
 
 #[derive(Debug)]
-pub struct ParsedBitField {
-    /// The type of the bitfield
-    ty: SizedBaseType,
-    /// The number of bits in the bitfield
-    bits: u8,
+/// The final field type
+pub enum StructField {
+    // TODO Add support for Vector fields
+    /// A single field with a [`DerivedType`]
+    Field(StructBasicField),
+    /// A list of fields read from a BitField.
+    ///
+    /// Bitfields cannot have attributes.
+    BitField(StructBitFields),
 }
 
 #[derive(Debug)]
-pub enum ParsedFieldType {
-    // TODO Support for variable-length vectors
-    /// A BitField (it is a special case, since it cannot be inside a pointer)
-    BitField(ParsedBitField),
-
-    /// A derived type (may also be just a base type)
-    Type(ParsedDerivedType),
+pub struct StructBasicField {
+    /// The name of the field.
+    pub name: Ident,
+    /// The type of the field.
+    pub ty: DerivedType,
+    /// The attributes of the field.
+    pub attributes: Vec<StructFieldAttribute>,
 }
 
-/// A type with modifiers applied to it.
 #[derive(Debug)]
-pub enum ParsedDerivedType {
-    /// A base type with no modifiers
-    Base(ParsedBaseType),
-    /// A pointer to a base type
-    Pointer(Box<ParsedDerivedType>),
-    /// An array of a base type with the fixed length
-    Array(Box<ParsedDerivedType>, u32),
-}
-
-impl ParsedDerivedType {
-    pub fn is_integer(&self) -> bool {
-        match self {
-            ParsedDerivedType::Base(base) => base.is_integer(),
-            _ => false,
-        }
-    }
+pub struct StructBitFields {
+    /// The type of bitfield
+    pub ty: SizedBaseType,
+    /// The bit sizes of each field
+    pub sizes: Vec<u8>,
+    /// The names of each field
+    pub names: Vec<Ident>,
 }
 
 /// An attribute for specifying when some fields are missing or have
 /// a different type based on a ROM base or specific configuration
 #[derive(Debug, Clone)]
-pub struct ParsedAttribute {
+pub struct StructFieldAttribute {
     /// The condition for this attribute to be applied
-    condition: ParsedAttributeCondition,
+    pub condition: StructAttributeCondition,
     /// The action to take if the condition is met
-    action: ParsedAttributeAction,
+    pub action: StructAttributeAction,
 }
 
 /// The condition for an attribute to be applied
 #[derive(Debug, Clone)]
-pub enum ParsedAttributeCondition {
+pub enum StructAttributeCondition {
     /// The attribute is applied if the ROM base is one of the given ones
     ///
     /// ```
@@ -155,13 +97,13 @@ pub enum ParsedAttributeCondition {
 
 /// The action to take if the condition is met
 #[derive(Debug, Clone)]
-pub enum ParsedAttributeAction {
+pub enum StructAttributeAction {
     /// Change the type of the field
     ///
     /// ```
     /// #[for(..., type(u32))]
     /// ```
-    Type(ParsedBaseType),
+    Type(BaseType),
 
     /// Do not read the field and set a default value instead
     ///
@@ -171,6 +113,99 @@ pub enum ParsedAttributeAction {
     Default(Literal),
 }
 
+/// Type that can be found at the start of a type definition
+#[derive(Debug, Clone)]
+pub enum BaseType {
+    // TODO Support for Unions
+    /// A struct with the identifier given as name
+    Struct(Ident),
+
+    /// A void type (only used with pointers)
+    Void,
+    /// A sized integer type (valid for bitfields)
+    Integer(SizedBaseType),
+}
+
+impl BaseType {
+    /// Returns whether the type is an integer (excluding boolean)
+    pub fn is_integer(&self) -> bool {
+        match self {
+            BaseType::Integer(SizedBaseType::Boolean(_)) => false,
+            BaseType::Integer(_) => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SizedBaseType {
+    /// An unsigned integer with the given number of bits (8, 16 or 32)
+    Unsigned(u8),
+    /// A signed integer with the given number of bits (8, 16 or 32)
+    Signed(u8),
+    /// A boolean with the given number of bits (8, 16 or 32)
+    Boolean(u8),
+}
+
+impl SizedBaseType {
+    /// Returns the number of bits this integer type has.
+    pub fn bits(&self) -> u8 {
+        match self {
+            SizedBaseType::Unsigned(x) => *x,
+            SizedBaseType::Signed(x) => *x,
+            SizedBaseType::Boolean(x) => *x,
+        }
+    }
+}
+
+/// A type with modifiers applied to it.
+#[derive(Debug)]
+pub enum DerivedType {
+    /// A base type with no modifiers
+    Base(BaseType),
+    /// A pointer to a base type
+    Pointer(Box<DerivedType>),
+    /// An array of a base type with the fixed length
+    Array(Box<DerivedType>, u32),
+}
+
+impl DerivedType {
+    pub fn is_integer(&self) -> bool {
+        match self {
+            DerivedType::Base(base) => base.is_integer(),
+            _ => false,
+        }
+    }
+}
+
+// ANCHOR Internal types
+/// The parsed data for a field.
+#[derive(Debug)]
+struct ParsedField {
+    /// The name of the field.
+    name: Ident,
+    /// The type of the field.
+    ty: ParsedFieldType,
+    /// The attributes of the field.
+    attributes: Vec<StructFieldAttribute>,
+}
+
+#[derive(Debug)]
+enum ParsedFieldType {
+    // TODO Support for variable-length vectors
+    /// A BitField (it is a special case, since it cannot be inside a pointer)
+    BitField {
+        /// The type of the bitfield
+        ty: SizedBaseType,
+        /// The number of bits in the bitfield
+        bits: u8,
+    },
+
+    /// A derived type (may also be just a base type)
+    Type(DerivedType),
+}
+
+// ANCHOR Macros
 macro_rules! next_not_eof {
     ($tokens:ident, $expected:expr) => {
         match $tokens.next() {
@@ -239,7 +274,7 @@ pub fn parse(stream: TokenStream) -> ParsedStruct {
     let fields = parse_struct_fields(fields);
 
     // Consume each flag
-    let mut flags = ParsedFlags::default();
+    let mut flags = StructFlags::default();
     while let Some(flag) = stream.next() {
         match flag {
             TokenTree::Ident(x) => match x.to_string().as_str() {
@@ -251,12 +286,7 @@ pub fn parse(stream: TokenStream) -> ParsedStruct {
         }
     }
 
-    // Return the parsed struct.
-    ParsedStruct {
-        name,
-        fields,
-        flags,
-    }
+    compose_struct(name, fields, flags)
 }
 
 /// Parses the fields of the struct (everything within { ... }) as well
@@ -323,7 +353,7 @@ fn parse_struct_fields(stream: TokenStream) -> Vec<ParsedField> {
 // ANCHOR Attribute parsing
 /// Parses an attribute value: something like `#[...]`. Receives the stream
 /// of tokens inside the brackets.
-fn parse_attribute(stream: TokenStream, attribute_span: Span) -> Vec<ParsedAttribute> {
+fn parse_attribute(stream: TokenStream, attribute_span: Span) -> Vec<StructFieldAttribute> {
     // Convert the token stream into
     let mut stream = stream.into_iter().peekable();
 
@@ -385,7 +415,7 @@ fn parse_attribute(stream: TokenStream, attribute_span: Span) -> Vec<ParsedAttri
 
 /// Parses a for block of an attribute (which may contain many for blocks). Obtains the stream
 /// of tokens inside the parenthesis.
-fn parse_attribute_for_block(group: Group) -> ParsedAttribute {
+fn parse_attribute_for_block(group: Group) -> StructFieldAttribute {
     let span = group.span();
     let mut stream = group.stream().into_iter();
 
@@ -401,11 +431,11 @@ fn parse_attribute_for_block(group: Group) -> ParsedAttribute {
     // Parse the action
     let action = parse_attribute_action(span, &mut stream);
 
-    ParsedAttribute { condition, action }
+    StructFieldAttribute { condition, action }
 }
 
 // Parses an attribute condition
-fn parse_attribute_condition(span: Span, stream: &mut IntoIter) -> ParsedAttributeCondition {
+fn parse_attribute_condition(span: Span, stream: &mut IntoIter) -> StructAttributeCondition {
     // Parse the identifier
     let ident = match next_not_eof!(span, stream, "attribute condition name") {
         TokenTree::Ident(x) => x,
@@ -458,9 +488,9 @@ fn parse_attribute_condition(span: Span, stream: &mut IntoIter) -> ParsedAttribu
 
             // Create the cfg attribute
             if bang {
-                ParsedAttributeCondition::NotCfg(ident.clone())
+                StructAttributeCondition::NotCfg(ident.clone())
             } else {
-                ParsedAttributeCondition::Cfg(ident.clone())
+                StructAttributeCondition::Cfg(ident.clone())
             }
         }
 
@@ -497,14 +527,14 @@ fn parse_attribute_condition(span: Span, stream: &mut IntoIter) -> ParsedAttribu
                 abort!(x, "Trailing commas are not allowed in `base` attribute");
             }
 
-            ParsedAttributeCondition::Base(identifiers)
+            StructAttributeCondition::Base(identifiers)
         }
         x => abort!(ident, "Unknown attribute condition `{}`", x),
     }
 }
 
 // Parses an attribute action
-fn parse_attribute_action(span: Span, stream: &mut IntoIter) -> ParsedAttributeAction {
+fn parse_attribute_action(span: Span, stream: &mut IntoIter) -> StructAttributeAction {
     // Parse the identifier
     let ident = match next_not_eof!(span, stream, "attribute action name") {
         TokenTree::Ident(x) => x,
@@ -526,7 +556,7 @@ fn parse_attribute_action(span: Span, stream: &mut IntoIter) -> ParsedAttributeA
     match ident.to_string().as_str() {
         // default(Literal)
         "default" => match group.next() {
-            Some(TokenTree::Literal(x)) => ParsedAttributeAction::Default(x),
+            Some(TokenTree::Literal(x)) => StructAttributeAction::Default(x),
             Some(x) => abort!(x, "Expected literal, found `{}`", x),
             None => abort!(ident, "Expected literal after `default`"),
         },
@@ -542,7 +572,7 @@ fn parse_attribute_action(span: Span, stream: &mut IntoIter) -> ParsedAttributeA
             // Parse the base type
             let base_type = parse_base_type(base_type, &mut group.into_iter());
 
-            ParsedAttributeAction::Type(base_type)
+            StructAttributeAction::Type(base_type)
         }
 
         _ => abort!(ident, "Unknown attribute action `{}`", ident),
@@ -570,7 +600,7 @@ fn assert_valid_attributes(field: &ParsedField) {
 
         for attr in attributes {
             match &attr.action {
-                ParsedAttributeAction::Type(ty) => {
+                StructAttributeAction::Type(ty) => {
                     // Make sure every type is an integer
                     if !ty.is_integer() {
                         // REVIEW Move this check to the action reading function
@@ -579,7 +609,7 @@ fn assert_valid_attributes(field: &ParsedField) {
                         abort!(name, "A type() action does not contain an integer")
                     }
                 }
-                ParsedAttributeAction::Default(_) => {
+                StructAttributeAction::Default(_) => {
                     // TODO Make sure the literal is a valid integer or
                     // move this check to the attribute parser.
                 }
@@ -642,7 +672,7 @@ fn parse_field(field_base_type: Ident, stream: &mut IntoIter) -> Vec<(ParsedFiel
 ///
 /// TODO Support for vector types should be added here
 fn parse_field_type(
-    base_type: ParsedBaseType,
+    base_type: BaseType,
     token_list: Vec<TokenTree>,
     end_token: Punct,
 ) -> (ParsedFieldType, Ident) {
@@ -659,7 +689,7 @@ fn parse_field_type(
             (TokenTree::Ident(name), TokenTree::Punct(colon), TokenTree::Literal(size)) => {
                 // If there is a char in the middle of this configuration, it must be a bitfield
                 if colon.as_char() == ':' {
-                    if let ParsedBaseType::Integer(ty) = base_type {
+                    if let BaseType::Integer(ty) = base_type {
                         // REVIEW - Check valid identifier?
                         // Parse the size of the bitfield
                         let bits = match size.to_string().parse::<u8>() {
@@ -682,10 +712,7 @@ fn parse_field_type(
                         };
 
                         // Return the bitfield
-                        return (
-                            ParsedFieldType::BitField(ParsedBitField { ty, bits }),
-                            name.clone(),
-                        );
+                        return (ParsedFieldType::BitField { ty, bits }, name.clone());
                     } else {
                         abort!(
                             name,
@@ -704,12 +731,12 @@ fn parse_field_type(
     let name = parse_derived_type(token_list, &mut dereferences);
 
     // Apply the dereferences
-    let mut ty = ParsedDerivedType::Base(base_type);
+    let mut ty = DerivedType::Base(base_type);
     for count in dereferences.iter().rev() {
         if *count == 0 {
-            ty = ParsedDerivedType::Pointer(Box::new(ty));
+            ty = DerivedType::Pointer(Box::new(ty));
         } else {
-            ty = ParsedDerivedType::Array(Box::new(ty), *count);
+            ty = DerivedType::Array(Box::new(ty), *count);
         }
     }
 
@@ -718,7 +745,7 @@ fn parse_field_type(
     // Checked the type for its validity
     match &ty {
         // Void is only allowed if it is a pointer
-        ParsedFieldType::Type(ParsedDerivedType::Base(ParsedBaseType::Void)) => {
+        ParsedFieldType::Type(DerivedType::Base(BaseType::Void)) => {
             abort!(
                 name,
                 "Fields cannot have type `void` unless they are pointers"
@@ -727,7 +754,7 @@ fn parse_field_type(
         ParsedFieldType::Type(derived) => assert_derived_type_is_valid(derived, &name),
 
         // Bitfields are validated before being returned
-        ParsedFieldType::BitField(_) => {}
+        ParsedFieldType::BitField { .. } => {}
     };
 
     (ty, name)
@@ -855,8 +882,8 @@ fn parse_derived_type(mut list: Vec<TokenTree>, dereferences: &mut Vec<u32>) -> 
 }
 
 /// Parses the base type from the first token and the token stream (in case of types that require more than one token)
-fn parse_base_type(base_type: Ident, stream: &mut IntoIter) -> ParsedBaseType {
-    use ParsedBaseType::*;
+fn parse_base_type(base_type: Ident, stream: &mut IntoIter) -> BaseType {
+    use BaseType::*;
 
     // Try to parse this into a field
     match base_type.to_string().as_str() {
@@ -905,17 +932,193 @@ fn parse_base_type(base_type: Ident, stream: &mut IntoIter) -> ParsedBaseType {
 }
 
 /// Applies some simple rules to check if the type is valid (recursively)
-fn assert_derived_type_is_valid(derived: &ParsedDerivedType, name: &Ident) {
-    use ParsedDerivedType::*;
+fn assert_derived_type_is_valid(derived: &DerivedType, name: &Ident) {
+    use DerivedType::*;
 
     match derived {
         Base(_) => return,
         Array(x, _) => {
-            if let Base(ParsedBaseType::Void) = x.as_ref() {
+            // Cannot make arrays of voids
+            if let Base(BaseType::Void) = x.as_ref() {
                 abort!(name, "Cannot have arrays of voids");
+            }
+            // Cannot make arrays of non-byte boolean types
+            if let Base(BaseType::Integer(SizedBaseType::Boolean(x))) = x.as_ref() {
+                if *x != 8 {
+                    abort!(name, "Cannot have arrays of non-byte boolean types");
+                }
+            }
+
+            assert_derived_type_is_valid(x, name)
+        }
+        Pointer(x) => {
+            // Cannot have pointers of non-byte boolean types
+            if let Base(BaseType::Integer(SizedBaseType::Boolean(x))) = x.as_ref() {
+                if *x != 8 {
+                    abort!(name, "Cannot have pointers of non-byte boolean types");
+                }
             }
             assert_derived_type_is_valid(x, name)
         }
-        Pointer(x) => assert_derived_type_is_valid(x, name),
+    }
+}
+
+// ANCHOR Struct composition
+/// Composes the final ParsedStruct type by making the last checks (like)
+/// name collisions and joining the bitfields.
+fn compose_struct(name: Ident, in_fields: Vec<ParsedField>, flags: StructFlags) -> ParsedStruct {
+    // Keep track of the names that are already used to avoid collisions
+    let mut appeared_names: HashSet<String> = HashSet::new();
+
+    // Build the final fields
+    let mut fields = Vec::new();
+
+    // Keep track of whether a bitfield is currently being built
+    let mut bitfield_type: Option<SizedBaseType> = None;
+    let mut bitfield_sizes: Vec<u8> = Vec::new();
+    let mut bitfield_names: Vec<Ident> = Vec::new();
+    let mut bitfield_size = 0;
+
+    for ParsedField {
+        name,
+        ty,
+        attributes,
+    } in in_fields
+    {
+        // Check for name collisions
+        let name_str = name.to_string();
+        if appeared_names.contains(&name_str) {
+            abort!(name, "Name collision for field `{}`", name);
+        }
+        appeared_names.insert(name_str);
+
+        /*
+        Bitfields. This is a state machine. Its transitions depend on two things:
+        1. Whether the current field is a bitfield
+           <=> if `ty` is `ParsedFieldType::BitField`
+        2. Whether the previous field was a bitfield
+           <=> if `bitfield_type` is `Some(_)`
+
+        The transitions are:
+        1. If the current field is a bitfield and the previous one was not, start a new bitfield
+        2. If the current field is a bitfield and the previous one was too:
+            a. If the types are different, start a new bitfield
+            b. If the types are the same:
+                i. If the added size would exceed the type size, start a new bitfield
+                ii. If the added size would not exceed the type size, add the size to the current bitfield
+        3. If the current field is not a bitfield and the previous one was, end the bitfield
+        4. If the current field is not a bitfield and the previous one was not, do nothing
+
+        In any case, after the bitfield transitions have been computed, if the current type is not
+        a bitfield, it will be added to the types accordingly.
+        */
+        macro_rules! append_bitfield {
+            () => {{
+                // Add the old bitfield to the fields
+                fields.push(StructField::BitField(StructBitFields {
+                    ty: bitfield_type.unwrap(),
+                    names: bitfield_names,
+                    sizes: bitfield_sizes,
+                }));
+
+                // Start a new bitfield
+                bitfield_sizes = Vec::new();
+                bitfield_names = Vec::new();
+            }};
+        }
+
+        match (&ty, bitfield_type) {
+            // 1. The current field is a bitfield and the previous one was not
+            (ParsedFieldType::BitField { ty, bits }, None) => {
+                // Start a new bitfield
+                bitfield_type = Some(*ty);
+                bitfield_sizes.push(*bits);
+                bitfield_names.push(name);
+                bitfield_size = *bits;
+                // Do nothing else
+                continue;
+            }
+            // 2. The current field is a bitfield and the previous one was too
+            (
+                ParsedFieldType::BitField {
+                    ty: new_base_type,
+                    bits,
+                },
+                Some(base_type),
+            ) => {
+                // a. If the types are different, start a new bitfield
+                if *new_base_type != base_type {
+                    append_bitfield!();
+
+                    // Start a new bitfield
+                    bitfield_type = Some(*new_base_type);
+                    bitfield_sizes.push(*bits);
+                    bitfield_names.push(name);
+                    bitfield_size = *bits;
+                }
+                // b. If the types are the same:
+                else {
+                    // i. If the added size would exceed the type size, start a new bitfield
+                    if bitfield_size + bits > base_type.bits() {
+                        append_bitfield!();
+
+                        // Start a new bitfield
+                        bitfield_type = Some(base_type);
+                        bitfield_sizes.push(*bits);
+                        bitfield_names.push(name);
+                        bitfield_size = *bits;
+                    }
+                    // ii. If the added size would not exceed the type size, add the size to the current bitfield
+                    else {
+                        bitfield_sizes.push(*bits);
+                        bitfield_names.push(name);
+                        bitfield_size += bits;
+                    }
+                }
+
+                continue;
+            }
+
+            // 3. The current field is not a bitfield and the previous one was
+            (_, Some(_)) => {
+                // Add the old bitfield to the fields
+                append_bitfield!();
+                bitfield_type = None;
+                bitfield_size = 0;
+            }
+
+            // 4. The current field is not a bitfield and the previous one was not. Do nothing
+            (_, None) => {}
+        }
+
+        // Once the bitfields check is completed, add the other field types
+        match ty {
+            ParsedFieldType::Type(ty) => {
+                assert_derived_type_is_valid(&ty, &name);
+                fields.push(StructField::Field(StructBasicField {
+                    ty,
+                    name,
+                    attributes,
+                }));
+            }
+
+            // We've already handled bitfields
+            ParsedFieldType::BitField { .. } => unreachable!(),
+        }
+    }
+
+    // If there is still an open bitfield, add it to the fields
+    if let Some(base_type) = bitfield_type {
+        fields.push(StructField::BitField(StructBitFields {
+            ty: base_type,
+            names: bitfield_names,
+            sizes: bitfield_sizes,
+        }));
+    }
+
+    ParsedStruct {
+        name,
+        fields,
+        flags,
     }
 }
