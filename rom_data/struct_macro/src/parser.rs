@@ -4,179 +4,11 @@
 use std::collections::HashSet;
 
 use proc_macro2::{
-    token_stream::IntoIter, Delimiter, Group, Ident, Literal, Punct, Span, TokenStream, TokenTree,
+    token_stream::IntoIter, Delimiter, Group, Ident, Punct, Span, TokenStream, TokenTree,
 };
 use proc_macro_error::{abort, abort_call_site};
 
-// ANCHOR Exported types
-/// The parsed data for this struct.
-#[derive(Debug)]
-pub struct ParsedStruct {
-    /// The name of the struct.
-    pub name: Ident,
-    /// The fields of the struct.
-    pub fields: Vec<StructField>,
-    /// The flags for the struct.
-    pub flags: StructFlags,
-}
-
-/// Flags for the struct.
-#[derive(Default, Debug)]
-pub struct StructFlags {
-    /// Whether to **not** set this struct as public, effectively making it private
-    pub private: bool,
-    /// Whether to **not** derive `Debug` for this struct
-    pub no_debug: bool,
-}
-
-#[derive(Debug)]
-/// The final field type
-pub enum StructField {
-    // TODO Add support for Vector fields
-    /// A single field with a [`DerivedType`]
-    Field(StructBasicField),
-    /// A list of fields read from a BitField.
-    ///
-    /// Bitfields cannot have attributes.
-    BitField(StructBitFields),
-}
-
-#[derive(Debug)]
-pub struct StructBasicField {
-    /// The name of the field.
-    pub name: Ident,
-    /// The type of the field.
-    pub ty: DerivedType,
-    /// The attributes of the field.
-    pub attributes: Vec<StructFieldAttribute>,
-}
-
-#[derive(Debug)]
-pub struct StructBitFields {
-    /// The type of bitfield
-    pub ty: SizedBaseType,
-    /// The bit sizes of each field
-    pub sizes: Vec<u8>,
-    /// The names of each field
-    pub names: Vec<Ident>,
-}
-
-/// An attribute for specifying when some fields are missing or have
-/// a different type based on a ROM base or specific configuration
-#[derive(Debug, Clone)]
-pub struct StructFieldAttribute {
-    /// The condition for this attribute to be applied
-    pub condition: StructAttributeCondition,
-    /// The action to take if the condition is met
-    pub action: StructAttributeAction,
-}
-
-/// The condition for an attribute to be applied
-#[derive(Debug, Clone)]
-pub enum StructAttributeCondition {
-    /// The attribute is applied if the ROM base is one of the given ones
-    ///
-    /// ```
-    /// #[for(base(Ruby, Sapphire, Emerald), ...)]
-    /// ```
-    Base(Vec<Ident>),
-    /// The attribute is applied if a specific configuration is set for this ROM.
-    /// The configuration is specified by the identifier.
-    ///
-    /// ```
-    /// #[for(cfg(remove_teachy_tv), ...)]
-    /// ```
-    Cfg(Ident),
-    /// The attribute is applied if a specific configuration is **not** set for this ROM.
-    ///
-    /// ```
-    /// #[for(cfg(!remove_teachy_tv), ...)]
-    /// ```
-    NotCfg(Ident),
-}
-
-/// The action to take if the condition is met
-#[derive(Debug, Clone)]
-pub enum StructAttributeAction {
-    /// Change the type of the field
-    ///
-    /// ```
-    /// #[for(..., type(u32))]
-    /// ```
-    Type(BaseType),
-
-    /// Do not read the field and set a default value instead
-    ///
-    /// ```
-    /// #[for(..., default(0))]
-    /// ```
-    Default(Literal),
-}
-
-/// Type that can be found at the start of a type definition
-#[derive(Debug, Clone)]
-pub enum BaseType {
-    // TODO Support for Unions
-    /// A struct with the identifier given as name
-    Struct(Ident),
-
-    /// A void type (only used with pointers)
-    Void,
-    /// A sized integer type (valid for bitfields)
-    Integer(SizedBaseType),
-}
-
-impl BaseType {
-    /// Returns whether the type is an integer (excluding boolean)
-    pub fn is_integer(&self) -> bool {
-        match self {
-            BaseType::Integer(SizedBaseType::Boolean(_)) => false,
-            BaseType::Integer(_) => true,
-            _ => false,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SizedBaseType {
-    /// An unsigned integer with the given number of bits (8, 16 or 32)
-    Unsigned(u8),
-    /// A signed integer with the given number of bits (8, 16 or 32)
-    Signed(u8),
-    /// A boolean with the given number of bits (8, 16 or 32)
-    Boolean(u8),
-}
-
-impl SizedBaseType {
-    /// Returns the number of bits this integer type has.
-    pub fn bits(&self) -> u8 {
-        match self {
-            SizedBaseType::Unsigned(x) => *x,
-            SizedBaseType::Signed(x) => *x,
-            SizedBaseType::Boolean(x) => *x,
-        }
-    }
-}
-
-/// A type with modifiers applied to it.
-#[derive(Debug)]
-pub enum DerivedType {
-    /// A base type with no modifiers
-    Base(BaseType),
-    /// A pointer to a base type
-    Pointer(Box<DerivedType>),
-    /// An array of a base type with the fixed length
-    Array(Box<DerivedType>, u32),
-}
-
-impl DerivedType {
-    pub fn is_integer(&self) -> bool {
-        match self {
-            DerivedType::Base(base) => base.is_integer(),
-            _ => false,
-        }
-    }
-}
+use super::parser_types::*;
 
 // ANCHOR Internal types
 /// The parsed data for a field.
@@ -276,11 +108,12 @@ pub fn parse(stream: TokenStream) -> ParsedStruct {
     // Consume each flag
     let mut flags = StructFlags::default();
     while let Some(flag) = stream.next() {
-        match flag {
+        match &flag {
             TokenTree::Ident(x) => match x.to_string().as_str() {
                 "priv" | "private" => flags.private = true,
                 "no_debug" => flags.no_debug = true,
-                x => abort!(x, "Unknown flag `{}`", x),
+                "ppo" | "print_parser_output" => flags.print_parser_output = true,
+                x => abort!(flag, "Unknown flag `{}`", x),
             },
             x => abort!(x, "Expected flag, found `{}`", x),
         }
@@ -340,6 +173,9 @@ fn parse_struct_fields(stream: TokenStream) -> Vec<ParsedField> {
                     // Add it to the list of fields
                     result.push(field);
                 }
+
+                // Once you applied all the attributes, clear the list
+                parsed_attributes.clear();
             }
 
             // In any other case, we can't parse this.
@@ -621,8 +457,6 @@ fn assert_valid_attributes(field: &ParsedField) {
 // ANCHOR Field type/name parsing
 fn parse_field(field_base_type: Ident, stream: &mut IntoIter) -> Vec<(ParsedFieldType, Ident)> {
     let first_span = field_base_type.span();
-    println!("Parsing field:: {}", field_base_type);
-
     // Try to parse this into a field
     let base_type = parse_base_type(field_base_type, stream);
 
