@@ -1,5 +1,6 @@
 //! Contains the types exported by the parser along with their methods.
-use proc_macro2::{Ident, Literal};
+use proc_macro2::{Ident, Literal, TokenStream};
+use quote::{format_ident, quote};
 
 // ANCHOR Struct
 /// The parsed data for this struct.
@@ -297,6 +298,303 @@ impl SizedBaseType {
             SizedBaseType::Unsigned(x) => *x,
             SizedBaseType::Signed(x) => *x,
             SizedBaseType::Boolean(x) => *x,
+        }
+    }
+}
+
+// ANCHOR Convert types to tokens
+pub trait BuildToTokens {
+    /// Convert this type to the tokens necessary to define it
+    /// in the context of the built code.
+    fn build_to_tokens(&self) -> TokenStream;
+}
+
+impl BuildToTokens for DerivedType {
+    fn build_to_tokens(&self) -> TokenStream {
+        match self {
+            DerivedType::Base(base) => base.build_to_tokens(),
+            DerivedType::Pointer(ty) => {
+                let inner = ty.build_to_tokens();
+                quote! { rom_data::types::RomPointer<#inner> }
+            }
+            DerivedType::Array(ty, size) => {
+                let inner = ty.build_to_tokens();
+                let size = Literal::u32_unsuffixed(*size);
+                quote! { rom_data::types::RomArray<#inner, #size> }
+            }
+        }
+    }
+}
+
+impl BuildToTokens for BaseType {
+    fn build_to_tokens(&self) -> TokenStream {
+        match self {
+            BaseType::Integer(int) => int.build_to_tokens(),
+            // For structs, just return the identifier
+            BaseType::Struct(ident) => quote! { #ident },
+
+            // Void is only allowed in pointer types, and the reason why you
+            // use it is to read a RomPointer without anything, so you can just
+            // format it as Void;
+            BaseType::Void => quote! { rom_data::types::Void },
+        }
+    }
+}
+
+impl BuildToTokens for SizedBaseType {
+    fn build_to_tokens(&self) -> TokenStream {
+        match self {
+            SizedBaseType::Unsigned(x) => {
+                // Build the identifier
+                let usomething = format_ident!("u{}", x);
+                quote! { #usomething }
+            }
+            SizedBaseType::Signed(x) => {
+                // Build the identifier
+                let isomething = format_ident!("i{}", x);
+                quote! { #isomething }
+            }
+            SizedBaseType::Boolean(_) => quote! { bool },
+        }
+    }
+}
+
+// ANCHOR Get the size and alignment of a type if you know it.
+pub enum TypeDimension {
+    /// This dimension is known a priori
+    Known(usize),
+    /// This dimension is not known a priori, but can be obtained using the
+    /// expression given as token stream
+    Code(TokenStream),
+}
+impl TypeDimension {
+    /// Gets the expression that returns the expression
+    pub fn get_dimension_code(&self) -> TokenStream {
+        match self {
+            TypeDimension::Known(value) => quote! { #value },
+            TypeDimension::Code(code) => quote! { #code },
+        }
+    }
+}
+
+pub trait GetSizeAndAlignment {
+    /// Returns the size of this type in bytes or the tokens needed to read it.
+    fn get_size(&self) -> TypeDimension;
+
+    /// Returns the alignment of this type in bytes (or the tokens needed to read it)
+    fn get_alignment(&self) -> TypeDimension;
+}
+
+impl GetSizeAndAlignment for StructField {
+    fn get_size(&self) -> TypeDimension {
+        match self {
+            // Instead of making things to complicated right now, we can just rely on the Rust
+            // compiler to optimize the code if the size is known at compile time.
+            StructField::Field(StructBasicField { ty, attributes, .. }) => {
+                // You have to consider attributes for this.
+                if attributes.len() == 0 {
+                    return ty.get_size();
+                }
+
+                // Obtain the code to read this stuff
+                TypeDimension::Code(build_attribute_condition(
+                    attributes,
+                    |attr_action| match attr_action {
+                        // If it changes in some ROM, return the other size
+                        StructAttributeAction::Type(ty) => Some(ty.get_size().get_dimension_code()),
+                        // Otherwise, return 0
+                        StructAttributeAction::Default(_) => Some(quote! { 0 }),
+                    },
+                    ty.get_size().get_dimension_code(),
+                ))
+            }
+            StructField::BitField(StructBitFields { ty, .. }) => ty.get_size(),
+        }
+    }
+
+    fn get_alignment(&self) -> TypeDimension {
+        match self {
+            StructField::Field(StructBasicField { ty, attributes, .. }) => {
+                // You have to consider attributes for this.
+                if attributes.len() == 0 {
+                    return ty.get_alignment();
+                }
+
+                // Obtain the code to read this stuff
+                TypeDimension::Code(build_attribute_condition(
+                    attributes,
+                    |attr_action| {
+                        if let StructAttributeAction::Type(ty) = attr_action {
+                            Some(ty.get_alignment().get_dimension_code())
+                        } else {
+                            None
+                        }
+                    },
+                    ty.get_alignment().get_dimension_code(),
+                ))
+            }
+            StructField::BitField(StructBitFields { ty, .. }) => ty.get_alignment(),
+        }
+    }
+}
+
+impl GetSizeAndAlignment for DerivedType {
+    fn get_size(&self) -> TypeDimension {
+        match self {
+            DerivedType::Base(base) => base.get_size(),
+            DerivedType::Pointer(_) => TypeDimension::Known(4),
+            DerivedType::Array(ty, len) => match ty.get_size() {
+                TypeDimension::Known(size) => TypeDimension::Known(size * (*len as usize)),
+                // The code needs to be modified to multiply the size by the length
+                TypeDimension::Code(code) => TypeDimension::Code(quote! {
+                    (#code) * #len
+                }),
+            },
+        }
+    }
+
+    fn get_alignment(&self) -> TypeDimension {
+        match self {
+            DerivedType::Base(base) => base.get_alignment(),
+            DerivedType::Pointer(_) => TypeDimension::Known(4),
+            DerivedType::Array(ty, _) => ty.get_alignment(),
+        }
+    }
+}
+
+impl GetSizeAndAlignment for BaseType {
+    fn get_size(&self) -> TypeDimension {
+        match self {
+            // You cannot know it for structs (you have to read it)
+            BaseType::Struct(ident) => TypeDimension::Code(quote! {
+                <#ident as rom_data::types::RomSizedType>::get_size(rom)
+            }),
+
+            BaseType::Integer(int) => int.get_size(),
+
+            // Since it is not possible to define a void type that is not
+            // behind a pointer, it should be impossible to reach this.
+            BaseType::Void => unreachable!(
+                "{}{}",
+                "Trying to get the size of void, which is impossible ",
+                "since a type cannot be instantiated as void without a pointer"
+            ),
+        }
+    }
+
+    fn get_alignment(&self) -> TypeDimension {
+        match self {
+            // You cannot know it for structs (you have to read it)
+            BaseType::Struct(ident) => TypeDimension::Code(quote! {
+                <#ident as rom_data::types::RomSizedType>::get_alignment(rom)
+            }),
+
+            BaseType::Integer(int) => int.get_alignment(),
+
+            // Since it is not possible to define a void type that is not
+            // behind a pointer, it should be impossible to reach this.
+            BaseType::Void => unreachable!(
+                "{}{}",
+                "Trying to get the alignment of void, which is impossible ",
+                "since a type cannot be instantiated as void without a pointer"
+            ),
+        }
+    }
+}
+
+impl GetSizeAndAlignment for SizedBaseType {
+    fn get_size(&self) -> TypeDimension {
+        TypeDimension::Known(self.bits() as usize / 8)
+    }
+    fn get_alignment(&self) -> TypeDimension {
+        TypeDimension::Known(self.bits() as usize / 8)
+    }
+}
+
+// ANCHOR Attribute parsing
+/// Takes a list of attributes as input, a function that takes the action of an attribute
+/// and may return some code and some fallback code.
+///
+/// If the function returns some code, then the code for checking the condition is built
+/// and that code is put under an if statement with that condition, otherwise the condition
+/// is ignored.
+///
+/// A chain is built, and at the end of it there is an else block with the provided
+/// `else_action`, only if there is at least an alternative action to perform, otherwise
+/// only the `else_action` code is returned with no if.
+pub fn build_attribute_condition(
+    attributes: &Vec<StructFieldAttribute>,
+    transformer: fn(&StructAttributeAction) -> Option<TokenStream>,
+    else_action: TokenStream,
+) -> TokenStream {
+    // The codes for each attribute in the shape of if #cond { #action }
+    let mut codes = Vec::new();
+
+    // Loop over the attributes
+    for StructFieldAttribute { condition, action } in attributes.iter() {
+        // Build the action code
+        let action_code = match transformer(action) {
+            Some(code) => code,
+            None => continue,
+        };
+
+        // Build the condition for the attribute
+        let cond_code = build_condition_code(condition);
+
+        // Build the code for this attribute
+        codes.push(quote! {
+            if #cond_code {
+                #action_code
+            }
+        });
+    }
+
+    // If no code was returned, return the else action
+    if codes.is_empty() {
+        quote! { #else_action; }
+    } else {
+        let mut result = quote! {};
+        // Otherwise, return the code for all the attributes
+        for (i, code) in codes.iter().enumerate() {
+            if i != 0 {
+                result.extend(quote! { else });
+            }
+
+            result.extend(quote! { #code });
+        }
+
+        quote! {
+            #result
+            else {
+                #else_action
+            };
+        }
+    }
+}
+
+fn build_condition_code(condition: &StructAttributeCondition) -> TokenStream {
+    use StructAttributeCondition::*;
+
+    match condition {
+        Cfg(_) => unimplemented!("cfg not implemented yet"),
+        NotCfg(_) => unimplemented!("!cfg not implemented yet"),
+
+        // Builds to matches!(rom.base, rom_data::RomBase::Ruby | rom_data::RomBase::Sapphire)
+        Base(tokens) => {
+            let mut conditions = quote! {};
+            let size = tokens.len();
+
+            for (i, base) in tokens.iter().enumerate() {
+                conditions.extend(quote! {
+                    rom_data::RomBase::#base
+                });
+
+                if i != size - 1 {
+                    conditions.extend(quote! { | });
+                }
+            }
+
+            quote! { matches!(rom.base, #conditions) }
         }
     }
 }

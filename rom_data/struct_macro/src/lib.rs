@@ -3,6 +3,7 @@ use proc_macro_error::proc_macro_error;
 
 mod parser;
 mod parser_types;
+mod struct_code;
 
 #[proc_macro]
 #[proc_macro_error]
@@ -14,5 +15,11 @@ pub fn rom_struct(input: TokenStream) -> TokenStream {
         eprintln!("{:?}", parsed);
     }
 
-    TokenStream::new()
+    // Build everything required by the struct
+    let code = struct_code::build(parsed);
+
+    println!("{}", code);
+
+    // Return the code as a TokenStream
+    code.into()
 }
