@@ -1,3 +1,4 @@
+mod read;
 mod sized;
 
 use proc_macro2::TokenStream;
@@ -19,8 +20,8 @@ macro_rules! quote_if {
 /// Builds the code for the struct as well all its trait implementations
 pub fn build(parsed: ParsedStruct) -> TokenStream {
     let body = build_struct_body(&parsed);
-
     let sized = sized::generate_sized_implementation(&parsed);
+    let readable = read::generate_readable_implementation(&parsed);
 
     quote! {
         // Struct bodys
@@ -28,13 +29,16 @@ pub fn build(parsed: ParsedStruct) -> TokenStream {
 
         // RomSizedType impl
         #sized
+
+        // RomReadableType impl
+        #readable
     }
 }
 
 /// Builds the struct body itself
 pub fn build_struct_body(parsed: &ParsedStruct) -> TokenStream {
     // Build the derives for the struct
-    let derive_debug = quote_if!(parsed.flags.no_debug, { Debug , });
+    let derive_debug = quote_if!(!parsed.flags.no_debug, { Debug , });
     let derives = quote! {
         #[derive(#derive_debug Clone)]
     };

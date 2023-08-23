@@ -567,7 +567,7 @@ pub fn build_attribute_condition(
             #result
             else {
                 #else_action
-            };
+            }
         }
     }
 }
