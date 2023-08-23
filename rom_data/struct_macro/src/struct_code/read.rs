@@ -185,24 +185,11 @@ fn build_base_type(base_ty: &BaseType) -> TokenStream {
 
 // ANCHOR Read bitfields
 fn build_bitfields(field: &StructBitFields) -> TokenStream {
-    let ty = &field.ty;
+    // Build the bitfields type
+    let bitfields = field.build_to_tokens();
 
-    let type_ident = match ty {
-        SizedBaseType::Unsigned(size) => format_ident!("u{}", size),
-        SizedBaseType::Signed(size) => format_ident!("i{}", size),
-        SizedBaseType::Boolean(size) => format_ident!("u{}", size),
-    };
-
-    // Pieces for BitFields type
-    let n = field.names.len();
-    let fields = field
-        .sizes
-        .iter()
-        .map(|t| quote!(#t, ))
-        .collect::<TokenStream>();
-
-    // Whethet to convert to bool
-    let convert_to_bool = match ty {
+    // Whether to convert to bool
+    let convert_to_bool = match field.ty {
         SizedBaseType::Boolean(_) => quote! { != 0 },
         _ => quote! {},
     };
@@ -217,7 +204,7 @@ fn build_bitfields(field: &StructBitFields) -> TokenStream {
     }
 
     quote! {
-        let bitfields: rom_data::types::BitFields<#type_ident, #n> = rom_data::types::BitFields::new([#fields]);
+        #bitfields
         let bitfield_value = bitfields.read_from(rom, offset)?;
 
         #assign_to_all

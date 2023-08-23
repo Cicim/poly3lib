@@ -18,8 +18,6 @@ pub fn rom_struct(input: TokenStream) -> TokenStream {
     // Build everything required by the struct
     let code = struct_code::build(parsed);
 
-    println!("{}", code);
-
     // Return the code as a TokenStream
     code.into()
 }

@@ -1,5 +1,6 @@
 mod read;
 mod sized;
+mod write;
 
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -22,6 +23,7 @@ pub fn build(parsed: ParsedStruct) -> TokenStream {
     let body = build_struct_body(&parsed);
     let sized = sized::generate_sized_implementation(&parsed);
     let readable = read::generate_readable_implementation(&parsed);
+    let writable = write::generate_writable_implementation(&parsed);
 
     quote! {
         // Struct bodys
@@ -32,6 +34,9 @@ pub fn build(parsed: ParsedStruct) -> TokenStream {
 
         // RomReadableType impl
         #readable
+
+        // RomWritableType impl
+        #writable
     }
 }
 

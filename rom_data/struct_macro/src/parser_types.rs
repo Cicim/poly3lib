@@ -300,6 +300,13 @@ impl SizedBaseType {
             SizedBaseType::Boolean(x) => *x,
         }
     }
+
+    pub fn is_boolean(&self) -> bool {
+        match self {
+            SizedBaseType::Boolean(_) => true,
+            _ => false,
+        }
+    }
 }
 
 // ANCHOR Convert types to tokens
@@ -307,6 +314,28 @@ pub trait BuildToTokens {
     /// Convert this type to the tokens necessary to define it
     /// in the context of the built code.
     fn build_to_tokens(&self) -> TokenStream;
+}
+
+impl BuildToTokens for StructBitFields {
+    fn build_to_tokens(&self) -> TokenStream {
+        let ty = &self.ty;
+
+        let type_ident = match ty {
+            SizedBaseType::Unsigned(size) => format_ident!("u{}", size),
+            SizedBaseType::Signed(size) => format_ident!("i{}", size),
+            SizedBaseType::Boolean(size) => format_ident!("u{}", size),
+        };
+
+        // Pieces for BitFields type
+        let n = self.names.len();
+        let fields = self
+            .sizes
+            .iter()
+            .map(|t| quote!(#t, ))
+            .collect::<TokenStream>();
+
+        quote! { let bitfields: rom_data::types::BitFields<#type_ident, #n> = rom_data::types::BitFields::new([#fields]); }
+    }
 }
 
 impl BuildToTokens for DerivedType {
