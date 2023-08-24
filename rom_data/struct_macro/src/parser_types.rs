@@ -66,6 +66,15 @@ impl std::fmt::Debug for ParsedStruct {
                         writeln!(f, "    B {:>20} {:>7}:{:>3} {}", char, ty, size, name)?;
                     }
                 }
+                StructField::Vector(StructVectorField { name, ty, size }) => {
+                    writeln!(
+                        f,
+                        "    V  {:>31} {}{{{}}}",
+                        format!("{:?}", ty),
+                        name.to_string(),
+                        size
+                    )?;
+                }
             }
         }
         Ok(())
@@ -87,13 +96,15 @@ pub struct StructFlags {
 #[derive(Debug)]
 /// The final field type
 pub enum StructField {
-    // TODO Add support for Vector fields
     /// A single field with a [`DerivedType`]
     Field(StructBasicField),
     /// A list of fields read from a BitField.
     ///
     /// Bitfields cannot have attributes.
     BitField(StructBitFields),
+    /// A value whose size is obtained by reading the
+    /// fields of the struct.
+    Vector(StructVectorField),
 }
 
 #[derive(Debug)]
@@ -108,12 +119,22 @@ pub struct StructBasicField {
 
 #[derive(Debug)]
 pub struct StructBitFields {
-    /// The type of bitfield
+    /// The type of bitfield.
     pub ty: SizedBaseType,
-    /// The bit sizes of each field
+    /// The bit sizes of each field.
     pub sizes: Vec<u8>,
-    /// The names of each field
+    /// The names of each field.
     pub names: Vec<Ident>,
+}
+
+#[derive(Debug)]
+pub struct StructVectorField {
+    /// The name of the field.
+    pub name: Ident,
+    /// The type of the field.
+    pub ty: DerivedType,
+    /// The size of the field.
+    pub size: TokenStream,
 }
 
 // ANCHOR Attributes
@@ -438,6 +459,7 @@ impl GetSizeAndAlignment for StructField {
                 ))
             }
             StructField::BitField(StructBitFields { ty, .. }) => ty.get_size(),
+            StructField::Vector(_) => TypeDimension::Known(4),
         }
     }
 
@@ -464,6 +486,7 @@ impl GetSizeAndAlignment for StructField {
                 ))
             }
             StructField::BitField(StructBitFields { ty, .. }) => ty.get_alignment(),
+            StructField::Vector(_) => TypeDimension::Known(4),
         }
     }
 }

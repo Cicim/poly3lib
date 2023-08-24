@@ -42,6 +42,13 @@ fn generate_write_to(parsed: &ParsedStruct) -> TokenStream {
         let code = match field {
             StructField::Field(field) => build_basic_field(field),
             StructField::BitField(field) => build_bitfields(field),
+            StructField::Vector(field) => {
+                let name = &field.name;
+                quote! {
+                    // Write the vector
+                    self.#name.write_to(rom, offset)?;
+                }
+            }
         };
         write_fields.extend(code);
 
@@ -61,6 +68,9 @@ fn generate_write_to(parsed: &ParsedStruct) -> TokenStream {
         if offset % struct_alignment != 0 {
             return Err(rom_data::RomIoError::Misaligned(offset, struct_alignment as u8))
         }
+
+        // Allocate the struct's length
+        let struct_length = rom.allocate(offset, <Self as rom_data::types::RomSizedType>::get_size(rom))?;
 
         #write_fields
 

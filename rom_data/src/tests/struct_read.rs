@@ -1,4 +1,4 @@
-use crate::types::RomPointer;
+use crate::types::{RomPointer, RomVector};
 
 use super::*;
 
@@ -299,4 +299,63 @@ fn read_default_attribute() {
     let emer_struct: MissingField = emer.read(0x0).unwrap();
     assert_eq!(emer_struct.value1, 10);
     assert_eq!(emer_struct.value2, 128);
+}
+
+#[test]
+fn read_vectors() {
+    // rom_struct!(U8Vector {
+    //     u8 length;
+    //     u8 values{$length};
+    // });
+    let mut rom = create_rom(RomBase::FireRed);
+    rom.write_byte(0, 4).unwrap();
+    rom.write_offset(4, 8).unwrap();
+    rom.write_word(8, 0xAAAAAAAA).unwrap();
+
+    let struct_value: U8Vector = rom.read(0x0).unwrap();
+    assert_eq!(struct_value.length, 4);
+    assert_eq!(
+        struct_value.values,
+        RomVector::Valid {
+            offset: 8,
+            clear_size: 4,
+            data: vec![0xAA, 0xAA, 0xAA, 0xAA]
+        }
+    );
+
+    // Read a null struct with a length (should be invalid)
+    rom.write_word(4, 0).unwrap();
+    let struct_value: U8Vector = rom.read(0x0).unwrap();
+    assert_eq!(struct_value.length, 4);
+    assert_eq!(struct_value.values, RomVector::Invalid(0));
+
+    // Now delete the size too and it should be null
+    rom.write_byte(0, 0).unwrap();
+    let struct_value: U8Vector = rom.read(0x0).unwrap();
+    assert_eq!(struct_value.length, 0);
+    assert_eq!(struct_value.values, RomVector::Null);
+
+    // rom_struct!(ComplexVector {
+    //     u8 data{$length * $typesize};
+    //     u32 length;
+    //     u32 typesize;
+    // });
+    let mut rom = create_rom(RomBase::FireRed);
+    rom.write_offset(0, 12).unwrap();
+    rom.write_word(4, 4).unwrap();
+    rom.write_word(8, 2).unwrap();
+
+    // 4 * 2 = 8, so we should read 8 bytes
+    rom.write_word(12, 0xAAAAAAAA).unwrap();
+    rom.write_word(16, 0xBBBBBBBB).unwrap();
+
+    let struct_value: ComplexVector = rom.read(0x0).unwrap();
+    assert_eq!(
+        struct_value.data,
+        RomVector::Valid {
+            offset: 12,
+            clear_size: 8,
+            data: vec![0xAA, 0xAA, 0xAA, 0xAA, 0xBB, 0xBB, 0xBB, 0xBB]
+        }
+    );
 }

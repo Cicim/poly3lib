@@ -7,8 +7,11 @@ use proc_macro2::{
     token_stream::IntoIter, Delimiter, Group, Ident, Punct, Span, TokenStream, TokenTree,
 };
 use proc_macro_error::{abort, abort_call_site};
+use quote::{format_ident, quote};
 
 use super::parser_types::*;
+
+static READ_PREFIX: &str = "struct_value_";
 
 // ANCHOR Internal types
 /// The parsed data for a field.
@@ -24,7 +27,13 @@ struct ParsedField {
 
 #[derive(Debug)]
 enum ParsedFieldType {
-    // TODO Support for variable-length vectors
+    Vector {
+        /// The type of data it contains
+        ty: DerivedType,
+        /// The code to compute its size
+        size: TokenStream,
+    },
+
     /// A BitField (it is a special case, since it cannot be inside a pointer)
     BitField {
         /// The type of the bitfield
@@ -503,11 +512,9 @@ fn parse_field(field_base_type: Ident, stream: &mut IntoIter) -> Vec<(ParsedFiel
 
 /// Parses a derived type from the given tokens, trying some special patters (such as bitfields)
 /// first before then relying on the recursive parser.
-///
-/// TODO Support for vector types should be added here
 fn parse_field_type(
     base_type: BaseType,
-    token_list: Vec<TokenTree>,
+    mut token_list: Vec<TokenTree>,
     end_token: Punct,
 ) -> (ParsedFieldType, Ident) {
     // Make sure there is something to work with in the type tokens
@@ -524,7 +531,6 @@ fn parse_field_type(
                 // If there is a char in the middle of this configuration, it must be a bitfield
                 if colon.as_char() == ':' {
                     if let BaseType::Integer(ty) = base_type {
-                        // REVIEW - Check valid identifier?
                         // Parse the size of the bitfield
                         let bits = match size.to_string().parse::<u8>() {
                             Ok(x) => {
@@ -560,9 +566,41 @@ fn parse_field_type(
         };
     }
 
+    let last_token = token_list.pop().unwrap();
+    // If the last token is a group of {}, then start parsing a Vector type
+    if let TokenTree::Group(group) = &last_token {
+        if group.delimiter() == Delimiter::Brace {
+            // Get the type and name
+            let (ty, name) = parse_field_type_and_name(base_type, token_list);
+            // Ensure no non-byte boolean types
+            assert_no_nonbyte_booleans(&ty, &name);
+
+            let ty = ParsedFieldType::Vector {
+                ty,
+                size: group.stream(),
+            };
+
+            return (ty, name);
+        }
+    }
+    // Otherwise, push the token back
+    token_list.push(last_token);
+
+    // If the type is not a bitfield or a vector, it's a normal field
+    let (ty, name) = parse_field_type_and_name(base_type, token_list);
+    let ty = ParsedFieldType::Type(ty);
+    (ty, name)
+}
+
+/// Calls `parse_derived_type_recursive` on the given list, then constructs
+/// and validates the derived type. Also returns the field name.
+fn parse_field_type_and_name(
+    base_type: BaseType,
+    token_list: Vec<TokenTree>,
+) -> (DerivedType, Ident) {
     // If no special case matched, call the recursive option
     let mut dereferences = vec![];
-    let name = parse_derived_type(token_list, &mut dereferences);
+    let name = parse_derived_type_recursive(token_list, &mut dereferences);
 
     // Apply the dereferences
     let mut ty = DerivedType::Base(base_type);
@@ -574,22 +612,8 @@ fn parse_field_type(
         }
     }
 
-    let ty = ParsedFieldType::Type(ty);
-
     // Checked the type for its validity
-    match &ty {
-        // Void is only allowed if it is a pointer
-        ParsedFieldType::Type(DerivedType::Base(BaseType::Void)) => {
-            abort!(
-                name,
-                "Fields cannot have type `void` unless they are pointers"
-            )
-        }
-        ParsedFieldType::Type(derived) => assert_derived_type_is_valid(derived, &name),
-
-        // Bitfields are validated before being returned
-        ParsedFieldType::BitField { .. } => {}
-    };
+    assert_derived_type_is_valid(&ty, &name);
 
     (ty, name)
 }
@@ -612,7 +636,7 @@ fn parse_field_type(
 /// Should be read as *name is an array of 10 arrays of 20 pointers to something.*
 ///
 /// Thus, our algorithm reads [10, 20, **0**] and returns `name`.
-fn parse_derived_type(mut list: Vec<TokenTree>, dereferences: &mut Vec<u32>) -> Ident {
+fn parse_derived_type_recursive(mut list: Vec<TokenTree>, dereferences: &mut Vec<u32>) -> Ident {
     // Count the number of asterisks that will be applied later following
     // the rule of go left if you must.
     let mut asterisks = 0;
@@ -647,7 +671,7 @@ fn parse_derived_type(mut list: Vec<TokenTree>, dereferences: &mut Vec<u32>) -> 
                     let inner_list: Vec<TokenTree> = x.stream().into_iter().collect();
 
                     // Call this function to retrieve the identifier
-                    parse_derived_type(inner_list, dereferences)
+                    parse_derived_type_recursive(inner_list, dereferences)
                 }
                 Delimiter::Bracket => abort!(x.span_open(), "Arrays go after the field name"),
                 _ => abort!(
@@ -770,6 +794,10 @@ fn assert_derived_type_is_valid(derived: &DerivedType, name: &Ident) {
     use DerivedType::*;
 
     match derived {
+        Base(BaseType::Void) => abort!(
+            name,
+            "Fields cannot have type `void` unless they are pointers"
+        ),
         Base(_) => return,
         Array(x, _) => {
             // Cannot make arrays of voids
@@ -777,22 +805,24 @@ fn assert_derived_type_is_valid(derived: &DerivedType, name: &Ident) {
                 abort!(name, "Cannot have arrays of voids");
             }
             // Cannot make arrays of non-byte boolean types
-            if let Base(BaseType::Integer(SizedBaseType::Boolean(x))) = x.as_ref() {
-                if *x != 8 {
-                    abort!(name, "Cannot have arrays of non-byte boolean types");
-                }
-            }
+            assert_no_nonbyte_booleans(x, name);
 
             assert_derived_type_is_valid(x, name)
         }
         Pointer(x) => {
             // Cannot have pointers of non-byte boolean types
-            if let Base(BaseType::Integer(SizedBaseType::Boolean(x))) = x.as_ref() {
-                if *x != 8 {
-                    abort!(name, "Cannot have pointers of non-byte boolean types");
-                }
-            }
+            assert_no_nonbyte_booleans(x, name);
+
             assert_derived_type_is_valid(x, name)
+        }
+    }
+}
+
+/// Makes sure that the given derived type is not a non-byte boolean
+fn assert_no_nonbyte_booleans(derived: &DerivedType, name: &Ident) {
+    if let DerivedType::Base(BaseType::Integer(SizedBaseType::Boolean(x))) = derived {
+        if *x != 8 {
+            abort!(name, "Cannot have pointers of non-byte boolean types");
         }
     }
 }
@@ -936,6 +966,12 @@ fn compose_struct(name: Ident, in_fields: Vec<ParsedField>, flags: StructFlags) 
                 }));
             }
 
+            ParsedFieldType::Vector { ty, size } => {
+                assert_derived_type_is_valid(&ty, &name);
+                let size = replace_dollars(size);
+                fields.push(StructField::Vector(StructVectorField { ty, name, size }));
+            }
+
             // We've already handled bitfields
             ParsedFieldType::BitField { .. } => unreachable!(),
         }
@@ -955,4 +991,35 @@ fn compose_struct(name: Ident, in_fields: Vec<ParsedField>, flags: StructFlags) 
         fields,
         flags,
     }
+}
+
+fn replace_dollars(code: TokenStream) -> TokenStream {
+    // Every time you encounter a $ident, replace it with
+    // READ_PREFIX_ident.
+    let mut output = quote! {};
+
+    let mut stream = code.into_iter();
+    while let Some(token) = stream.next() {
+        match token {
+            TokenTree::Punct(p) => {
+                if p.as_char() == '$' {
+                    let ident = next_not_eof!(p, stream, "identifier after `$`");
+                    match ident {
+                        TokenTree::Ident(x) => {
+                            let ident = format_ident!("{}{}", READ_PREFIX, x);
+                            output.extend(quote! {#ident});
+                        }
+                        x => abort!(x, "Expected identifier after `$`, found `{}`", x),
+                    }
+                } else {
+                    output.extend(quote! {#p});
+                }
+            }
+            TokenTree::Group(g) => output.extend(replace_dollars(g.stream())),
+
+            same => output.extend(quote! {#same}),
+        }
+    }
+
+    output
 }

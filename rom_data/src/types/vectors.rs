@@ -571,6 +571,17 @@ mod test_vectors {
     }
 
     #[test]
+    fn test_write_new_vector() {
+        let mut rom = create_rom();
+        let vector = RomVector::<u8>::new(vec![0xAA; 4]);
+
+        vector.write_to(&mut rom, 0).unwrap();
+
+        assert_eq!(rom.read_offset(0).unwrap(), 4);
+        assert_eq!(rom.read_word(4).unwrap(), 0xAAAAAAAA);
+    }
+
+    #[test]
     fn test_write_valid_vector() {
         // 1. Write a valid vector with the same size
         let mut rom = create_rom();

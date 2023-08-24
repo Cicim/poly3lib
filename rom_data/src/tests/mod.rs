@@ -6,6 +6,7 @@ use struct_macro::rom_struct;
 // Test files
 mod struct_read;
 mod struct_size;
+mod struct_write;
 
 // ANCHOR Utility functions
 /// Returns a RomData with the given base.
@@ -125,4 +126,16 @@ rom_struct!(TwoMissingFields {
 
     #[for(base(Emerald), default(1))]
     u16 value4;
+});
+
+// ANCHOR Vector
+rom_struct!(U8Vector {
+    u8 length;
+    u8 values{$length};
+});
+
+rom_struct!(ComplexVector {
+    u8 data{$length * $typesize};
+    u32 length;
+    u32 typesize;
 });

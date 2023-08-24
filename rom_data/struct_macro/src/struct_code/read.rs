@@ -4,10 +4,11 @@ use quote::{format_ident, quote};
 use crate::parser_types::{
     build_attribute_condition, BaseType, BuildToTokens, DerivedType, GetSizeAndAlignment,
     ParsedStruct, SizedBaseType, StructAttributeAction, StructBasicField, StructBitFields,
-    StructField,
+    StructField, StructVectorField,
 };
 
 static READ_PREFIX: &str = "struct_value_";
+static VECTOR_SUFFIX: &str = "_vector_offset";
 
 /// Generates the implementation of RomReadableType for the given struct
 pub fn generate_readable_implementation(parsed: &ParsedStruct) -> TokenStream {
@@ -47,6 +48,14 @@ fn generate_read_from(parsed: &ParsedStruct) -> TokenStream {
         let code = match field {
             StructField::Field(field) => build_basic_field(field),
             StructField::BitField(field) => build_bitfields(field),
+
+            // In the first step you can only save the offset for later
+            StructField::Vector(StructVectorField { name, .. }) => {
+                let offset_name = format_ident!("{}{}", name, VECTOR_SUFFIX);
+                quote! {
+                    let #offset_name = offset;
+                }
+            }
         };
         read_fields.extend(code);
 
@@ -66,6 +75,12 @@ fn generate_read_from(parsed: &ParsedStruct) -> TokenStream {
                     })
                 }
             }
+            StructField::Vector(StructVectorField { name, .. }) => {
+                let read_name = format_ident!("{}{}", READ_PREFIX, name);
+                constructor.extend(quote! {
+                    #name: #read_name,
+                })
+            }
         }
 
         // Once the field is read, the offset needs to be incremented by the size of the field
@@ -74,6 +89,19 @@ fn generate_read_from(parsed: &ParsedStruct) -> TokenStream {
             let size = field.get_size().get_dimension_code();
             read_fields.extend(quote! {
                 offset += #size;
+            });
+        }
+    }
+
+    // Once everything has been read, go back to the vectors and read them
+    for field in &parsed.fields {
+        if let StructField::Vector(StructVectorField { name, ty, size }) = field {
+            let offset_name = format_ident!("{}{}", name, VECTOR_SUFFIX);
+            let name = format_ident!("{}{}", READ_PREFIX, name);
+            let ty = ty.build_to_tokens();
+
+            read_fields.extend(quote! {
+                let #name = rom_data::types::RomVector::<#ty>::read_from(rom, #offset_name, (#size) as usize)?;
             });
         }
     }

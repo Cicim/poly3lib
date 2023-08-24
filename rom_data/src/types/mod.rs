@@ -52,13 +52,9 @@ pub trait RomClearableType {
 pub trait RomSizedType: Sized {
     /// Returns the size of the type in bytes based on things it can
     /// read of the ROM. This includes the ROM base.
-    ///
-    /// REVIEW *In the future, it may also include specific attributes*
     fn get_size(rom: &RomData) -> usize;
 
     /// Returns the alignment of the type in bytes based on things it can
     /// read of the ROM. This includes the ROM base.
-    ///
-    /// REVIEW *In the future, it may also include specific attributes*
     fn get_alignment(rom: &RomData) -> usize;
 }

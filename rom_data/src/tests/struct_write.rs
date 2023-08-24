@@ -1,4 +1,4 @@
-use crate::types::{RomArray, RomPointer};
+use crate::types::{RomArray, RomPointer, RomVector};
 
 use super::*;
 
@@ -280,17 +280,17 @@ fn write_complex_struct() {
     assert_eq!(rom.read_word(20).unwrap(), 0x6000000);
     assert_eq!(rom.read_word(24).unwrap(), 0x6000001);
     assert_eq!(rom.read_word(28).unwrap(), 0x6000002);
-    assert_eq!(rom.read_byte(32).unwrap(), 0x7F); // 7
+    assert_eq!(rom.read_byte(32).unwrap(), 0x70); // 7
     assert_eq!(rom.read_byte(33).unwrap(), 0xF8); // 31, 0
-    assert_eq!(rom.read_byte(34).unwrap(), 0xFF); // -1
+    assert_eq!(rom.read_byte(34).unwrap(), 0xF0); // -1
     let read_pointer: RomPointer<u8> = rom.read(36).unwrap();
     assert_eq!(read_pointer, pointer11);
     let read_pointer: RomPointer<u16> = rom.read(40).unwrap();
     assert_eq!(read_pointer, pointer12);
     let read_pointer: RomPointer<u32> = rom.read(44).unwrap();
     assert_eq!(read_pointer, pointer13);
-    assert_eq!(rom.read_word(48).unwrap(), 0x9FFFFFFF); // 9
-    assert_eq!(rom.read_word(52).unwrap(), 0x8FFFFFFF); // -8
+    assert_eq!(rom.read_word(48).unwrap(), 0x90000000); // 9
+    assert_eq!(rom.read_word(52).unwrap(), 0x80000000); // -8
     assert_eq!(rom.read_byte(56).unwrap(), 0xA0);
 }
 
@@ -343,4 +343,61 @@ fn write_default_attribute() {
     emer.write(0x0, struct_value).unwrap();
     assert_eq!(emer.read_byte(0).unwrap(), 10);
     assert_eq!(emer.read_word(4).unwrap(), 0xffffffff);
+}
+
+#[test]
+fn write_vector_structs() {
+    // rom_struct!(U8Vector {
+    //     u8 length;
+    //     u8 values{$length};
+    // });
+    // Write a vector of length 3
+    let mut rom = create_rom(RomBase::FireRed);
+    let struct_value = U8Vector {
+        length: 5,
+        values: RomVector::<u8>::new(vec![0x1, 0x2, 0x3, 0x4, 0x5]),
+    };
+    rom.write(0x0, struct_value).unwrap();
+
+    assert_eq!(rom.read_byte(0).unwrap(), 5);
+    assert_eq!(rom.read_offset(4).unwrap(), 8);
+
+    assert_eq!(rom.read_byte(8).unwrap(), 0x1);
+    assert_eq!(rom.read_byte(9).unwrap(), 0x2);
+    assert_eq!(rom.read_byte(10).unwrap(), 0x3);
+    assert_eq!(rom.read_byte(11).unwrap(), 0x4);
+    assert_eq!(rom.read_byte(12).unwrap(), 0x5);
+
+    // rom_struct!(ComplexVector {
+    //     u8 data{$length * $typesize};
+    //     u32 length;
+    //     u32 typesize;
+    // });
+    let mut rom = create_rom(RomBase::FireRed);
+    let struct_value = ComplexVector {
+        data: RomVector::Valid {
+            offset: 0x40,
+            clear_size: 4,
+            data: vec![0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF],
+        },
+        length: 2,
+        typesize: 3,
+    };
+    // Save some data to 0x40 to make sure it is cleared
+    rom.write_word(0x40, 0).unwrap();
+
+    rom.write(0, struct_value).unwrap();
+
+    assert_eq!(rom.read_offset(0).unwrap(), 12);
+    assert_eq!(rom.read_word(4).unwrap(), 2);
+    assert_eq!(rom.read_word(8).unwrap(), 3);
+
+    assert_eq!(rom.read_word(0x40).unwrap(), 0xFFFF_FFFF);
+
+    assert_eq!(rom.read_byte(12).unwrap(), 0xAA);
+    assert_eq!(rom.read_byte(13).unwrap(), 0xBB);
+    assert_eq!(rom.read_byte(14).unwrap(), 0xCC);
+    assert_eq!(rom.read_byte(15).unwrap(), 0xDD);
+    assert_eq!(rom.read_byte(16).unwrap(), 0xEE);
+    assert_eq!(rom.read_byte(17).unwrap(), 0xFF);
 }

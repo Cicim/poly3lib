@@ -489,6 +489,21 @@ impl RomData {
         Ok(())
     }
 
+    /// Sets the given bytes to zero.
+    ///
+    /// This is useful in case you want to reserve space from the offset finder.
+    pub fn allocate(&mut self, offset: Offset, size: usize) -> RomIoResult {
+        // Check bounds
+        if !self.in_bounds(offset + size - 1) {
+            return Err(RomIoError::OutOfBounds(offset, size));
+        }
+
+        // Clear the bytes
+        self.bytes[offset..offset + size].fill(0);
+
+        Ok(())
+    }
+
     /// Finds the offset to a free space in the ROM with the given size and alignment.
     pub fn find_free_space(&self, size: usize, align: usize) -> RomIoResult<Offset> {
         let mut offset = 0;
@@ -513,10 +528,8 @@ impl RomData {
                 if self.bytes[offset + i] != 0xFF {
                     // An 0xFF was found in the middle of the window
                     // We can keep looking right after it (aligned)
-                    offset += align.max(i);
-                    if offset % align != 0 {
-                        offset += align - (offset % align);
-                    }
+                    offset += 1;
+                    offset = (offset + align - 1) & !(align - 1);
                     continue 'outer;
                 }
             }
@@ -793,6 +806,15 @@ mod test_romdata_methods {
             rom.find_free_space(0xFF, 4),
             Err(RomIoError::CannotFindSpace(0xFF))
         );
+
+        // Edge case
+        // 00 FF FF FF 00 00 00 00 FF FF FF FF ...
+        // The next 4-aligned offset should be 8.
+        let mut rom = RomData::new(RomBase::FireRed, 0x10);
+        rom.write_byte(0, 5).unwrap();
+        rom.write_word(4, 0).unwrap();
+
+        assert_eq!(rom.find_free_space(5, 4), Ok(8));
     }
 
     #[test]
