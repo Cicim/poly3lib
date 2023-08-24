@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     fmt::Display,
     fs::File,
     io::{Read, Write},
@@ -11,6 +12,8 @@ use crate::types::{RomClearableType, RomReadableType, RomWritableType};
 
 /// Maximum space in the ROM section of GBA memory.
 const MAX_ROM_SIZE: usize = 1 << 25;
+/// Base address of the ROM
+const ROM_BASE: usize = 0x08_000_000;
 
 #[derive(Debug, Error)]
 pub enum RomFileError {
@@ -281,8 +284,8 @@ impl RomData {
         let pointer = word as usize;
 
         // Convert the word to an offset
-        if pointer >= 0x08_000_000 && pointer < 0x08_000_000 + self.size() {
-            Ok(pointer - 0x08_000_000)
+        if pointer >= ROM_BASE && pointer < ROM_BASE + self.size() {
+            Ok(pointer - ROM_BASE)
         } else {
             Err(RomIoError::ReadingInvalidPointer(offset, word))
         }
@@ -303,7 +306,7 @@ impl RomData {
         }
 
         // Convert the offset to a pointer
-        let pointer = value + 0x08_000_000;
+        let pointer = value + ROM_BASE;
         // Convert the pointer to bytes
         let bytes = pointer.to_le_bytes();
         // Write the bytes
@@ -379,8 +382,8 @@ impl RomData {
     }
 
     // ANCHOR Utilities
-    #[inline]
     /// Checks if the given offset is in bounds for this ROM.
+    #[inline]
     ///
     /// # Example
     /// ```
@@ -396,6 +399,81 @@ impl RomData {
         offset < self.size()
     }
 
+    /// Find the offset of the next occurrence of a byte starting from the given offset.
+    pub fn find_byte_from(&self, offset: Offset, byte: u8) -> Option<Offset> {
+        for i in offset..self.bytes.len() {
+            if self.bytes[i] == byte {
+                return Some(i);
+            }
+        }
+        None
+    }
+
+    /// Finds all offsets in the ROM, whether they are aligned to 4 or not.
+    ///
+    /// Returns a map with the offset as the key and the number
+    /// of times it was found as the value.
+    pub fn find_all_offsets(&self) -> HashMap<Offset, u32> {
+        let mut map = HashMap::new();
+
+        let start_offset = 0;
+        let offset = start_offset;
+
+        // Read the first three bytes, then
+        let mut b1 = self.bytes[offset];
+        let mut b2 = self.bytes[offset + 1];
+        let mut b3 = self.bytes[offset + 2];
+
+        for i in 3..self.bytes.len() {
+            let b4 = self.bytes[offset + i];
+
+            if b4 == 0x08 || b4 == 0x09 {
+                // Compose the whole u32 (little endian)
+                let ptr_bytes = [b1, b2, b3, b4];
+                let ptr = u32::from_le_bytes(ptr_bytes) as usize;
+
+                if ptr >= ROM_BASE && ptr <= ROM_BASE + self.bytes.len() {
+                    let offset = ptr - ROM_BASE;
+                    // Increase the counter for that offset
+                    let counter = map.entry(offset).or_insert(0);
+                    *counter += 1;
+                }
+            }
+
+            // Shift the bytes
+            b1 = b2;
+            b2 = b3;
+            b3 = b4;
+        }
+
+        map
+    }
+
+    /// Finds all references to the given offset in the ROM,
+    /// returning a vector with the offsets of the references.
+    pub fn find_references(&self, offset: Offset, alignment: usize) -> Vec<Offset> {
+        let mut references = Vec::new();
+
+        // Make sure the pointer is valid
+        if offset > self.bytes.len() {
+            return references;
+        }
+
+        // Convert the given pointer to a bytearray
+        let pointer: u32 = offset as u32 + ROM_BASE as u32;
+        let pointer: [u8; 4] = pointer.to_le_bytes();
+
+        // Search for the pointer in the ROM
+        for reference in (0..self.bytes.len() - 4).step_by(alignment) {
+            if self.bytes[reference..reference + 4] == pointer {
+                references.push(reference);
+            }
+        }
+
+        references
+    }
+
+    // ANCHOR Free space functions
     /// Clears the bytes at the given offset and size.
     ///
     /// In the context of this library, "clearing" means setting the bytes to `0xFF`.
@@ -406,11 +484,77 @@ impl RomData {
         }
 
         // Clear the bytes
-        for i in offset..offset + size {
-            self.bytes[i] = 0xFF;
-        }
+        self.bytes[offset..offset + size].fill(0xff);
 
         Ok(())
+    }
+
+    /// Finds the offset to a free space in the ROM with the given size and alignment.
+    pub fn find_free_space(&self, size: usize, align: usize) -> RomIoResult<Offset> {
+        let mut offset = 0;
+
+        // If no data of that size can fit in this ROM
+        if size + offset > self.bytes.len() {
+            return Err(RomIoError::CannotFindSpace(size));
+        }
+
+        'outer: while offset <= self.bytes.len() - size {
+            // If this was a possible free space, but the last bit was not 0xFF,
+            // then we need to skip ahead because no possible sub-window could
+            // be free.
+            if self.bytes[offset + size - 1] != 0xFF {
+                offset += size;
+                continue;
+            }
+
+            // The window ends with 0xFF
+            // Check if the window is free
+            for i in 0..size {
+                if self.bytes[offset + i] != 0xFF {
+                    // An 0xFF was found in the middle of the window
+                    // We can keep looking right after it (aligned)
+                    offset += align.max(i);
+                    if offset % align != 0 {
+                        offset += align - (offset % align);
+                    }
+                    continue 'outer;
+                }
+            }
+
+            return Ok(offset);
+        }
+
+        Err(RomIoError::CannotFindSpace(size))
+    }
+
+    /// Returns free space that can contain `new_size` bytes. If `old_size` is
+    /// different from `new_size`, the old space is cleared.
+    ///
+    /// If necessary, a new space is found and returned.
+    pub fn repoint_offset(
+        &mut self,
+        offset: Offset,
+        old_size: usize,
+        new_size: usize,
+    ) -> RomIoResult<Offset> {
+        if old_size == new_size {
+            // We can just return the old location
+            return Ok(offset);
+        }
+
+        if old_size > new_size {
+            // We need to clear the excess bytes so that others can use them
+            self.clear_bytes(offset + new_size, old_size - new_size)?;
+            // And then return the old size
+            return Ok(offset);
+        }
+
+        // If old_size < new_size
+        // We need to clear the old spot
+        self.clear_bytes(offset, old_size)?;
+        // And find a new space to return
+        // REVIEW New offsets in repoint_offset are always aligned to 4 bytes.
+        self.find_free_space(new_size, 4)
     }
 }
 
@@ -424,8 +568,6 @@ pub type Offset = usize;
 /// A pointer is a value as read from ROM. This means that the pointer
 /// is relative to the ROM's base address (`0x08_000_000`)
 pub type Pointer = u32;
-
-type RomIoResult<T = ()> = Result<T, RomIoError>;
 
 /// An error that occurs when there is a problem writing or
 /// reading a value from a loaded [`RomData`].
@@ -445,13 +587,22 @@ pub enum RomIoError {
 
     #[error("Writing {0} elements to a RomArray of length {1}")]
     InvalidArrayLength(usize, usize),
+
+    #[error("Cannot find free space of size {0}")]
+    CannotFindSpace(usize),
 }
+
+type RomIoResult<T = ()> = Result<T, RomIoError>;
 
 #[cfg(test)]
 mod test_romdata_methods {
     use crate::{RomBase, RomData, RomIoError};
 
-    // Create a standard ROM for testing
+    /// Create a standard ROM for testing.
+    ///
+    /// The rom is 0x10 bytes long and has the following bytes:
+    /// ```no_run
+    /// 0xAB 0xCD 0xEF 0x08
     fn create_rom() -> RomData {
         let mut data = RomData::new(RomBase::FireRed, 0x10);
         data.bytes[0] = 0xAB;
@@ -613,5 +764,73 @@ mod test_romdata_methods {
             rom.write::<u16>(1, 0x1234),
             Err(RomIoError::Misaligned(1, 2))
         );
+    }
+
+    #[test]
+    fn test_find_free_space() {
+        let mut rom = RomData::new(RomBase::FireRed, 0x100);
+
+        // Everything is clear, so any size and alignment should work
+        assert_eq!(rom.find_free_space(0x10, 1), Ok(0));
+        assert_eq!(rom.find_free_space(0x10, 2), Ok(0));
+        assert_eq!(rom.find_free_space(0x10, 4), Ok(0));
+        assert_eq!(rom.find_free_space(0x100, 4), Ok(0));
+
+        // Add a spot at the beginning
+        rom.bytes[0] = 0x00;
+
+        assert_eq!(rom.find_free_space(0x10, 1), Ok(1));
+        assert_eq!(rom.find_free_space(0x10, 2), Ok(2));
+        assert_eq!(rom.find_free_space(0x10, 4), Ok(4));
+
+        // Now, if asking 255 bytes, it should return an error only for alignments of 2 and 4
+        assert_eq!(rom.find_free_space(0xFF, 1), Ok(1));
+        assert_eq!(
+            rom.find_free_space(0xFF, 2),
+            Err(RomIoError::CannotFindSpace(0xFF))
+        );
+        assert_eq!(
+            rom.find_free_space(0xFF, 4),
+            Err(RomIoError::CannotFindSpace(0xFF))
+        );
+    }
+
+    #[test]
+    fn test_repoint_offset() {
+        let old_len = 4;
+
+        // 1. old_len > new_len
+        let mut rom = create_rom();
+        let new_len = 1;
+        let new_offset = rom.repoint_offset(0, old_len, new_len);
+        assert_eq!(new_offset, Ok(0));
+        assert_eq!(rom.bytes[0], 0xAB);
+        assert_eq!(rom.bytes[1], 0xFF);
+        assert_eq!(rom.bytes[2], 0xFF);
+        assert_eq!(rom.bytes[3], 0xFF);
+
+        // 2. old_len == new_len
+        let mut rom = create_rom();
+        let new_len = 4;
+        let new_offset = rom.repoint_offset(0, old_len, new_len);
+        assert_eq!(new_offset, Ok(0));
+        assert_eq!(rom.bytes[0], 0xAB);
+        assert_eq!(rom.bytes[1], 0xCD);
+        assert_eq!(rom.bytes[2], 0xEF);
+        assert_eq!(rom.bytes[3], 0x08);
+
+        // 3. old_len < new_len
+        let mut rom = create_rom();
+        let new_len = 8;
+        let new_offset = rom.repoint_offset(0, old_len, new_len);
+        assert_eq!(new_offset, Ok(0));
+        assert_eq!(rom.bytes[0], 0xFF);
+        assert_eq!(rom.bytes[1], 0xFF);
+        assert_eq!(rom.bytes[2], 0xFF);
+        assert_eq!(rom.bytes[3], 0xFF);
+        assert_eq!(rom.bytes[4], 0xFF);
+        assert_eq!(rom.bytes[5], 0xFF);
+        assert_eq!(rom.bytes[6], 0xFF);
+        assert_eq!(rom.bytes[7], 0xFF);
     }
 }

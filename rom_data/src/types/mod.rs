@@ -4,10 +4,12 @@ mod arrays;
 mod bitfields;
 mod pointers;
 mod primitives;
+mod vectors;
 
 pub use arrays::RomArray;
 pub use bitfields::BitFields;
 pub use pointers::{RomPointer, Void};
+pub use vectors::RomVector;
 
 /// A type that can be read, written to [`RomData`].
 pub trait RomType: RomReadableType + RomWritableType {}

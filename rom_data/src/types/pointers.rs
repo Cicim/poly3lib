@@ -201,7 +201,7 @@ impl<T: Serialize> Serialize for RomPointer<T> {
             Invalid(pointer) => serializer.serialize_u32(*pointer),
 
             // A valid pointer with data is serialized as a struct with two fields
-            // Value {
+            // RomPointer {
             //      offset: u32,        // number in JSON
             //      data: T             // Using the serializer for T
             // }
@@ -213,7 +213,7 @@ impl<T: Serialize> Serialize for RomPointer<T> {
             }
 
             // A valid pointer without data is serialized as a struct with one field
-            // NoData {
+            // RomPointer {
             //      offset: u32,        // number in JSON
             // }
             NoData(offset) => {
