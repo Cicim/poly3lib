@@ -431,16 +431,16 @@ type RomIoResult<T = ()> = Result<T, RomIoError>;
 /// reading a value from a loaded [`RomData`].
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum RomIoError {
-    #[error("A type of size {1} at ${0:07x} will go out of bounds for this ROM")]
+    #[error("A type of size {1} at ${0:07X} will go out of bounds for this ROM")]
     OutOfBounds(Offset, usize),
-    #[error("Writing an offset (${0:07x}) that is out of bounds for this ROM")]
+    #[error("Writing an offset (${0:07X}) that is out of bounds for this ROM")]
     WritingOutOfBoundsOffset(Offset),
-    #[error("The offset ${0:07x} is not aligned to {1} bytes")]
+    #[error("The offset ${0:07X} is not aligned to {1} bytes")]
     Misaligned(Offset, u8),
 
-    #[error("The pointer read at ${0:07x} (0x{1:08x}) does not point to anything in this ROM")]
+    #[error("The pointer read at ${0:07X} (0x{1:08x}) does not point to anything in this ROM")]
     ReadingInvalidPointer(Offset, Pointer),
-    #[error("The pointer written at ${0:07x} (0x{1:08x}) does not point to anything in this ROM")]
+    #[error("The pointer written at ${0:07X} (0x{1:08x}) does not point to anything in this ROM")]
     WritingInvalidPointer(Offset, Pointer),
 
     #[error("Writing {0} elements to a RomArray of length {1}")]

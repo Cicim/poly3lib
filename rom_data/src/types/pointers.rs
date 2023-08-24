@@ -7,7 +7,7 @@ use crate::{Offset, Pointer, RomData, RomIoError};
 use super::{RomClearableType, RomReadableType, RomSizedType, RomWritableType};
 
 /// Allows you to point to a [`RomType`] in the Rom
-#[derive(Debug, Default, PartialEq, Eq, Clone)]
+#[derive(Default, PartialEq, Eq, Clone)]
 pub enum RomPointer<T = Void> {
     /// The pointer is **NULL** (`0`), so there is no data attached to it,
     /// as dereferencing it would cause a crash.
@@ -56,6 +56,17 @@ impl<T> RomPointer<T> {
         match self {
             RomPointer::Valid(_, data) => Some(data),
             _ => None,
+        }
+    }
+}
+
+impl<T: std::fmt::Debug> std::fmt::Debug for RomPointer<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RomPointer::Null => write!(f, "Null"),
+            RomPointer::Invalid(pointer) => write!(f, "Invalid(0x{:08x})", pointer),
+            RomPointer::Valid(offset, data) => write!(f, "Valid(${:07X}, {:#?})", offset, data),
+            RomPointer::NoData(offset) => write!(f, "NoData(${:07X})", offset),
         }
     }
 }

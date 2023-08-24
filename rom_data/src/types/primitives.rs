@@ -61,6 +61,30 @@ impl_rom_type_for_integer!(i8, u8, read_byte, write_byte);
 impl_rom_type_for_integer!(i16, u16, read_halfword, write_halfword);
 impl_rom_type_for_integer!(i32, u32, read_word, write_word);
 
+impl RomSizedType for bool {
+    fn get_size(_: &RomData) -> usize {
+        1
+    }
+    fn get_alignment(_: &RomData) -> usize {
+        1
+    }
+}
+impl RomReadableType for bool {
+    fn read_from(rom: &RomData, offset: Offset) -> Result<Self, RomIoError> {
+        Ok(rom.read_byte(offset)? != 0)
+    }
+}
+impl RomWritableType for bool {
+    fn write_to(self, rom: &mut RomData, offset: Offset) -> Result<(), RomIoError> {
+        rom.write_byte(offset, self.into())
+    }
+}
+impl RomClearableType for bool {
+    fn clear_in(rom: &mut RomData, offset: Offset) -> Result<(), RomIoError> {
+        rom.clear_bytes(offset, 1)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -92,5 +116,14 @@ mod tests {
         rom.write_word(0, 0xFFFF_FFFE).unwrap();
 
         assert_eq!(i8::read_from(&rom, 0x00).unwrap(), -2);
+    }
+
+    #[test]
+    fn test_bool() {
+        let mut rom = RomData::new(crate::RomBase::FireRed, 0x10);
+        assert_eq!(bool::read_from(&rom, 0x00).unwrap(), true);
+
+        rom.write_byte(0, 0x00).unwrap();
+        assert_eq!(bool::read_from(&rom, 0x00).unwrap(), false);
     }
 }

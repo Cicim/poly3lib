@@ -121,7 +121,7 @@ fn build_int_type(int_ty: &SizedBaseType) -> TokenStream {
             let ty = format_ident!("u{}", bits);
             quote!(#write_method(offset, value as #ty)?;)
         }
-        SizedBaseType::Boolean(_) => quote!(#write_method(offset, if value { 1 } else { 0 } )),
+        SizedBaseType::Boolean(_) => quote!(#write_method(offset, if value { 1 } else { 0 } )?;),
     }
 }
 
