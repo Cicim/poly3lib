@@ -452,12 +452,13 @@ impl GetSizeAndAlignment for StructField {
                 // Obtain the code to read this stuff
                 TypeDimension::Code(build_attribute_condition(
                     attributes,
-                    |attr_action| {
-                        if let StructAttributeAction::Type(ty) = attr_action {
+                    |attr_action| match attr_action {
+                        // If it can be a different type, return its alignment
+                        StructAttributeAction::Type(ty) => {
                             Some(ty.get_alignment().get_dimension_code())
-                        } else {
-                            None
                         }
+                        // If it can be absent, return 1 (it does not change alignment)
+                        StructAttributeAction::Default(_) => Some(quote!(1)),
                     },
                     ty.get_alignment().get_dimension_code(),
                 ))

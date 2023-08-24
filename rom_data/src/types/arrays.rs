@@ -50,6 +50,24 @@ impl<T, const N: usize> std::ops::IndexMut<usize> for RomArray<T, N> {
     }
 }
 
+impl<T, const N: usize> AsRef<[T]> for RomArray<T, N> {
+    fn as_ref(&self) -> &[T] {
+        self.0.as_ref()
+    }
+}
+
+impl<T, const N: usize> AsMut<[T]> for RomArray<T, N> {
+    fn as_mut(&mut self) -> &mut [T] {
+        self.0.as_mut()
+    }
+}
+
+impl<T: Clone, const N: usize> From<[T; N]> for RomArray<T, N> {
+    fn from(value: [T; N]) -> Self {
+        Self(value.to_vec())
+    }
+}
+
 // ANCHOR RomType impls
 impl<T: RomReadableType, const N: usize> RomReadableType for RomArray<T, N> {
     fn read_from(rom: &RomData, offset: Offset) -> Result<Self, RomIoError> {

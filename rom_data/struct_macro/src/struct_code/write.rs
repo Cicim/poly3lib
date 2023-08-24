@@ -72,8 +72,11 @@ fn build_basic_field(field: &StructBasicField) -> TokenStream {
     let write_fn = build_attribute_condition(
         &field.attributes,
         |action| match action {
+            // When writing a type, write with that type
             StructAttributeAction::Type(ty) => Some(build_base_type(ty)),
-            StructAttributeAction::Default(_) => None,
+            // When there is a default value, it means that the field should be skipped,
+            // thus we have to explicitly return no writing code
+            StructAttributeAction::Default(_) => Some(quote!()),
         },
         build_derived_type(&field.ty),
     );

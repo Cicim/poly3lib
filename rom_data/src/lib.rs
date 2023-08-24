@@ -3,6 +3,10 @@
 pub(crate) mod data;
 pub mod types;
 
+// Tests
+#[cfg(test)]
+mod tests;
+
 // Re-exports
 pub use data::{Offset, Pointer, RomBase, RomData, RomFileError, RomIoError};
 

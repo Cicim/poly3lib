@@ -45,7 +45,7 @@ pub fn build_struct_body(parsed: &ParsedStruct) -> TokenStream {
     // Build the derives for the struct
     let derive_debug = quote_if!(!parsed.flags.no_debug, { Debug , });
     let derives = quote! {
-        #[derive(#derive_debug Clone)]
+        #[derive(#derive_debug Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
     };
 
     // Create the visibility modifier (if allowed)
