@@ -185,6 +185,29 @@ impl RomData {
         self.bytes.len()
     }
 
+    // ANCHOR Slice reading
+    /// Reads a slice with the given size at the given offset while checking bounds.
+    pub fn read_slice(&self, offset: Offset, size: usize) -> RomIoResult<&[u8]> {
+        // Check bounds
+        if !self.in_bounds(offset + size - 1) {
+            return Err(RomIoError::OutOfBounds(offset, size));
+        }
+
+        Ok(&self.bytes[offset..offset + size])
+    }
+
+    /// Writes the given slice at the given offset while checking bounds.
+    pub fn write_slice(&mut self, offset: Offset, slice: &[u8]) -> RomIoResult {
+        // Check bounds
+        if !self.in_bounds(offset + slice.len() - 1) {
+            return Err(RomIoError::OutOfBounds(offset, slice.len()));
+        }
+
+        // Write the slice
+        self.bytes[offset..offset + slice.len()].copy_from_slice(slice);
+        Ok(())
+    }
+
     // ANCHOR Primitive value reading
     /// Reads a single byte at the given offset while checking bounds.
     pub fn read_byte(&self, offset: Offset) -> RomIoResult<u8> {
@@ -623,6 +646,22 @@ mod test_romdata_methods {
         data.bytes[2] = 0xEF;
         data.bytes[3] = 0x08;
         data
+    }
+
+    #[test]
+    fn test_slice_reading() {
+        let rom = create_rom();
+        assert_eq!(rom.read_slice(0, 4).unwrap(), &[0xAB, 0xCD, 0xEF, 0x08]);
+    }
+
+    #[test]
+    fn test_slice_writing() {
+        let mut rom = create_rom();
+        rom.write_slice(0, &[0x12, 0x34, 0x56, 0x78]).unwrap();
+        assert_eq!(rom.bytes[0], 0x12);
+        assert_eq!(rom.bytes[1], 0x34);
+        assert_eq!(rom.bytes[2], 0x56);
+        assert_eq!(rom.bytes[3], 0x78);
     }
 
     #[test]
