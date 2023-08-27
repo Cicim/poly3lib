@@ -20,7 +20,7 @@ pub trait RomType: RomReadableType + RomWritableType {}
 /// A type that can be read from [`RomData`].
 ///
 /// Is always automatically implemented for structs.
-pub trait RomReadableType: RomSizedType {
+pub trait RomReadableType: Sized {
     /// Read this type from `data` at `offset`.
     fn read_from(rom: &RomData, offset: Offset) -> Result<Self, RomIoError>;
 }
@@ -28,7 +28,7 @@ pub trait RomReadableType: RomSizedType {
 /// A type that can be written to [`RomData`].
 ///
 /// Is always automatically implemented for structs.
-pub trait RomWritableType: RomSizedType {
+pub trait RomWritableType: Sized {
     /// Write this type to `data` at `offset`.
     fn write_to(self, rom: &mut RomData, offset: Offset) -> Result<(), RomIoError>;
 }

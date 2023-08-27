@@ -69,7 +69,7 @@ impl<T: Clone, const N: usize> From<[T; N]> for RomArray<T, N> {
 }
 
 // ANCHOR RomType impls
-impl<T: RomReadableType, const N: usize> RomReadableType for RomArray<T, N> {
+impl<T: RomReadableType + RomSizedType, const N: usize> RomReadableType for RomArray<T, N> {
     fn read_from(rom: &RomData, offset: Offset) -> Result<Self, RomIoError> {
         let size = Self::get_size(rom);
         let elsize = T::get_size(rom);
@@ -91,7 +91,7 @@ impl<T: RomReadableType, const N: usize> RomReadableType for RomArray<T, N> {
     }
 }
 
-impl<T: RomWritableType, const N: usize> RomWritableType for RomArray<T, N> {
+impl<T: RomWritableType + RomSizedType, const N: usize> RomWritableType for RomArray<T, N> {
     fn write_to(self, rom: &mut RomData, offset: Offset) -> Result<(), RomIoError> {
         if self.0.len() != N {
             return Err(RomIoError::InvalidArrayLength(self.0.len(), N));

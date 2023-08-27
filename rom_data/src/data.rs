@@ -8,7 +8,11 @@ use std::{
 use colored::Colorize;
 use thiserror::Error;
 
-use crate::types::{RomClearableType, RomReadableType, RomWritableType};
+use crate::{
+    lz77::Lz77Header,
+    types::{RomClearableType, RomReadableType, RomWritableType},
+    Lz77DecompressedData, Lz77DecompressionError,
+};
 
 /// Maximum space in the ROM section of GBA memory.
 const MAX_ROM_SIZE: usize = 1 << 25;
@@ -194,6 +198,16 @@ impl RomData {
         }
 
         Ok(&self.bytes[offset..offset + size])
+    }
+
+    /// Returns a slice of the ROM starting from the given offset.
+    pub fn read_slice_from(&self, offset: Offset) -> RomIoResult<&[u8]> {
+        // Check bounds
+        if !self.in_bounds(offset) {
+            return Err(RomIoError::OutOfBounds(offset, 1));
+        }
+
+        Ok(&self.bytes[offset..])
     }
 
     /// Writes the given slice at the given offset while checking bounds.
@@ -592,6 +606,66 @@ impl RomData {
         // REVIEW New offsets in repoint_offset are always aligned to 4 bytes.
         self.find_free_space(new_size, 4)
     }
+
+    // ANCHOR LZ77 Methods
+    /// Reads LZ77-compressed bytes from ROM and decompresses them.
+    ///
+    /// Only returns a [`Vec<u8>`].
+    pub fn read_compressed(&self, offset: Offset) -> RomIoResult<Vec<u8>> {
+        let read: Lz77DecompressedData = self.read(offset)?;
+        Ok(read.data)
+    }
+
+    /// Writes the LZ77 header then the data at the given offset.
+    pub fn write_compressed(&mut self, offset: Offset, data: &[u8]) -> RomIoResult {
+        // Check bounds
+        if !self.in_bounds(offset) {
+            return Err(RomIoError::OutOfBounds(offset, data.len()));
+        }
+        // Compress the data
+        let compressed = crate::lz77::compress(data);
+
+        // Write the header
+        self.write(offset, Lz77Header::new(data.len()))?;
+
+        // Write the compressed data
+        self.write_slice(offset + 4, &compressed)
+    }
+
+    /// Replaces the Lz77-compressed data at the given offset with new data
+    /// to compress. Uses the old space if possible, otherwise reallocates.
+    ///
+    /// Returns the offset of the new data.
+    pub fn repoint_compressed_data(
+        &mut self,
+        header_offset: Offset,
+        data: &[u8],
+    ) -> RomIoResult<Offset> {
+        // Compress the data
+        let compressed = crate::lz77::compress(data);
+
+        // Get the deflated size of the data
+        let new_offset = match crate::lz77::get_deflated_size(self, header_offset) {
+            Ok(deflated_size) => {
+                // Find the offset that can contain this data
+                let old_size = deflated_size + 4;
+                let new_size = compressed.len() + 4;
+                self.repoint_offset(header_offset, old_size, new_size)?
+            }
+
+            // If there is an error, then we have to find a new space
+            Err(_) => {
+                // Allocate enough space for the new compressed data
+                self.find_free_space(compressed.len() + 4, 4)?
+            }
+        };
+
+        // Write header and compressed_data
+        self.write(new_offset, Lz77Header::new(data.len()))?;
+        self.write_slice(new_offset + 4, &compressed)?;
+
+        Ok(new_offset)
+    }
 }
 
 /// Represents an offset in the ROM binary file.
@@ -620,6 +694,9 @@ pub enum RomIoError {
     ReadingInvalidPointer(Offset, Pointer),
     #[error("The pointer written at ${0:07X} (0x{1:08x}) does not point to anything in this ROM")]
     WritingInvalidPointer(Offset, Pointer),
+
+    #[error("Lz77 decompression error: {0}")]
+    Lz77DecompressionError(#[from] Lz77DecompressionError),
 
     #[error("Writing {0} elements to a RomArray of length {1}")]
     InvalidArrayLength(usize, usize),

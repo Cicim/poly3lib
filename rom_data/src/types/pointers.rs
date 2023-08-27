@@ -79,7 +79,7 @@ impl RomPointer {
 }
 
 // ANCHOR RomType impls for RomPointer
-impl<T: RomReadableType> RomReadableType for RomPointer<T> {
+impl<T: RomReadableType + RomSizedType> RomReadableType for RomPointer<T> {
     fn read_from(rom: &RomData, offset: Offset) -> Result<Self, RomIoError> {
         // Read a u32 (checking alignment)
         let word: u32 = rom.read(offset)?;

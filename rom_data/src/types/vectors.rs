@@ -128,7 +128,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for RomVector<T> {
 }
 
 // ANCHOR Read method
-impl<T: RomReadableType> RomVector<T> {
+impl<T: RomReadableType + RomSizedType> RomVector<T> {
     /// Reads a vector from the given offset in the ROM, with the given initial size.
     pub fn read_from(rom: &RomData, offset: Offset, clear_size: usize) -> Result<Self, RomIoError> {
         // Read the pointer at the given location
@@ -173,7 +173,7 @@ impl<T> RomSizedType for RomVector<T> {
     }
 }
 
-impl<T: RomWritableType> RomWritableType for RomVector<T> {
+impl<T: RomWritableType + RomSizedType> RomWritableType for RomVector<T> {
     fn write_to(self, rom: &mut RomData, offset: Offset) -> Result<(), RomIoError> {
         match self {
             // If we are writing null it's because we either read null or we
