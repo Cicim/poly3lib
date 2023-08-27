@@ -10,7 +10,7 @@ use crate::{
 /// A tile is a 8x8 pixel square that is used to draw the background and sprites.
 ///
 /// It is composed of 8 rows of 8 pixels each, where each pixel is a color index.
-#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RomTile(
     /// The 8 rows of 8 pixels each.
     [[PaletteIndex; 8]; 8],

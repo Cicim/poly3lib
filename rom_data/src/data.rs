@@ -697,6 +697,8 @@ pub enum RomIoError {
 
     #[error("Lz77 decompression error: {0}")]
     Lz77DecompressionError(#[from] Lz77DecompressionError),
+    #[error("Invalid size of decompressed value: {0}")]
+    InvalidDecompressedSize(usize),
 
     #[error("Writing {0} elements to a RomArray of length {1}")]
     InvalidArrayLength(usize, usize),
