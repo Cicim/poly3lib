@@ -7,6 +7,7 @@ use std::{
 
 use colored::Colorize;
 use thiserror::Error;
+use thumb::Instruction;
 
 use crate::{
     lz77::Lz77Header,
@@ -665,6 +666,20 @@ impl RomData {
         self.write_slice(new_offset + 4, &compressed)?;
 
         Ok(new_offset)
+    }
+
+    // ANCHOR Misc
+    /// Decodes the instruction at the given offset.
+    pub fn decode_instruction(&self, offset: Offset) -> RomIoResult<Option<Instruction>> {
+        // Read the halfword for the instruction
+        let halfword = self.read_halfword(offset)?;
+        Ok(Instruction::decode(halfword))
+    }
+
+    /// Encodes the given instruction and writes it at the given offset.
+    pub fn encode_instruction(&mut self, offset: Offset, instruction: Instruction) -> RomIoResult {
+        let halfword: u16 = instruction.into();
+        self.write_halfword(offset, halfword)
     }
 }
 

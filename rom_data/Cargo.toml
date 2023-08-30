@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 struct_macro = { path = "struct_macro" }
 value_derive = { path = "value_derive" }
+thumb = { path = "../thumb" }
 
 colored = "2.0.4"
 serde = { version = "1.0.183", features = ["derive"] }

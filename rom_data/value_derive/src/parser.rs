@@ -6,27 +6,27 @@ use syn::DeriveInput;
 #[derive(Debug)]
 pub struct ValueField {
     /// The name of the field
-    name: Ident,
+    pub name: Ident,
     /// The type of the field (only integers are supported)
-    ty: Ident,
+    pub ty: Ident,
     /// The attributes of the field
-    attrs: Vec<ValueAttribute>,
+    pub attrs: Vec<ValueAttribute>,
 }
 
 #[derive(Debug)]
 pub struct ValueAttribute {
     /// The base for which this value can be read
-    base: Ident,
+    pub base: Ident,
     /// The offsets where this value can be read
-    offsets: Vec<Literal>,
+    pub offsets: Vec<Literal>,
     /// The read/write method
-    method: Ident,
-    /// The transformation to apply to the value
-    transform: TokenStream,
+    pub method: Ident,
+    /// The transformations to apply to the value (in order)
+    pub transforms: Vec<TokenStream>,
     /// The condition to read this value (if any)
     ///
     /// This condition is in the form of code on configuration attributes.
-    condition: Option<TokenStream>,
+    pub condition: Option<TokenStream>,
 }
 
 /// Parse all the fields into a struct into a [`ValueField`] vector.
@@ -86,6 +86,10 @@ pub fn parse_fields(ast: &DeriveInput) -> Vec<ValueField> {
             attrs.push(attribute);
         }
 
+        if attrs.is_empty() {
+            abort!(name, "Attributes are required for all fields");
+        }
+
         output.push(ValueField { name, ty, attrs })
     }
 
@@ -104,7 +108,12 @@ fn parse_attribute(tokens: &TokenStream) -> ValueAttribute {
     macro_rules! expect_not_eof {
         ($what:literal) => {
             if tokens.peek().is_none() {
-                abort_call_site!("Expected {} but found EOF", $what);
+                abort_call_site!("Missing {} in attribute", $what);
+            }
+        };
+        ($span:expr, $what:literal) => {
+            if tokens.peek().is_none() {
+                abort!($span, "Missing {} in attribute", $what);
             }
         };
     }
@@ -117,7 +126,7 @@ fn parse_attribute(tokens: &TokenStream) -> ValueAttribute {
     };
 
     // Get the offsets
-    expect_not_eof!("offset or list of offsets");
+    expect_not_eof!(base, "offset or list of offsets");
     let mut offsets = Vec::new();
 
     while let Some(token) = tokens.peek() {
@@ -140,60 +149,61 @@ fn parse_attribute(tokens: &TokenStream) -> ValueAttribute {
     }
 
     // Get the method
-    expect_not_eof!("method");
+    expect_not_eof!(base, "method");
     let method = match tokens.next().unwrap() {
         TokenTree::Ident(ident) => ident,
         t => abort!(t, "Expected method"),
     };
 
-    // Get the transformation
-    expect_not_eof!("transformation");
-    let mut transform = TokenStream::new();
-    match tokens.next().unwrap() {
-        TokenTree::Ident(ident) => transform.extend(ident.into_token_stream()),
-        t => abort!(t, "Expected transformation"),
-    };
-
-    // If present, add anything within parentheses
-    if let Some(token) = tokens.peek() {
-        if let TokenTree::Group(group) = token {
-            if group.delimiter() != Delimiter::Parenthesis {
-                abort!(group, "Expected parentheses");
-            }
-
-            transform.extend(group.to_token_stream());
-            tokens.next();
-        }
-    }
-
-    // Get the condition
+    // Get the transformations and conditions
+    let mut transforms = Vec::new();
     let mut condition = None;
 
-    if let Some(token) = tokens.peek() {
-        // Match the if keyword
-        if let TokenTree::Ident(ident) = token {
-            if ident != "if" {
-                abort!(ident, "Expected if keyword");
+    while let Some(token) = tokens.peek() {
+        match token {
+            TokenTree::Ident(ident) => {
+                // If it is an if
+                if ident.to_string().as_str() == "if" {
+                    // Get the condition
+                    let mut condition_tokens = Vec::new();
+                    while let Some(token) = tokens.next() {
+                        // TODO Transform each ident token to the code to check that condition.
+                        condition_tokens.push(token);
+                    }
+                    condition = Some(TokenStream::from_iter(condition_tokens));
+                    break;
+                }
             }
-            tokens.next();
-        } else {
-            abort!(token, "Expected if keyword");
+            x => abort!(x, "Expected `if` or transformation name"),
+        };
+
+        // We are in the presence of a transformation
+        let mut transform = TokenStream::new();
+        match tokens.next().unwrap() {
+            TokenTree::Ident(ident) => transform.extend(ident.into_token_stream()),
+            t => abort!(t, "Expected transformation"),
+        };
+        // If present, add anything within parentheses
+        if let Some(token) = tokens.peek() {
+            if let TokenTree::Group(group) = token {
+                if group.delimiter() != Delimiter::Parenthesis {
+                    abort!(group, "Expected parentheses");
+                }
+
+                transform.extend(group.to_token_stream());
+                tokens.next();
+            }
         }
 
-        // Get the condition
-        let mut condition_tokens = Vec::new();
-        while let Some(token) = tokens.next() {
-            // TODO Transform each ident token to the code to check that condition.
-            condition_tokens.push(token);
-        }
-        condition = Some(TokenStream::from_iter(condition_tokens));
+        // Add the transformation
+        transforms.push(transform);
     }
 
     ValueAttribute {
         base,
         offsets,
         method,
-        transform,
+        transforms,
         condition,
     }
 }

@@ -12,7 +12,6 @@ pub fn rom_value_derive(input: TokenStream) -> TokenStream {
 
     // Build the impl
     let fields = parser::parse_fields(&ast);
-    println!("{:#?}", fields);
 
     // Get the struct name
     let name = &ast.ident;
