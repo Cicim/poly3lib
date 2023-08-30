@@ -1,4 +1,5 @@
-//! Declares a new type [`RomPointer<T>`] that allows to point to a type `T` in the ROM.
+//! Declares a new type [`RomPointer<T>`] that allows to read/write a value of type `T`
+//! in the ROM referenced by a pointer.
 
 use serde::{ser::SerializeStruct, Deserialize, Deserializer, Serialize, Serializer};
 

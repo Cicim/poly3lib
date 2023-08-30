@@ -1,5 +1,3 @@
-static FLIP_CHARS: [char; 4] = [' ', '←', '↑', '𝥮'];
-
 use std::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
@@ -8,6 +6,8 @@ use crate::{
     types::{RomReadableType, RomSizedType, RomWritableType},
     Offset, RomData, RomIoError,
 };
+
+static FLIP_CHARS: [char; 4] = [' ', '←', '↑', '𝥮'];
 
 /// Information for rendering a single tile in a tile map.
 ///

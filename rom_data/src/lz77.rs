@@ -1,5 +1,6 @@
+//! This module provides support for LZ77 compression and decompression.
+
 use crate::RomIoError;
-use struct_macro::rom_struct;
 use thiserror::Error;
 
 use crate::types::{RomClearableType, RomReadableType};
@@ -21,6 +22,7 @@ pub struct Lz77DecompressedData {
 
 // LZ77 header as struct for easy reading
 use crate as rom_data;
+use struct_macro::rom_struct;
 rom_struct!(Lz77Header {
     u32 magic:8;
     u32 inflated_size:24;

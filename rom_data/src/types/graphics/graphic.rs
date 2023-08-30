@@ -34,9 +34,7 @@ pub enum RomGraphic {
 impl RomGraphic {
     /// Returns a new RomGraphic object starting from a collection of tiles.
     ///
-    /// Equivalent to
-    /// ```no_run
-    /// RomGraphic::New(tiles)
+    /// Equivalent to `RomGraphic::New(tiles)`
     pub fn new(tiles: Vec<RomTile>) -> Self {
         Self::New(tiles)
     }

@@ -1,4 +1,4 @@
-//! Types for handling graphics data.
+//! This module exports the types for GBA graphics, including LZ77-compressed graphics.
 
 mod colors;
 mod graphic;
