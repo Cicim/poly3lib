@@ -158,4 +158,43 @@ impl RomTable {
             references,
         })
     }
+
+    /// Repoints a table if needed and returns the new [`RomTable`].
+    ///
+    /// Updates all references in the ROM.
+    ///
+    /// Has no special behavior for what the final element should be.
+    /// All extra spaces are initialized to 0x00.
+    pub fn simple_resize(
+        self,
+        rom_data: &mut RomData,
+        new_length: usize,
+        elsize: usize,
+    ) -> Result<Self, RomIoError> {
+        let old_size = self.length * elsize;
+        let new_size = new_length * elsize;
+
+        // Copy the minimum of the two sizes from the start of the offset
+        let min_size = old_size.min(new_size);
+        let copy = rom_data.read_slice(self.offset, min_size)?.to_vec();
+
+        // Repoint the table
+        let new_offset = rom_data.repoint_offset(self.offset, old_size, new_size)?;
+        // Allocate the new space (fill it with 0s)
+        rom_data.allocate(new_offset, new_size)?;
+
+        // Write the copied data
+        rom_data.write_slice(new_offset, &copy)?;
+
+        // Update all the references
+        for reference in self.references.iter() {
+            rom_data.write_offset(*reference, new_offset)?;
+        }
+
+        Ok(Self {
+            offset: new_offset,
+            length: new_length,
+            references: self.references,
+        })
+    }
 }

@@ -59,6 +59,14 @@ impl<T> RomPointer<T> {
             _ => None,
         }
     }
+
+    /// Returns whether the given offset is valid (writable to ROM).
+    pub fn is_valid(&self) -> bool {
+        match self {
+            RomPointer::Invalid(_) => false,
+            _ => true,
+        }
+    }
 }
 
 impl<T: std::fmt::Debug> std::fmt::Debug for RomPointer<T> {
