@@ -1,10 +1,7 @@
-pub mod graphics;
-pub mod refs;
-pub mod rom;
-pub mod text;
-pub mod values;
+// Internal modules
+mod rom;
 
-// Modules in refs
-pub mod maps;
-pub mod object_events;
-pub mod scripts;
+// Re-export everything from rom_data as is.
+pub use rom_data::*;
+// Re-exports
+pub use rom::{Rom, RomReferences, RomTable};

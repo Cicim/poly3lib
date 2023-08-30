@@ -1,381 +1,161 @@
-use std::collections::HashMap;
 use std::fmt::Display;
-use std::fs::File;
-use std::io::{Read, Write};
 
-use thiserror::Error;
+use colored::Colorize;
+use serde::{Deserialize, Serialize};
 
-use gba_types::lz77::*;
-use gba_types::{GBAIOError, GBAType};
-use thumb::Processor;
+use rom_data::{Offset, RomBase, RomData, RomFileError, RomIoError};
 
-use crate::refs::Refs;
-
-const MAX_ROM_SIZE: usize = 1 << 25;
-
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum RomType {
-    FireRed,
-    LeafGreen,
-    Ruby,
-    Sapphire,
-    Emerald,
+// ANCHOR Rom struct
+/// The main ROM object.
+///
+/// Every access to its data can be done via its `data` property.
+pub struct Rom {
+    /// The [`RomData`] object that contains the ROM data.
+    pub data: RomData,
+    /// The references to the various tables in the ROM.
+    pub refs: RomReferences,
 }
 
-impl Display for RomType {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use RomType::*;
-        write!(
-            f,
-            "{}",
-            match self {
-                FireRed => "Fire Red",
-                LeafGreen => "Leaf Green",
-                Ruby => "Ruby",
-                Sapphire => "Sapphire",
-                Emerald => "Emerald",
-            }
-        )
+impl Rom {
+    /// Save the [`RomData`] and [`RomReferences`] to the given path.
+    pub fn save(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
+        // Write the ROM data
+        self.data.save(path)?;
+
+        // Write the references
+        let refs_path = std::path::Path::new(path).with_extension("json");
+        let mut references = serde_json::to_string_pretty(&self.refs)?;
+        references.push('\n');
+        std::fs::write(refs_path, references)?;
+
+        Ok(())
+    }
+
+    /// Loads the ROM data and references from the given path.
+    ///
+    /// If path is `/path/to/file/rom.gba`, it loads the ROM binary from
+    /// `/path/to/file/rom.gba` and the references from `/path/to/file/rom.json`.
+    pub fn load(path: &str) -> Result<Self, RomFileError> {
+        // Load the ROM data
+        let data = RomData::load(path)?;
+        // Load the references
+        let refs = Rom::load_references(path).unwrap_or_default();
+
+        Ok(Self { data, refs })
+    }
+    /// Internal function to load the references
+    fn load_references(path: &str) -> Option<RomReferences> {
+        let refs_path = std::path::Path::new(path).with_extension("json");
+        match std::fs::read_to_string(refs_path) {
+            Ok(references) => serde_json::from_str(&references).ok(),
+            Err(_) => None,
+        }
+    }
+
+    // ANCHOR Rom helpers
+    /// Access the `base` property of the data without having to write `self.data.base`.
+    pub fn base(&self) -> RomBase {
+        self.data.base
     }
 }
 
-/// Represents a game ROM.
-#[derive(Debug, Clone)]
-pub struct Rom {
-    /// The actual ROM data.
-    pub data: Vec<u8>,
-    /// The type of ROM.
-    pub rom_type: RomType,
-    /// The information about all tables in the ROM.
-    pub refs: Refs,
+impl Display for Rom {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "{}", self.data)?;
+        writeln!(f, "{}", self.refs)
+    }
 }
 
-#[derive(Debug, Error)]
-pub enum RomError {
-    #[error("IO error: {0}")]
-    IoError(std::io::Error),
-    #[error("This ROM is not supported: {0}")]
-    UnsupportedRomType(String),
-    #[error("The file is not a ROM: the identifier is invalid")]
-    InvalidRomIdentifier,
-    #[error("{} is not a valid ROM size", with_appropriate_byte_unit(.0))]
-    InvalidSize(usize),
+// ANCHOR Rom references
+#[derive(Default, Serialize, Deserialize)]
+/// The references to the various tables in the ROM.
+pub struct RomReferences {
+    /// The table of all layouts in the ROM.
+    pub map_layouts: Option<RomTable>,
 }
-impl Rom {
-    /// Loads the ROM into memory.
-    pub fn load(path: &str) -> Result<Self, RomError> {
-        // Open the file
-        let mut file = File::open(path).map_err(RomError::IoError)?;
 
-        // Read the up to 32MB of the ROM into memory
-        let mut data = Vec::with_capacity(MAX_ROM_SIZE);
+impl Display for RomReferences {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "References:")?;
 
-        // Make sure you can perform the next check
-        let len = file.metadata().unwrap().len() as usize;
-        if len < 0xB0 || len > MAX_ROM_SIZE {
-            return Err(RomError::InvalidSize(len as usize));
+        macro_rules! write_field {
+            ($name:ident) => {
+                write!(f, "  {}: ", stringify!($name))?;
+                match &self.$name {
+                    Some(table) => writeln!(f, "{}", table)?,
+                    None => writeln!(f, "{}", "Not loaded".italic())?,
+                }
+            };
         }
 
-        file.read_to_end(&mut data).map_err(RomError::IoError)?;
+        // ANCHOR Fields of rom references
+        write_field!(map_layouts);
 
-        // Determine the ROM type
-        let rom_type = match &data[0xAC..0xB0] {
-            b"AXVE" => RomType::Ruby,
-            b"AXPE" => RomType::Sapphire,
-            b"BPRE" => RomType::FireRed,
-            b"BPGE" => RomType::LeafGreen,
-            b"BPEE" => RomType::Emerald,
-            code => {
-                // If there is any character that is not an ASCII uppercase
-                return if code.iter().any(|x| !x.is_ascii_uppercase()) {
-                    // This is not a rom
-                    Err(RomError::InvalidRomIdentifier)
-                } else {
-                    // Since it's all uppercase, convert the code to a string
-                    let code = String::from_utf8_lossy(code).to_string();
-                    Err(RomError::UnsupportedRomType(code))
-                };
-            }
-        };
+        Ok(())
+    }
+}
 
-        // Check if the reference file exists
-        let refs_path = format!("{}.refs.json", path);
-        let refs = if let Ok(mut file) = File::open(&refs_path) {
-            let mut json = String::new();
+// ANCHOR RomTable struct
+#[derive(Default, Serialize, Deserialize, Clone)]
+pub struct RomTable {
+    /// The offset of the table in the ROM.
+    pub offset: Offset,
+    /// The length of this table (in elements, not bytes).
+    pub length: usize,
+    /// The references to this offset in the ROM.
+    pub references: Vec<Offset>,
+}
 
-            if file.read_to_string(&mut json).is_ok() {
-                match serde_json::from_str(&json) {
-                    Ok(refs) => refs,
-                    Err(_) => Refs::default(),
-                }
-            } else {
-                Refs::default()
-            }
-        } else {
-            Refs::default()
-        };
+impl Display for RomTable {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}]", self.length.to_string().bright_red())?;
+        write!(f, "@{}", format!("${:07X}", self.offset).green())?;
+        if self.references.is_empty() {
+            return Ok(());
+        }
 
-        Ok(Rom {
-            data,
-            rom_type,
-            refs,
+        write!(f, " <- ")?;
+        let references = self
+            .references
+            .iter()
+            .map(|offset| format!("${:07X}", offset).cyan().italic().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        write!(f, "{}", references)
+    }
+}
+
+impl RomTable {
+    /// Reads a table while its elements are valid (as returned by `is_valid`).
+    ///
+    /// Requires the `table_offset`, NOT one of its references.
+    pub fn read_table<F>(
+        table_offset: Offset,
+        rom_data: &RomData,
+        is_valid: F,
+        elsize: usize,
+    ) -> Result<Self, RomIoError>
+    where
+        F: Fn(&RomData, Offset) -> Result<bool, RomIoError>,
+    {
+        let mut curr_offset = table_offset;
+        let mut length = 0;
+
+        while is_valid(rom_data, curr_offset)? {
+            // Increment the length
+            length += 1;
+            // Increment the offset
+            curr_offset += elsize;
+        }
+
+        // Find the references to the table_offset
+        let references = rom_data.find_references(table_offset, 4);
+
+        Ok(Self {
+            offset: table_offset,
+            length,
+            references,
         })
     }
-
-    /// Saves the ROM to the given path.
-    pub fn save(&self, path: &str) -> Result<(), RomError> {
-        // Open the file
-        let mut file = File::create(path).map_err(RomError::IoError)?;
-
-        // Write the ROM to the file
-        file.write_all(&self.data).map_err(RomError::IoError)?;
-        // Write the references to the file
-        self.save_refs(path)?;
-
-        Ok(())
-    }
-
-    /// Saves the references to the `path.refs.json` file
-    pub fn save_refs(&self, path: &str) -> Result<(), RomError> {
-        // Serialize and write the refs to the file
-        let refs_path = format!("{}.refs.json", path);
-        let mut file = File::create(refs_path).map_err(RomError::IoError)?;
-        let json = serde_json::to_string_pretty(&self.refs).unwrap();
-        file.write_all(json.as_bytes()).map_err(RomError::IoError)?;
-
-        Ok(())
-    }
-
-    /// Returns the size of the ROM in bytes.
-    pub fn size(&self) -> usize {
-        self.data.len()
-    }
-
-    /// Reads a value of type `T` from the ROM at the given offset.
-    ///
-    /// # Examples
-    /// Read a byte from the ROM at offset 0.
-    /// ```
-    /// use poly3lib::rom::Rom;
-    /// let rom = Rom::load("roms/firered.gba").unwrap();
-    /// let byte = rom.read::<u8>(0).unwrap();
-    /// assert_eq!(byte, 127);
-    ///
-    /// // Or, equivalently:
-    /// let byte: u8 = rom.read(0).unwrap();
-    /// assert_eq!(byte, 127);
-    /// ```
-    ///
-    /// Read an array of i16s from the ROM at offset 0.
-    /// ```
-    /// use poly3lib::rom::Rom;
-    /// let rom = Rom::load("roms/firered.gba").unwrap();
-    /// let array = rom.read::<[i16; 4]>(0).unwrap();
-    /// assert_eq!(array, [127i16, -5632, -220, 20910]);
-    ///
-    /// // Or, equivalently
-    ///
-    /// let array: [i16; 4] = rom.read(0).unwrap();
-    /// assert_eq!(array, [127i16, -5632, -220, 20910]);
-    /// ```
-    pub fn read<T: GBAType>(&self, offset: usize) -> Result<T, GBAIOError> {
-        T::read_from(&self.data, offset)
-    }
-
-    /// Writes a value of type `T` to the ROM at the given offset.
-    ///
-    /// # Examples
-    /// Write a byte to the ROM at offset 0.
-    /// ```
-    /// use poly3lib::rom::Rom;
-    /// let mut rom = Rom::load("roms/firered.gba").unwrap();
-    /// rom.write(0, 0x12_u8).unwrap();
-    /// assert_eq!(rom.data[0], 0x12);
-    /// ```
-    ///
-    /// Write an array of i16s to the ROM at offset 0.
-    /// ```
-    /// use poly3lib::rom::Rom;
-    /// let mut rom = Rom::load("roms/firered.gba").unwrap();
-    /// rom.write(0, [0x12i16, 0x34i16, 0x56i16, 0x78i16]).unwrap();
-    /// assert_eq!(rom.data[0..8], [0x12, 0, 0x34, 0, 0x56, 0, 0x78, 0]);
-    /// ```
-    pub fn write<T: GBAType>(&mut self, offset: usize, value: T) -> Result<(), GBAIOError> {
-        value.write_to(&mut self.data, offset)
-    }
-
-    /// Returns whether a pointer is a valid offset into the ROM.
-    pub fn is_pointer_valid(&self, pointer: u32) -> bool {
-        pointer >= 0x08000000 && pointer < 0x08000000 + self.size() as u32
-    }
-
-    #[inline(always)]
-    /// Returns the byte read from the ROM at the given offset, assuming the offset is valid.
-    ///
-    /// # Examples
-    /// Read a byte from the ROM at offset 0.
-    /// ```
-    /// use poly3lib::rom::Rom;
-    /// let rom = Rom::load("roms/firered.gba").unwrap();
-    /// assert_eq!(rom.read_byte(0), 127);
-    /// ```
-    ///
-    /// # Panics
-    /// Panics if the offset is not valid.
-    pub fn read_byte(&self, offset: usize) -> u8 {
-        self.data[offset]
-    }
-
-    pub fn read_halfword(&self, offset: usize) -> u16 {
-        let byte1 = self.read_byte(offset);
-        let byte2 = self.read_byte(offset + 1);
-
-        (byte1 as u16) | ((byte2 as u16) << 8)
-    }
-
-    pub fn write_halfword(&mut self, offset: usize, value: u16) {
-        self.data[offset] = (value & 0xFF) as u8;
-        self.data[offset + 1] = (value >> 8) as u8;
-    }
-
-    /// Reads an halfword (u16) from the ROM, ignoring the alignment.
-    pub fn read_unaligned_halfword(&self, offset: usize) -> Result<u16, GBAIOError> {
-        let byte1 = self.read::<u8>(offset)?;
-        let byte2 = self.read::<u8>(offset + 1)?;
-
-        Ok((byte1 as u16) | ((byte2 as u16) << 8))
-    }
-
-    /// Read a pointer from the ROM ignoring the alignment.
-    pub fn read_unaligned_offset(&self, offset: usize) -> Result<u32, GBAIOError> {
-        let byte1 = self.read::<u8>(offset)?;
-        let byte2 = self.read::<u8>(offset + 1)?;
-        let byte3 = self.read::<u8>(offset + 2)?;
-        let byte4 = self.read::<u8>(offset + 3)?;
-
-        let pointer = (byte1 as u32)
-            | ((byte2 as u32) << 8)
-            | ((byte3 as u32) << 16)
-            | ((byte4 as u32) << 24);
-
-        match self.is_pointer_valid(pointer) {
-            true => Ok(pointer - 0x08000000),
-            false => Err(GBAIOError::InvalidOffset(pointer)),
-        }
-    }
-
-    /// Read a pointer from the ROM at the given offset.
-    ///
-    /// Converts it from a 0x08000000 base address to a 0x00000000 base address
-    /// if it lies in the correct range from 0x08000000 to 0x08000000 + rom.size().
-    pub fn read_ptr(&self, offset: usize) -> Result<usize, GBAIOError> {
-        let pointer = self.read::<u32>(offset)?;
-
-        match self.is_pointer_valid(pointer) {
-            false => Err(GBAIOError::InvalidOffset(pointer)),
-            true => Ok(pointer as usize - 0x08000000),
-        }
-    }
-
-    /// Write a pointer to the ROM at the given offset.s
-    ///
-    /// Converts it from a 0x00000000 base address to a 0x08000000 base address
-    /// only if it lies in the correct range from 0x00000000 to rom.size().
-    pub fn write_ptr(&mut self, offset: usize, ptr: usize) -> Result<(), GBAIOError> {
-        if ptr >= self.size() {
-            return Err(GBAIOError::InvalidOffset(ptr as u32));
-        }
-
-        self.write(offset, (ptr + 0x08000000) as u32)
-    }
-
-    /// Find a free offset in the ROM of the given size.
-    pub fn find_free_space(&self, size: usize, align: usize) -> Option<usize> {
-        fast_ops::find_free_space(&self.data, size, align)
-    }
-
-    /// Returns all offsets in the ROM that contain a reference
-    /// to the given `offset`.
-    pub fn find_references(&self, offset: usize) -> Vec<usize> {
-        fast_ops::find_references(&self.data, offset, 4)
-    }
-
-    /// Returns all offsets in the ROM that contain a reference
-    /// to the given `offset`, ignoring alignment.
-    pub fn find_references_unaligned(&self, offset: usize) -> Vec<usize> {
-        fast_ops::find_references(&self.data, offset, 1)
-    }
-
-    /// Find out if the data needs a new place in ROM and if so, find it.
-    /// Return the offset of the data in ROM, whether it changed or not.
-    /// In case everything succeeds, clear all the old data.
-    pub fn repoint_offset(&mut self, offset: usize, old: usize, new: usize) -> Option<usize> {
-        fast_ops::repoint_offset(&mut self.data, offset, old, new)
-    }
-
-    /// Returns everything that might be a valid offset in this ROM
-    /// together with the number of times it appears.
-    pub fn find_all_offsets(&self) -> HashMap<u32, u32> {
-        fast_ops::find_all_offsets(&self.data)
-    }
-
-    /// Finds the first occurrence of a byte starting from the given offset.
-    pub fn find_byte_after(&self, offset: usize, byte: u8) -> Option<usize> {
-        fast_ops::find_byte_after(&self.data, offset, byte)
-    }
-
-    /// Clears the data in the ROM at the given offset.
-    pub fn clear(&mut self, offset: usize, size: usize) -> Result<(), GBAIOError> {
-        if offset + size > self.size() {
-            return Err(GBAIOError::InvalidOffset(0x08000000 + offset as u32));
-        }
-        self.data[offset..offset + size].fill(0xFF);
-        Ok(())
-    }
-
-    /// Read compressed data from the ROM at the given offset.
-    pub fn read_lz77(&self, offset: usize) -> Result<Vec<u8>, GBAIOError> {
-        gba_types::lz77::read_lz77(&self.data, offset)
-    }
-
-    /// Replaces the Lz77 data at the given offset with the given data.
-    /// Returns the offset of the new data (since it may have changed).
-    pub fn replace_lz77_data(&mut self, offset: usize, data: &[u8]) -> Result<usize, GBAIOError> {
-        // Read the header of the old compressed data
-        let inflated_size = lz77_read_header(&self.data, offset)?;
-        // Find the old compressed data's size
-        let old_size = lz77_get_deflated_size(&self.data, inflated_size);
-
-        // Compute the new size of the data
-        let data = lz77_compress(&data, &Lz77Options::fastest());
-        let new_size = data.len();
-
-        // Repoint the data if necessary (consider the header)
-        let new_offset = self
-            .repoint_offset(offset, old_size + 4, new_size + 4)
-            .ok_or_else(|| GBAIOError::RepointingError)?;
-
-        // Write the header
-        self.data[new_offset] = 0x10;
-        self.data[new_offset + 1] = (inflated_size & 0xFF) as u8;
-        self.data[new_offset + 2] = ((inflated_size >> 8) & 0xFF) as u8;
-        self.data[new_offset + 3] = ((inflated_size >> 16) & 0xFF) as u8;
-        // Write the data
-        self.data[new_offset + 4..new_offset + 4 + new_size].copy_from_slice(&data);
-
-        Ok(new_offset)
-    }
-
-    /// Create a processor with this ROM in the address space `0x08000000-0x09FFFFFF`.
-    /// This [`Processor`] can be configured for debugging, for example it can be configured
-    /// to log memory accesses or function calls.
-    pub fn get_cpu(&self) -> Processor {
-        Processor::new(&self.data)
-    }
-}
-
-fn with_appropriate_byte_unit(size: &usize) -> String {
-    let bytes = byte_unit::Byte::from_bytes(*size as u64);
-    let bytes = bytes.get_appropriate_unit(true);
-    format!("{}", bytes)
 }
