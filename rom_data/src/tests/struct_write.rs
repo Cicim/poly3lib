@@ -167,6 +167,15 @@ fn write_pointer_structs() {
     rom.write(0x0, struct_value).unwrap();
     let read_pointer: RomPointer<RomPointer<u8>> = rom.read(0x0).unwrap();
     assert_eq!(read_pointer, pointer);
+
+    // rom_struct!(SingleVoidPointer { void *value; });
+    let pointer: RomPointer = RomPointer::NoData(0x4);
+    let struct_value = SingleVoidPointer {
+        value: pointer.clone(),
+    };
+    rom.write(0x0, struct_value).unwrap();
+    let read_pointer: RomPointer = rom.read(0).unwrap();
+    assert_eq!(read_pointer, pointer);
 }
 
 #[test]

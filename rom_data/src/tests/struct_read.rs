@@ -177,6 +177,12 @@ fn read_pointer_structs() {
     rom.write(0, pointer.clone()).unwrap();
     let struct_value: MultiplePointerDereference = rom.read(0x0).unwrap();
     assert_eq!(struct_value.value, pointer);
+
+    // rom_struct!(SingleVoidPointer { void *value; });
+    let pointer: RomPointer = RomPointer::NoData(0x4);
+    rom.write(0, pointer.clone()).unwrap();
+    let struct_value: SingleVoidPointer = rom.read(0x0).unwrap();
+    assert_eq!(struct_value.value, pointer);
 }
 
 #[test]

@@ -813,6 +813,12 @@ fn assert_derived_type_is_valid(derived: &DerivedType, name: &Ident) {
             // Cannot have pointers of non-byte boolean types
             assert_no_nonbyte_booleans(x, name);
 
+            // Check only for derived types (the void check should not be done here
+            // as this is the only place where it is valid)
+            if let Base(BaseType::Void) = x.as_ref() {
+                return;
+            }
+
             assert_derived_type_is_valid(x, name)
         }
     }

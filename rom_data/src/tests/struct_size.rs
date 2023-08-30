@@ -37,6 +37,7 @@ fn test_sizes() {
     assert_eq!(SingleU8Pointer::get_size(&fire), 4);
     assert_eq!(SingleU16Pointer::get_size(&fire), 4);
     assert_eq!(SingleU32Pointer::get_size(&fire), 4);
+    assert_eq!(SingleVoidPointer::get_size(&fire), 4);
     assert_eq!(MultiplePointerDereference::get_size(&fire), 4);
 
     // Complex
@@ -102,6 +103,7 @@ fn test_alignments() {
     assert_eq!(SingleU8Pointer::get_alignment(&fire), 4);
     assert_eq!(SingleU16Pointer::get_alignment(&fire), 4);
     assert_eq!(SingleU32Pointer::get_alignment(&fire), 4);
+    assert_eq!(SingleVoidPointer::get_alignment(&fire), 4);
     assert_eq!(MultiplePointerDereference::get_alignment(&fire), 4);
 
     // Complex

@@ -71,6 +71,7 @@ rom_struct!(BitFieldPair {
 rom_struct!(SingleU8Pointer { u8 *value; });
 rom_struct!(SingleU16Pointer { u16 *value; });
 rom_struct!(SingleU32Pointer { u32 *value; });
+rom_struct!(SingleVoidPointer { void *value; });
 
 rom_struct!(MultiplePointerDereference { u8 **value; });
 
