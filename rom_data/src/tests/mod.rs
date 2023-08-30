@@ -4,6 +4,7 @@ use crate::{self as rom_data, RomBase, RomData};
 use struct_macro::rom_struct;
 
 // Test files
+mod rom_values;
 mod struct_read;
 mod struct_size;
 mod struct_write;

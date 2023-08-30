@@ -5,7 +5,7 @@
 use bin16_macro::bin16;
 
 /// A Thumb instruction.
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Instruction {
     // ANCHOR 1 -- Move shifted register
     //     000 op2 imm5 Rs Rd where op2 != 0b11

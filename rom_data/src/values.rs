@@ -15,7 +15,7 @@ pub trait RomValues: Sized {
 }
 
 /// Error type for reading and writing values from the ROM.
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq, Eq)]
 pub enum RomValueError {
     #[error("Value read not implemented")]
     NotImplemented,
@@ -46,7 +46,7 @@ pub enum RomValueType {
     /// mov rx, #A
     /// lsl rx, #B
     /// ```
-    LslMov,
+    MovLsl,
 
     /// The value `S` read from the instruction `lsr rx, #S`.
     Lsr,
@@ -63,7 +63,7 @@ impl RomValueType {
             Halfword => Ok(rom.read_halfword(offset)? as u32),
             Byte => Ok(rom.read_byte(offset)? as u32),
 
-            LslMov => {
+            MovLsl => {
                 // Decode the MOV instruction
                 let mov = match rom.decode_instruction(offset)? {
                     Some(Instruction::MovImm { imm8, .. }) => imm8,
@@ -102,7 +102,7 @@ impl RomValueType {
             Halfword => rom.write_halfword(offset, value as u16)?,
             Byte => rom.write_byte(offset, value as u8)?,
 
-            LslMov => {
+            MovLsl => {
                 // Get the base and shift
                 let left_shift = value.trailing_zeros() as u8;
                 let base = value >> left_shift;
