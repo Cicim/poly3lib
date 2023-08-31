@@ -130,6 +130,13 @@ rom_struct!(TwoMissingFields {
     u16 value4;
 });
 
+rom_struct!(SwapFields {
+    u8 value1;
+    #[for(base(Ruby, Sapphire, Emerald), swap(value3))]
+    void* value2;
+    void* value3;
+});
+
 // ANCHOR Vector
 rom_struct!(U8Vector {
     u8 length;

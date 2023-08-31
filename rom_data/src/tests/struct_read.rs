@@ -308,6 +308,25 @@ fn read_default_attribute() {
 }
 
 #[test]
+fn read_swap_attribute() {
+    let mut fire = create_rom(RomBase::FireRed);
+    let mut emer = create_rom(RomBase::Emerald);
+
+    fire.write_byte(0, 42).unwrap();
+    fire.write_offset(4, 1).unwrap();
+    fire.write_offset(8, 2).unwrap();
+    emer.write_byte(0, 42).unwrap();
+    emer.write_offset(4, 2).unwrap();
+    emer.write_offset(8, 1).unwrap();
+
+    // Ensure the two structs are identical after reading
+    let emer_struct: SwapFields = emer.read(0x0).unwrap();
+    let fire_struct: SwapFields = fire.read(0x0).unwrap();
+
+    assert_eq!(emer_struct.value1, fire_struct.value1);
+}
+
+#[test]
 fn read_vectors() {
     // rom_struct!(U8Vector {
     //     u8 length;

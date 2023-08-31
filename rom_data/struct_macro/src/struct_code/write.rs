@@ -14,7 +14,7 @@ pub fn generate_writable_implementation(parsed: &ParsedStruct) -> TokenStream {
 
     quote! {
         impl rom_data::types::RomWritableType for #name {
-            fn write_to(self, rom: &mut rom_data::RomData, offset: usize) -> Result<(), rom_data::RomIoError> {
+            fn write_to(mut self, rom: &mut rom_data::RomData, offset: usize) -> Result<(), rom_data::RomIoError> {
                 #write
             }
         }
@@ -62,12 +62,17 @@ fn generate_write_to(parsed: &ParsedStruct) -> TokenStream {
         }
     }
 
+    let swap_fields = build_field_swapping(parsed);
+
     quote! {
         // Assert the struct alignment
         let struct_alignment = <Self as rom_data::types::RomSizedType>::get_alignment(rom);
         if offset % struct_alignment != 0 {
             return Err(rom_data::RomIoError::Misaligned(offset, struct_alignment as u8))
         }
+
+        // Swap the fields in the struct if necessary
+        #swap_fields
 
         // Allocate the struct's length
         let struct_length = rom.allocate(offset, <Self as rom_data::types::RomSizedType>::get_size(rom))?;
@@ -87,6 +92,9 @@ fn build_basic_field(field: &StructBasicField) -> TokenStream {
             // When there is a default value, it means that the field should be skipped,
             // thus we have to explicitly return no writing code
             StructAttributeAction::Default(_) => Some(quote!()),
+            // Swapping is applied at the field level
+            // REVIEW Review
+            StructAttributeAction::Swap(_) => None,
         },
         build_derived_type(&field.ty),
     );
@@ -163,4 +171,35 @@ fn build_bitfields(field: &StructBitFields) -> TokenStream {
         let value = [#array_of_values];
         bitfields.write_to(rom, offset, value)?;
     }
+}
+
+/// Builds the code to swap fields if necessary
+fn build_field_swapping(parsed: &ParsedStruct) -> TokenStream {
+    let mut code = quote!();
+
+    for field in parsed.fields.iter() {
+        match field {
+            // Check only fields with attributes
+            StructField::Field(StructBasicField {
+                name, attributes, ..
+            }) => {
+                code.extend(build_attribute_condition(
+                    attributes,
+                    |action| {
+                        if let StructAttributeAction::Swap(other) = action {
+                            Some(quote! {
+                                std::mem::swap(&mut self.#name, &mut self.#other);
+                            })
+                        } else {
+                            None
+                        }
+                    },
+                    quote!(),
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    code
 }

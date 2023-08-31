@@ -32,8 +32,6 @@ fn generate_read_from(parsed: &ParsedStruct) -> TokenStream {
         let mut offset = offset;
     };
 
-    let mut constructor = quote! {};
-
     for (i, field) in parsed.fields.iter().enumerate() {
         // Every field but the first, needs to be aligned to its preferred alignment
         if i != 0 {
@@ -59,30 +57,6 @@ fn generate_read_from(parsed: &ParsedStruct) -> TokenStream {
         };
         read_fields.extend(code);
 
-        // Add the field names to the struct
-        match field {
-            StructField::Field(StructBasicField { name, .. }) => {
-                let read_name = format_ident!("{}{}", READ_PREFIX, name);
-                constructor.extend(quote! {
-                    #name: #read_name,
-                })
-            }
-            StructField::BitField(StructBitFields { names, .. }) => {
-                for name in names {
-                    let read_name = format_ident!("{}{}", READ_PREFIX, name);
-                    constructor.extend(quote! {
-                        #name: #read_name,
-                    })
-                }
-            }
-            StructField::Vector(StructVectorField { name, .. }) => {
-                let read_name = format_ident!("{}{}", READ_PREFIX, name);
-                constructor.extend(quote! {
-                    #name: #read_name,
-                })
-            }
-        }
-
         // Once the field is read, the offset needs to be incremented by the size of the field
         // (if it is not the last field)
         if i != parsed.fields.len() - 1 {
@@ -106,6 +80,14 @@ fn generate_read_from(parsed: &ParsedStruct) -> TokenStream {
         }
     }
 
+    let mut constructor = quote!();
+    // Finally, build the constructor
+    for field in &parsed.fields {
+        constructor.extend(build_constructor_field(field));
+    }
+
+    let swap_fields = build_field_swapping(parsed);
+
     quote! {
         // Assert the struct alignment
         let struct_alignment = <Self as rom_data::types::RomSizedType>::get_alignment(rom);
@@ -115,9 +97,13 @@ fn generate_read_from(parsed: &ParsedStruct) -> TokenStream {
 
         #read_fields
 
-        Ok(Self {
+        let mut read_struct = Self {
             #constructor
-        })
+        };
+
+        #swap_fields
+
+        Ok(read_struct)
     }
 }
 
@@ -141,17 +127,20 @@ fn build_basic_field(field: &StructBasicField) -> TokenStream {
     let attr_if_chain = build_attribute_condition(
         &field.attributes,
         |action| {
-            Some(match action {
+            match action {
                 // Instead of reading the type with ty, you should read it with other
                 StructAttributeAction::Type(other) => {
                     let ty = build_base_type(other);
 
-                    quote! { #ty as _ }
+                    Some(quote! { #ty as _ })
                 }
 
                 // Instead of reading the value, set the given default
-                StructAttributeAction::Default(value) => quote!(#value),
-            })
+                StructAttributeAction::Default(value) => Some(quote!(#value)),
+
+                // The swap is applied at the end
+                StructAttributeAction::Swap(_) => None,
+            }
         },
         ty,
     );
@@ -237,4 +226,56 @@ fn build_bitfields(field: &StructBitFields) -> TokenStream {
 
         #assign_to_all
     }
+}
+
+// ANCHOR Struct fields
+/// Generate a field for the constructor
+fn build_constructor_field(field: &StructField) -> TokenStream {
+    // Add the field names to the struct
+    match field {
+        StructField::Field(StructBasicField { name, .. })
+        | StructField::Vector(StructVectorField { name, .. }) => {
+            let read_name = format_ident!("{}{}", READ_PREFIX, name);
+            quote!(#name: #read_name,)
+        }
+        StructField::BitField(StructBitFields { names, .. }) => {
+            let mut res = quote!();
+            for name in names {
+                let read_name = format_ident!("{}{}", READ_PREFIX, name);
+                res.extend(quote!(#name: #read_name,))
+            }
+            res
+        }
+    }
+}
+
+/// Builds the code to swap fields if necessary
+fn build_field_swapping(parsed: &ParsedStruct) -> TokenStream {
+    let mut code = quote!();
+
+    for field in parsed.fields.iter() {
+        match field {
+            // Check only fields with attributes
+            StructField::Field(StructBasicField {
+                name, attributes, ..
+            }) => {
+                code.extend(build_attribute_condition(
+                    attributes,
+                    |action| {
+                        if let StructAttributeAction::Swap(other) = action {
+                            Some(quote! {
+                                std::mem::swap(&mut read_struct.#name, &mut read_struct.#other);
+                            })
+                        } else {
+                            None
+                        }
+                    },
+                    quote!(),
+                ));
+            }
+            _ => {}
+        }
+    }
+
+    code
 }

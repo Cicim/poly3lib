@@ -58,6 +58,7 @@ mod struct_code;
 /// + Skipping reading one field in a ROM base by defining a default
 /// + Reading a value with a different type (e.g. `u32` instead of `i8`), recomputing
 ///   size and alignment as necessary.
+/// + Swapping two fields of the same type before reading or after writing.
 ///
 /// Attributes are defined by putting a `#[...]` block before the field name. If more
 /// than one field is defined in a line, the attributes apply to all fields in that line.
@@ -70,6 +71,8 @@ mod struct_code;
 ///     u8 field1;
 ///     #[for(base(Emerald), type(u32))]
 ///     u16 field2, field3;
+///     #[for(base(Emerald), swap(field2))]
+///     u16 field4
 ///     ...
 /// });
 /// ```

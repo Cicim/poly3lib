@@ -63,6 +63,10 @@ fn test_sizes() {
     assert_eq!(TwoMissingFields::get_size(&ruby), 4);
     assert_eq!(TwoMissingFields::get_size(&emer), 12);
 
+    assert_eq!(SwapFields::get_size(&fire), 12);
+    assert_eq!(SwapFields::get_size(&ruby), 12);
+    assert_eq!(SwapFields::get_size(&emer), 12);
+
     // Vectors
     assert_eq!(U8Vector::get_size(&fire), 8);
     assert_eq!(ComplexVector::get_size(&fire), 12);
@@ -128,6 +132,10 @@ fn test_alignments() {
     assert_eq!(TwoMissingFields::get_alignment(&fire), 4);
     assert_eq!(TwoMissingFields::get_alignment(&ruby), 2);
     assert_eq!(TwoMissingFields::get_alignment(&emer), 4);
+
+    assert_eq!(SwapFields::get_alignment(&fire), 4);
+    assert_eq!(SwapFields::get_alignment(&ruby), 4);
+    assert_eq!(SwapFields::get_alignment(&emer), 4);
 
     // Vectors
     assert_eq!(U8Vector::get_alignment(&fire), 4);

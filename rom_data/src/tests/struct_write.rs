@@ -355,6 +355,31 @@ fn write_default_attribute() {
 }
 
 #[test]
+fn write_swap_attribute() {
+    let mut fire = create_rom(RomBase::FireRed);
+    let mut emer = create_rom(RomBase::Emerald);
+
+    // rom_struct!(SwapFields {
+    //     u8 value1;
+    //     #[for(base(Ruby, Sapphire, Emerald), swap(value3))]
+    //     void* value2;
+    //     void* value3;
+    // });
+    let struct_value = SwapFields {
+        value1: 10,
+        value2: RomPointer::NoData(0x10),
+        value3: RomPointer::NoData(0x14),
+    };
+    fire.write(0x0, struct_value.clone()).unwrap();
+    emer.write(0x0, struct_value).unwrap();
+
+    assert_eq!(fire.read_byte(0).unwrap(), emer.read_byte(0).unwrap());
+    // Assert that the two values are inverted
+    assert_eq!(fire.read_offset(4).unwrap(), emer.read_offset(8).unwrap());
+    assert_eq!(fire.read_offset(8).unwrap(), emer.read_offset(4).unwrap());
+}
+
+#[test]
 fn write_vector_structs() {
     // rom_struct!(U8Vector {
     //     u8 length;

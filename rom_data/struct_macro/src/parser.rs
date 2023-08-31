@@ -420,6 +420,17 @@ fn parse_attribute_action(span: Span, stream: &mut IntoIter) -> StructAttributeA
             StructAttributeAction::Type(base_type)
         }
 
+        // swap(Ident)
+        "swap" => {
+            // Get the identifier
+            let ident = match next_not_eof!(ident, group, "identifier") {
+                TokenTree::Ident(x) => x,
+                x => abort!(x, "Expected identifier, found `{}`", x),
+            };
+
+            StructAttributeAction::Swap(ident)
+        }
+
         _ => abort!(ident, "Unknown attribute action `{}`", ident),
     }
 }
@@ -438,14 +449,16 @@ fn assert_valid_attributes(field: &ParsedField) {
     }
 
     if let ParsedFieldType::Type(derived) = ty {
-        if !derived.is_integer() {
-            // REVIEW Now the only assumption is that attributes only apply to integers
-            abort!(name, "Attributes are only allowed on integer types");
-        }
-
         for attr in attributes {
             match &attr.action {
                 StructAttributeAction::Type(ty) => {
+                    if !derived.is_integer() {
+                        // REVIEW Type attributes may be allowed on non-integer types
+                        abort!(
+                            name,
+                            "A type() action can only be defined for integer types"
+                        );
+                    }
                     // Make sure every type is an integer
                     if !ty.is_integer() {
                         // REVIEW Move this check to the action reading function
@@ -454,11 +467,10 @@ fn assert_valid_attributes(field: &ParsedField) {
                         abort!(name, "A type() action does not contain an integer")
                     }
                 }
-                StructAttributeAction::Default(_) => {
-                    // TODO Make sure the literal is a valid integer or
-                    // move this check to the attribute parser.
-                }
+                _ => {}
             }
+            // TODO Define conditions for default action
+            // TODO Define conditions for swap action
         }
     }
 }
@@ -992,6 +1004,9 @@ fn compose_struct(name: Ident, in_fields: Vec<ParsedField>, flags: StructFlags) 
         }));
     }
 
+    // Check swap attributes
+    check_swap_attributes(&fields);
+
     ParsedStruct {
         name,
         fields,
@@ -1028,4 +1043,54 @@ fn replace_dollars(code: TokenStream) -> TokenStream {
     }
 
     output
+}
+
+/// Ensures that swap() targets have the same type as the field
+fn check_swap_attributes(fields: &Vec<StructField>) {
+    for field in fields {
+        if let StructField::Field(StructBasicField {
+            name,
+            ty,
+            attributes,
+        }) = &field
+        {
+            for attr in attributes {
+                // For each swap action contained in this type
+                if let StructAttributeAction::Swap(ident) = &attr.action {
+                    // Get the referenced field
+                    let referenced_field = fields.iter().find(|x| {
+                        if let StructField::Field(StructBasicField { name, .. }) = x {
+                            name.to_string() == ident.to_string()
+                        } else {
+                            false
+                        }
+                    });
+
+                    if referenced_field.is_none() {
+                        abort!(ident, "Cannot find field to swap with: `{}`", ident);
+                    }
+
+                    if let Some(StructField::Field(StructBasicField {
+                        ty: ref_ty,
+                        name: ref_name,
+                        ..
+                    })) = referenced_field
+                    {
+                        if ref_name.to_string() == name.to_string() {
+                            abort!(ident, "Cannot swap `{}` with itself", name);
+                        }
+
+                        if ty != ref_ty {
+                            abort!(
+                                ident,
+                                "Cannot swap `{}` with `{}` because they have different types",
+                                name,
+                                ident
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

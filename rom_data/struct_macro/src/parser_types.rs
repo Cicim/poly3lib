@@ -214,15 +214,25 @@ pub enum StructAttributeAction {
     /// #[for(..., default(0))]
     /// ```
     Default(Literal),
+
+    /// After reading and before writing, swap this field for this other one.
+    ///
+    /// ```
+    /// #[for(..., swap(field_name))]
+    /// ```
+    Swap(Ident),
 }
 
 impl std::fmt::Debug for StructAttributeAction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use StructAttributeAction::*;
+
         match self {
-            StructAttributeAction::Type(basetype) => write!(f, "type({:?})", basetype),
-            StructAttributeAction::Default(literal) => {
+            Type(basetype) => write!(f, "type({:?})", basetype),
+            Default(literal) => {
                 write!(f, "default({})", literal.to_string())
             }
+            Swap(ident) => write!(f, "swap({})", ident),
         }
     }
 }
@@ -230,6 +240,7 @@ impl std::fmt::Debug for StructAttributeAction {
 // ANCHOR Types
 
 /// A type with modifiers applied to it.
+#[derive(PartialEq, Eq)]
 pub enum DerivedType {
     /// A base type with no modifiers
     Base(BaseType),
@@ -259,7 +270,7 @@ impl std::fmt::Debug for DerivedType {
 }
 
 /// Type that can be found at the start of a type definition
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum BaseType {
     // TODO Support for Unions
     /// A struct with the identifier given as name
@@ -454,6 +465,8 @@ impl GetSizeAndAlignment for StructField {
                         StructAttributeAction::Type(ty) => Some(ty.get_size().get_dimension_code()),
                         // Otherwise, return 0
                         StructAttributeAction::Default(_) => Some(quote! { 0 }),
+                        // Swap attributes have no say in the size
+                        StructAttributeAction::Swap(_) => None,
                     },
                     ty.get_size().get_dimension_code(),
                 ))
@@ -481,6 +494,8 @@ impl GetSizeAndAlignment for StructField {
                         }
                         // If it can be absent, return 1 (it does not change alignment)
                         StructAttributeAction::Default(_) => Some(quote!(1)),
+                        // Swap attributes have no say in the alignment
+                        StructAttributeAction::Swap(_) => None,
                     },
                     ty.get_alignment().get_dimension_code(),
                 ))
@@ -577,7 +592,7 @@ impl GetSizeAndAlignment for SizedBaseType {
 /// only the `else_action` code is returned with no if.
 pub fn build_attribute_condition(
     attributes: &Vec<StructFieldAttribute>,
-    transformer: fn(&StructAttributeAction) -> Option<TokenStream>,
+    transformer: impl Fn(&StructAttributeAction) -> Option<TokenStream>,
     else_action: TokenStream,
 ) -> TokenStream {
     // The codes for each attribute in the shape of if #cond { #action }
@@ -604,7 +619,7 @@ pub fn build_attribute_condition(
 
     // If no code was returned, return the else action
     if codes.is_empty() {
-        quote! { #else_action; }
+        quote! { #else_action }
     } else {
         let mut result = quote! {};
         // Otherwise, return the code for all the attributes
