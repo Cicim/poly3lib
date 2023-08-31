@@ -61,7 +61,7 @@ impl Debug for RomColor {
         let hex_string = format!("{}", hex);
 
         // If the first bit is set, the color is most likely invalid
-        if self.is_valid() {
+        if !self.is_valid() {
             write!(f, "{}", hex_string.strikethrough().red())
         }
         // Else decide whether to draw the text with a black or white foreground

@@ -24,8 +24,8 @@ pub struct Lz77DecompressedData {
 use crate as rom_data;
 use struct_macro::rom_struct;
 rom_struct!(Lz77Header {
-    u32 magic:8;
     u32 inflated_size:24;
+    u32 magic:8;
 });
 
 impl Lz77Header {

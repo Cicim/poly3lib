@@ -58,34 +58,43 @@ impl RomTile {
             }
         }
     }
+
+    /// Prints the given row of the given tile.
+    pub(crate) fn print_tile_row(&self, f: &mut std::fmt::Formatter, y: usize) -> std::fmt::Result {
+        use colored::Colorize;
+
+        for x in 0..8 {
+            let pal_idx = self.get_pixel(x, y);
+            if pal_idx == 0 {
+                write!(f, "{}", " •".truecolor(80, 80, 80))?;
+                continue;
+            }
+
+            // Get the color to show
+            let r = 3 * pal_idx;
+            let g = 2 * pal_idx;
+            let b = 8 * pal_idx + 24;
+            // Get the string to format
+            let hex = format!(" {:01X}", pal_idx).on_truecolor(r, g, b);
+
+            if pal_idx > 10 {
+                write!(f, "{}", hex.black())?;
+            } else {
+                write!(f, "{}", hex.white())?;
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl Debug for RomTile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use colored::Colorize;
-
         for y in 0..8 {
-            for x in 0..8 {
-                let pal_idx = self.get_pixel(x, y);
-                if pal_idx == 0 {
-                    write!(f, " •")?;
-                    continue;
-                }
-
-                // Get the color to show
-                let r = 3 * pal_idx;
-                let g = 2 * pal_idx;
-                let b = 8 * pal_idx + 24;
-                // Get the string to format
-                let hex = format!(" {:01X}", pal_idx).on_truecolor(r, g, b);
-
-                if pal_idx > 10 {
-                    write!(f, "{}", hex.black())?;
-                } else {
-                    write!(f, "{}", hex.white())?;
-                }
+            self.print_tile_row(f, y)?;
+            if y != 7 {
+                writeln!(f)?;
             }
-            writeln!(f)?;
         }
 
         Ok(())

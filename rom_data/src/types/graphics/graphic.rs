@@ -8,6 +8,7 @@ use crate::{
 use super::RomTile;
 
 /// Compressed or uncompressed collection of [`RomTile`]s.
+#[derive(Clone, PartialEq, Eq)]
 pub enum RomGraphic {
     /// New [`RomGraphic`] to write to ROM.
     New(Vec<RomTile>),
@@ -178,6 +179,36 @@ impl RomGraphic {
         }
 
         bytes
+    }
+}
+
+impl std::fmt::Debug for RomGraphic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Write a small header to print the main info
+        match self {
+            RomGraphic::New(_) => writeln!(f, "Graphics::New(["),
+            RomGraphic::Compressed { offset, .. } => {
+                writeln!(f, "Graphics::Compressed(${:07x} [", offset)
+            }
+            RomGraphic::Uncompressed {
+                offset, read_len, ..
+            } => writeln!(f, "Graphics::Uncompressed(${:07x} {} [", offset, read_len),
+        }?;
+
+        // Write the tiles in rows of 4
+        const COLS: usize = 8;
+        for row in self.tiles().chunks(COLS) {
+            for tiley in 0..8 {
+                write!(f, "   ")?;
+                for tile in row {
+                    tile.print_tile_row(f, tiley)?;
+                    write!(f, " ")?;
+                }
+                writeln!(f, "")?;
+            }
+        }
+
+        write!(f, "]")
     }
 }
 
