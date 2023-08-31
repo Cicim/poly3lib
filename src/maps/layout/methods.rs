@@ -15,6 +15,11 @@ impl MapLayoutTable for Rom {
     fn read_map_layout_header(&self, index: u16) -> MapLayoutResult<MapLayout> {
         // Get the pointer to the layout
         let pointer = get_map_layout_pointer(self, index)?;
+        // If the pointer is NULL, return a missing layout error
+        if self.data.read_word(pointer)? == 0 {
+            return Err(MapLayoutError::MissingLayout(index));
+        }
+
         // Make sure the layout is not invalid
         let offset = self.data.read_offset(pointer)?;
         // Read the header
@@ -37,6 +42,8 @@ impl MapLayoutTable for Rom {
 
         // Read the MapGrid masks to pass to the two readers
         let masks = MapGridMasks::read_or_default(&self.data);
+
+        // TODO What happens if any of those are NULL?
 
         // Read the map grids
         let map_data = MapGrid::read(&self.data, map_offset, map_width, map_height, &masks)?;

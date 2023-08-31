@@ -65,9 +65,6 @@ impl MapGrid {
         height: u16,
         masks: &MapGridMasks,
     ) -> Result<MapGrid, MapGridError> {
-        if width * height == 0 {
-            return Err(MapGridError::MapAreaCannotBeZero(width, height));
-        }
         if (width + 15) * (height + 14) > 0x2800 {
             return Err(MapGridError::MapAreaTooBig(width, height));
         }
@@ -148,8 +145,6 @@ pub enum MapGridError {
     OutOfBounds,
     #[error("Map size is too big, found {0}x{1}")]
     MapAreaTooBig(u16, u16),
-    #[error("Map area cannot be 0, found {0}x{1}")]
-    MapAreaCannotBeZero(u16, u16),
 }
 
 // ANCHOR Masks

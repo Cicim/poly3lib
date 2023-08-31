@@ -101,25 +101,15 @@ pub enum MapLayoutError {
 
     #[error("Layout indices start at 1")]
     IndicesStartAtOne,
-    #[error("Layout {0} is missing the header")]
-    MissingLayout(u16),
     #[error("Layout {0} is out of bounds")]
     IndexOutOfBounds(u16),
-
-    #[error("Invalid layout offset {0:#010x}")]
-    InvalidOffset(u32),
+    #[error("Layout {0} is missing the header")]
+    MissingLayout(u16),
     #[error("Invalid map data offset")]
     InvalidMap,
-
-    #[error("Cannot repoint the map layout table")]
-    CannotRepointTable,
-    #[error("Cannot repoint layout header")]
-    CannotRepointHeader,
     #[error("The map layout table is full")]
     TableFull,
 
-    #[error("Cannot get the number of bits per block")]
-    CannotGetBitsPerBlock,
     #[error("Map grid error: {0}")]
     MapGridError(#[from] MapGridError),
     #[error("IO Error")]
