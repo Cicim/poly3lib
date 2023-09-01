@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{collections::HashMap, fmt::Display};
 
 use colored::Colorize;
 use serde::{Deserialize, Serialize};
@@ -67,11 +67,16 @@ impl Display for Rom {
 }
 
 // ANCHOR Rom references
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize, Clone)]
 /// The references to the various tables in the ROM.
+///
+/// Also contains values that are not references to tables.
 pub struct RomReferences {
     /// The table of all layouts in the ROM.
     pub map_layouts: Option<RomTable>,
+
+    /// The list of tilesets loaded from the ROM.
+    pub map_tilesets: Option<HashMap<Offset, crate::maps::tileset::TilesetShortInfo>>,
 }
 
 impl Display for RomReferences {
@@ -90,6 +95,25 @@ impl Display for RomReferences {
 
         // ANCHOR Fields of rom references
         write_field!(map_layouts);
+
+        // Printing map tilesets
+        match self.map_tilesets {
+            Some(ref map) => {
+                // Count the primary ones
+                let primary_count = map.values().filter(|t| t.is_primary).count();
+                let secondary_count = map.len() - primary_count;
+                writeln!(
+                    f,
+                    "  map_tilesets: {} loaded ({} primary, {} secondary)",
+                    map.len(),
+                    primary_count,
+                    secondary_count
+                )?;
+            }
+            None => {
+                writeln!(f, "  map_tilesets: {}", "Not loaded".italic())?;
+            }
+        }
 
         Ok(())
     }

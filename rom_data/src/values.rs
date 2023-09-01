@@ -50,6 +50,11 @@ pub enum RomValueType {
 
     /// The value `S` read from the instruction `lsr rx, #S`.
     Lsr,
+
+    /// The value `imm8` of a `mov rx, #imm8` instruction.
+    MovImm,
+    /// The value `imm8` of a `add rx, #imm8` instruction.
+    AddImm8,
 }
 
 impl RomValueType {
@@ -83,6 +88,14 @@ impl RomValueType {
             Lsr => match rom.decode_instruction(offset)? {
                 Some(Instruction::LsrImm { imm5, .. }) => Ok(imm5 as u32),
                 any => Err(RomValueError::IncorrectInstruction(offset, "LSR", any)),
+            },
+            AddImm8 => match rom.decode_instruction(offset)? {
+                Some(Instruction::AddImm8 { imm8, .. }) => Ok(imm8 as u32),
+                any => Err(RomValueError::IncorrectInstruction(offset, "ADD", any)),
+            },
+            MovImm => match rom.decode_instruction(offset)? {
+                Some(Instruction::MovImm { imm8, .. }) => Ok(imm8 as u32),
+                any => Err(RomValueError::IncorrectInstruction(offset, "MOV", any)),
             },
         }
     }
@@ -150,6 +163,32 @@ impl RomValueType {
                     any => Err(RomValueError::IncorrectInstruction(offset, "LSR", any))?,
                 };
             }
+            AddImm8 => {
+                // Can only replace the instruction
+                match rom.decode_instruction(offset)? {
+                    Some(Instruction::AddImm8 { rd, .. }) => rom.encode_instruction(
+                        offset,
+                        Instruction::AddImm8 {
+                            rd,
+                            imm8: value as u8,
+                        },
+                    )?,
+                    any => Err(RomValueError::IncorrectInstruction(offset, "ADD", any))?,
+                };
+            }
+            MovImm => {
+                // Can only replace the instruction
+                match rom.decode_instruction(offset)? {
+                    Some(Instruction::MovImm { rd, .. }) => rom.encode_instruction(
+                        offset,
+                        Instruction::MovImm {
+                            rd,
+                            imm8: value as u8,
+                        },
+                    )?,
+                    any => Err(RomValueError::IncorrectInstruction(offset, "MOV", any))?,
+                };
+            }
         };
 
         Ok(())
@@ -163,19 +202,18 @@ pub enum RomValueTransformation {
 
     /// Takes a u32 and inverts only the lower 16 bits
     Not16,
+    /// Performs a negation of the word
+    Neg,
+
+    /// Adds the given value
+    Add(u32),
+    /// Subtracts the given value
+    Sub(u32),
+    /// Multiplies by the given value
+    Mul(u32),
 }
 
 impl RomValueTransformation {
-    /// Invert the transformation to read a value
-    pub fn invert_transform(self, value: u32) -> u32 {
-        use RomValueTransformation::*;
-
-        match self {
-            StackedHalfwords => value & 0xFFFF,
-            Not16 => value ^ 0xFFFF,
-        }
-    }
-
     /// Apply the transformation before writing
     pub fn apply_transform(self, value: u32) -> u32 {
         use RomValueTransformation::*;
@@ -183,6 +221,26 @@ impl RomValueTransformation {
         match self {
             StackedHalfwords => ((value & 0xffff) << 16) | (value & 0xffff),
             Not16 => value ^ 0xFFFF,
+            Neg => -(value as i32) as u32,
+
+            Add(other) => value + other,
+            Sub(other) => value - other,
+            Mul(other) => value * other,
+        }
+    }
+
+    /// Invert the transformation to read a value
+    pub fn invert_transform(self, value: u32) -> u32 {
+        use RomValueTransformation::*;
+
+        match self {
+            StackedHalfwords => value & 0xFFFF,
+            Not16 => value ^ 0xFFFF,
+            Neg => -(value as i32) as u32,
+
+            Add(other) => value - other,
+            Sub(other) => value + other,
+            Mul(other) => value / other,
         }
     }
 }

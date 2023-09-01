@@ -8,6 +8,8 @@ use crate::{Rom, RomTable};
 mod mapgrid;
 pub use mapgrid::{MapGrid, MapGridError, MapGridMasks, MapGridMasksPatchError};
 
+use super::tileset::{MapTilesetError, TilesetPair};
+
 /// Implementation of the [`MapLayoutTable`] trait.
 mod methods;
 
@@ -39,6 +41,24 @@ impl MapLayout {
         //  5. The tileset pointers must be valid
             && self.primary_tileset.is_valid() && self.secondary_tileset.is_valid()
     }
+
+    /// Returns the [`TilesetPair`] for this layout
+    pub fn read_tilesets(&self, rom: &Rom) -> Result<TilesetPair, MapTilesetError> {
+        // Get the offset of the primary tileset
+        let primary_offset = self
+            .primary_tileset
+            .offset()
+            .ok_or(MapTilesetError::InvalidPrimaryOffset)?;
+
+        // Get the offset of the secondary tileset
+        let secondary_offset = self
+            .secondary_tileset
+            .offset()
+            .ok_or(MapTilesetError::InvalidSecondaryOffset)?;
+
+        // Read the tilesets
+        TilesetPair::read(rom, primary_offset, secondary_offset)
+    }
 }
 
 // ANCHOR MapLayoutData struct
@@ -54,6 +74,14 @@ pub struct MapLayoutData {
     pub map_data: MapGrid,
     /// The border grid data (metatile, elevation and collision)
     pub border_data: MapGrid,
+}
+
+impl MapLayoutData {
+    /// Reads the tilesets associated with this layout.
+    #[inline]
+    pub fn read_tilesets(&self, rom: &Rom) -> Result<TilesetPair, MapTilesetError> {
+        self.header.read_tilesets(rom)
+    }
 }
 
 // ANCHOR MapLayoutTable trait
@@ -118,7 +146,7 @@ pub enum MapLayoutError {
 
 // ANCHOR Init function
 /// Initializes the table of map layouts in the ROM if it is not already initialized.
-pub(crate) fn init_table(rom: &mut Rom) -> Result<(), RomIoError> {
+pub fn init_table(rom: &mut Rom) -> Result<(), RomIoError> {
     // If already initialized, return
     if rom.refs.map_layouts.is_some() {
         return Ok(());
