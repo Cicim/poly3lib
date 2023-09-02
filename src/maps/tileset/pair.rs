@@ -1,6 +1,6 @@
 use rom_data::{
     types::{RomPalette, RomTile},
-    values, Offset, RomBase, RomData, RomValues,
+    Offset, RomBase, RomData, RomValues,
 };
 use serde::Serialize;
 

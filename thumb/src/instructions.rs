@@ -456,128 +456,128 @@ pub enum Instruction {
 impl Into<u16> for Instruction {
     /// Returns the 16-bit representation of the instruction.
     fn into(self) -> u16 {
-        use Instruction::*;
+        use Instruction as I;
 
         match self {
             // Format 1
-            LslImm { rd, rs, imm5 } => bin16!("000_00{5}{3}{3}", imm5, rs, rd),
-            LsrImm { rd, rs, imm5 } => bin16!("000_01{5}{3}{3}", imm5, rs, rd),
-            AsrImm { rd, rs, imm5 } => bin16!("000_10{5}{3}{3}", imm5, rs, rd),
+            I::LslImm { rd, rs, imm5 } => bin16!("000_00{5}{3}{3}", imm5, rs, rd),
+            I::LsrImm { rd, rs, imm5 } => bin16!("000_01{5}{3}{3}", imm5, rs, rd),
+            I::AsrImm { rd, rs, imm5 } => bin16!("000_10{5}{3}{3}", imm5, rs, rd),
 
             // Format 2
-            AddReg { rd, rs, rn } => bin16!("00011_00{3}{3}{3}", rn, rs, rd),
-            SubReg { rd, rs, rn } => bin16!("00011_01{3}{3}{3}", rn, rs, rd),
-            AddImm3 { rd, rs, imm3 } => bin16!("00011_10{3}{3}{3}", imm3, rs, rd),
-            SubImm3 { rd, rs, imm3 } => bin16!("00011_11{3}{3}{3}", imm3, rs, rd),
+            I::AddReg { rd, rs, rn } => bin16!("00011_00{3}{3}{3}", rn, rs, rd),
+            I::SubReg { rd, rs, rn } => bin16!("00011_01{3}{3}{3}", rn, rs, rd),
+            I::AddImm3 { rd, rs, imm3 } => bin16!("00011_10{3}{3}{3}", imm3, rs, rd),
+            I::SubImm3 { rd, rs, imm3 } => bin16!("00011_11{3}{3}{3}", imm3, rs, rd),
 
             // Format 3
-            MovImm { rd, imm8 } => bin16!("001_00{3}{8}", rd, imm8),
-            CmpImm { rd, imm8 } => bin16!("001_01{3}{8}", rd, imm8),
-            AddImm8 { rd, imm8 } => bin16!("001_10{3}{8}", rd, imm8),
-            SubImm8 { rd, imm8 } => bin16!("001_11{3}{8}", rd, imm8),
+            I::MovImm { rd, imm8 } => bin16!("001_00{3}{8}", rd, imm8),
+            I::CmpImm { rd, imm8 } => bin16!("001_01{3}{8}", rd, imm8),
+            I::AddImm8 { rd, imm8 } => bin16!("001_10{3}{8}", rd, imm8),
+            I::SubImm8 { rd, imm8 } => bin16!("001_11{3}{8}", rd, imm8),
 
             // Format 4
-            And { rd, rs } => bin16!("010000_0000{3}{3}", rs, rd),
-            Eor { rd, rs } => bin16!("010000_0001{3}{3}", rs, rd),
-            Lsl { rd, rs } => bin16!("010000_0010{3}{3}", rs, rd),
-            Lsr { rd, rs } => bin16!("010000_0011{3}{3}", rs, rd),
-            Asr { rd, rs } => bin16!("010000_0100{3}{3}", rs, rd),
-            Adc { rd, rs } => bin16!("010000_0101{3}{3}", rs, rd),
-            Sbc { rd, rs } => bin16!("010000_0110{3}{3}", rs, rd),
-            Ror { rd, rs } => bin16!("010000_0111{3}{3}", rs, rd),
-            Tst { rd, rs } => bin16!("010000_1000{3}{3}", rs, rd),
-            Neg { rd, rs } => bin16!("010000_1001{3}{3}", rs, rd),
-            Cmp { rd, rs } => bin16!("010000_1010{3}{3}", rs, rd),
-            Cmn { rd, rs } => bin16!("010000_1011{3}{3}", rs, rd),
-            Orr { rd, rs } => bin16!("010000_1100{3}{3}", rs, rd),
-            Mul { rd, rs } => bin16!("010000_1101{3}{3}", rs, rd),
-            Bic { rd, rs } => bin16!("010000_1110{3}{3}", rs, rd),
-            Mvn { rd, rs } => bin16!("010000_1111{3}{3}", rs, rd),
+            I::And { rd, rs } => bin16!("010000_0000{3}{3}", rs, rd),
+            I::Eor { rd, rs } => bin16!("010000_0001{3}{3}", rs, rd),
+            I::Lsl { rd, rs } => bin16!("010000_0010{3}{3}", rs, rd),
+            I::Lsr { rd, rs } => bin16!("010000_0011{3}{3}", rs, rd),
+            I::Asr { rd, rs } => bin16!("010000_0100{3}{3}", rs, rd),
+            I::Adc { rd, rs } => bin16!("010000_0101{3}{3}", rs, rd),
+            I::Sbc { rd, rs } => bin16!("010000_0110{3}{3}", rs, rd),
+            I::Ror { rd, rs } => bin16!("010000_0111{3}{3}", rs, rd),
+            I::Tst { rd, rs } => bin16!("010000_1000{3}{3}", rs, rd),
+            I::Neg { rd, rs } => bin16!("010000_1001{3}{3}", rs, rd),
+            I::Cmp { rd, rs } => bin16!("010000_1010{3}{3}", rs, rd),
+            I::Cmn { rd, rs } => bin16!("010000_1011{3}{3}", rs, rd),
+            I::Orr { rd, rs } => bin16!("010000_1100{3}{3}", rs, rd),
+            I::Mul { rd, rs } => bin16!("010000_1101{3}{3}", rs, rd),
+            I::Bic { rd, rs } => bin16!("010000_1110{3}{3}", rs, rd),
+            I::Mvn { rd, rs } => bin16!("010000_1111{3}{3}", rs, rd),
 
             // Format 5
-            AddLowHi { rd, hs } => bin16!("010001_00_01{3}{3}", hs, rd),
-            AddHiLow { hd, rs } => bin16!("010001_00_10{3}{3}", rs, hd),
-            AddHiHi { hd, hs } => bin16!("010001_00_11{3}{3}", hs, hd),
-            CmpLowHi { rd, hs } => bin16!("010001_01_01{3}{3}", hs, rd),
-            CmpHiLow { hd, rs } => bin16!("010001_01_10{3}{3}", rs, hd),
-            CmpHiHi { hd, hs } => bin16!("010001_01_11{3}{3}", hs, hd),
-            MovLowHi { rd, hs } => bin16!("010001_10_01{3}{3}", hs, rd),
-            MovHiLow { hd, rs } => bin16!("010001_10_10{3}{3}", rs, hd),
-            MovHiHi { hd, hs } => bin16!("010001_10_11{3}{3}", hs, hd),
-            Bx { rs } => bin16!("010001_11_00{3}000", rs),
-            BxHi { hs } => bin16!("010001_11_01{3}000", hs),
+            I::AddLowHi { rd, hs } => bin16!("010001_00_01{3}{3}", hs, rd),
+            I::AddHiLow { hd, rs } => bin16!("010001_00_10{3}{3}", rs, hd),
+            I::AddHiHi { hd, hs } => bin16!("010001_00_11{3}{3}", hs, hd),
+            I::CmpLowHi { rd, hs } => bin16!("010001_01_01{3}{3}", hs, rd),
+            I::CmpHiLow { hd, rs } => bin16!("010001_01_10{3}{3}", rs, hd),
+            I::CmpHiHi { hd, hs } => bin16!("010001_01_11{3}{3}", hs, hd),
+            I::MovLowHi { rd, hs } => bin16!("010001_10_01{3}{3}", hs, rd),
+            I::MovHiLow { hd, rs } => bin16!("010001_10_10{3}{3}", rs, hd),
+            I::MovHiHi { hd, hs } => bin16!("010001_10_11{3}{3}", hs, hd),
+            I::Bx { rs } => bin16!("010001_11_00{3}000", rs),
+            I::BxHi { hs } => bin16!("010001_11_01{3}000", hs),
 
             // Format 6
-            LdrPc { rd, imm8 } => bin16!("01001{3}{8}", rd, imm8),
+            I::LdrPc { rd, imm8 } => bin16!("01001{3}{8}", rd, imm8),
 
             // Format 7
-            StrReg { rb, ro, rs: rd } => bin16!("0101_00_0{3}{3}{3}", ro, rb, rd),
-            StrbReg { rb, ro, rs: rd } => bin16!("0101_01_0{3}{3}{3}", ro, rb, rd),
-            LdrReg { rb, ro, rd } => bin16!("0101_10_0{3}{3}{3}", ro, rb, rd),
-            LdrbReg { rb, ro, rd } => bin16!("0101_11_0{3}{3}{3}", ro, rb, rd),
+            I::StrReg { rb, ro, rs: rd } => bin16!("0101_00_0{3}{3}{3}", ro, rb, rd),
+            I::StrbReg { rb, ro, rs: rd } => bin16!("0101_01_0{3}{3}{3}", ro, rb, rd),
+            I::LdrReg { rb, ro, rd } => bin16!("0101_10_0{3}{3}{3}", ro, rb, rd),
+            I::LdrbReg { rb, ro, rd } => bin16!("0101_11_0{3}{3}{3}", ro, rb, rd),
 
             // Format 8
-            StrhReg { rb, ro, rs: rd } => bin16!("0101_00_1{3}{3}{3}", ro, rb, rd),
-            LdrhReg { rb, ro, rd } => bin16!("0101_10_1{3}{3}{3}", ro, rb, rd),
-            LdsbReg { rb, ro, rd } => bin16!("0101_01_1{3}{3}{3}", ro, rb, rd),
-            LdshReg { rb, ro, rd } => bin16!("0101_11_1{3}{3}{3}", ro, rb, rd),
+            I::StrhReg { rb, ro, rs: rd } => bin16!("0101_00_1{3}{3}{3}", ro, rb, rd),
+            I::LdrhReg { rb, ro, rd } => bin16!("0101_10_1{3}{3}{3}", ro, rb, rd),
+            I::LdsbReg { rb, ro, rd } => bin16!("0101_01_1{3}{3}{3}", ro, rb, rd),
+            I::LdshReg { rb, ro, rd } => bin16!("0101_11_1{3}{3}{3}", ro, rb, rd),
 
             // Format 9
-            StrImm { rb, imm5, rs: rd } => bin16!("011_00{5}{3}{3}", imm5, rb, rd),
-            LdrImm { rb, imm5, rd } => bin16!("011_01{5}{3}{3}", imm5, rb, rd),
-            StrbImm { rb, imm5, rs: rd } => bin16!("011_10{5}{3}{3}", imm5, rb, rd),
-            LdrbImm { rb, imm5, rd } => bin16!("011_11{5}{3}{3}", imm5, rb, rd),
+            I::StrImm { rb, imm5, rs: rd } => bin16!("011_00{5}{3}{3}", imm5, rb, rd),
+            I::LdrImm { rb, imm5, rd } => bin16!("011_01{5}{3}{3}", imm5, rb, rd),
+            I::StrbImm { rb, imm5, rs: rd } => bin16!("011_10{5}{3}{3}", imm5, rb, rd),
+            I::LdrbImm { rb, imm5, rd } => bin16!("011_11{5}{3}{3}", imm5, rb, rd),
 
             // Format 10
-            StrhImm { rb, imm5, rs: rd } => bin16!("1000_0{5}{3}{3}", imm5, rb, rd),
-            LdrhImm { rb, imm5, rd } => bin16!("1000_1{5}{3}{3}", imm5, rb, rd),
+            I::StrhImm { rb, imm5, rs: rd } => bin16!("1000_0{5}{3}{3}", imm5, rb, rd),
+            I::LdrhImm { rb, imm5, rd } => bin16!("1000_1{5}{3}{3}", imm5, rb, rd),
 
             // Format 11
-            StrSpImm { imm8, rs: rd } => bin16!("1001_0{8}{3}", imm8, rd),
-            LdrSpImm { imm8, rd } => bin16!("1001_1{8}{3}", imm8, rd),
+            I::StrSpImm { imm8, rs: rd } => bin16!("1001_0{8}{3}", imm8, rd),
+            I::LdrSpImm { imm8, rd } => bin16!("1001_1{8}{3}", imm8, rd),
 
             // Format 12
-            AddPcImm { imm8, rd } => bin16!("1010_0{8}{3}", imm8, rd),
-            AddSpImm { imm8, rd } => bin16!("1010_1{8}{3}", imm8, rd),
+            I::AddPcImm { imm8, rd } => bin16!("1010_0{8}{3}", imm8, rd),
+            I::AddSpImm { imm8, rd } => bin16!("1010_1{8}{3}", imm8, rd),
 
             // Format 13
-            AddSpPosImm { imm7 } => bin16!("10110000_0{7}", imm7),
-            AddSpNegImm { imm7 } => bin16!("10110000_1{7}", imm7),
+            I::AddSpPosImm { imm7 } => bin16!("10110000_0{7}", imm7),
+            I::AddSpNegImm { imm7 } => bin16!("10110000_1{7}", imm7),
 
             // Format 14
-            Push { rlist } => bin16!("1011_0_10_0{8}", rlist),
-            PushLr { rlist } => bin16!("1011_0_10_1{8}", rlist),
-            Pop { rlist } => bin16!("1011_1_10_0{8}", rlist),
-            PopPc { rlist } => bin16!("1011_1_10_1{8}", rlist),
+            I::Push { rlist } => bin16!("1011_0_10_0{8}", rlist),
+            I::PushLr { rlist } => bin16!("1011_0_10_1{8}", rlist),
+            I::Pop { rlist } => bin16!("1011_1_10_0{8}", rlist),
+            I::PopPc { rlist } => bin16!("1011_1_10_1{8}", rlist),
 
             // Format 15
-            Stmia { rb, rlist } => bin16!("1100_0{3}{8}", rb, rlist),
-            Ldmia { rb, rlist } => bin16!("1100_1{3}{8}", rb, rlist),
+            I::Stmia { rb, rlist } => bin16!("1100_0{3}{8}", rb, rlist),
+            I::Ldmia { rb, rlist } => bin16!("1100_1{3}{8}", rb, rlist),
 
             // Format 16
-            Beq { soffset } => bin16!("1101_0000{8}", soffset),
-            Bne { soffset } => bin16!("1101_0001{8}", soffset),
-            Bcs { soffset } => bin16!("1101_0010{8}", soffset),
-            Bcc { soffset } => bin16!("1101_0011{8}", soffset),
-            Bmi { soffset } => bin16!("1101_0100{8}", soffset),
-            Bpl { soffset } => bin16!("1101_0101{8}", soffset),
-            Bvs { soffset } => bin16!("1101_0110{8}", soffset),
-            Bvc { soffset } => bin16!("1101_0111{8}", soffset),
-            Bhi { soffset } => bin16!("1101_1000{8}", soffset),
-            Bls { soffset } => bin16!("1101_1001{8}", soffset),
-            Bge { soffset } => bin16!("1101_1010{8}", soffset),
-            Blt { soffset } => bin16!("1101_1011{8}", soffset),
-            Bgt { soffset } => bin16!("1101_1100{8}", soffset),
-            Ble { soffset } => bin16!("1101_1101{8}", soffset),
+            I::Beq { soffset } => bin16!("1101_0000{8}", soffset),
+            I::Bne { soffset } => bin16!("1101_0001{8}", soffset),
+            I::Bcs { soffset } => bin16!("1101_0010{8}", soffset),
+            I::Bcc { soffset } => bin16!("1101_0011{8}", soffset),
+            I::Bmi { soffset } => bin16!("1101_0100{8}", soffset),
+            I::Bpl { soffset } => bin16!("1101_0101{8}", soffset),
+            I::Bvs { soffset } => bin16!("1101_0110{8}", soffset),
+            I::Bvc { soffset } => bin16!("1101_0111{8}", soffset),
+            I::Bhi { soffset } => bin16!("1101_1000{8}", soffset),
+            I::Bls { soffset } => bin16!("1101_1001{8}", soffset),
+            I::Bge { soffset } => bin16!("1101_1010{8}", soffset),
+            I::Blt { soffset } => bin16!("1101_1011{8}", soffset),
+            I::Bgt { soffset } => bin16!("1101_1100{8}", soffset),
+            I::Ble { soffset } => bin16!("1101_1101{8}", soffset),
 
             // Format 17
-            Swi { imm } => bin16!("1101_1111{8}", imm),
+            I::Swi { imm } => bin16!("1101_1111{8}", imm),
 
             // Format 18
-            B { offset11 } => bin16!("11100{11}", offset11),
+            I::B { offset11 } => bin16!("11100{11}", offset11),
 
             // Format 19
-            BlHalf { hi, offset11 } => bin16!("1111{}{11}", hi, offset11),
+            I::BlHalf { hi, offset11 } => bin16!("1111{}{11}", hi, offset11),
         }
     }
 }
@@ -585,7 +585,7 @@ impl Into<u16> for Instruction {
 impl Instruction {
     /// Decodes a 16-bit Thumb instruction.
     pub fn decode(data: u16) -> Option<Self> {
-        use Instruction::*;
+        use Instruction as I;
 
         // Decoding will be divided into eight sections based on the starting 3 bits.
         Some(match data >> 13 {
@@ -598,17 +598,17 @@ impl Instruction {
                 // Match based on bits 12 and 11.
                 match (data >> 11) & 0b11 {
                     // Format 1
-                    0b00 => LslImm {
+                    0b00 => I::LslImm {
                         rd,
                         rs,
                         imm5: get_imm5(data),
                     },
-                    0b01 => LsrImm {
+                    0b01 => I::LsrImm {
                         rd,
                         rs,
                         imm5: get_imm5(data),
                     },
-                    0b10 => AsrImm {
+                    0b10 => I::AsrImm {
                         rd,
                         rs,
                         imm5: get_imm5(data),
@@ -620,10 +620,10 @@ impl Instruction {
 
                         // Get the OI flag combo.
                         match (data >> 9) & 0b11 {
-                            0b00 => AddReg { rd, rs, rn },
-                            0b01 => SubReg { rd, rs, rn },
-                            0b10 => AddImm3 { rd, rs, imm3 },
-                            0b11 => SubImm3 { rd, rs, imm3 },
+                            0b00 => I::AddReg { rd, rs, rn },
+                            0b01 => I::SubReg { rd, rs, rn },
+                            0b10 => I::AddImm3 { rd, rs, imm3 },
+                            0b11 => I::SubImm3 { rd, rs, imm3 },
                             _ => unreachable!(),
                         }
                     }
@@ -638,10 +638,10 @@ impl Instruction {
 
                 // Match based on bits 12 and 11.
                 match (data >> 11) & 0b11 {
-                    0b00 => MovImm { rd, imm8 },
-                    0b01 => CmpImm { rd, imm8 },
-                    0b10 => AddImm8 { rd, imm8 },
-                    0b11 => SubImm8 { rd, imm8 },
+                    0b00 => I::MovImm { rd, imm8 },
+                    0b01 => I::CmpImm { rd, imm8 },
+                    0b10 => I::AddImm8 { rd, imm8 },
+                    0b11 => I::SubImm8 { rd, imm8 },
                     _ => unreachable!(),
                 }
             }
@@ -656,22 +656,22 @@ impl Instruction {
 
                         // Match the opcode
                         match (data >> 6) & 0b1111 {
-                            0b0000 => And { rd, rs },
-                            0b0001 => Eor { rd, rs },
-                            0b0010 => Lsl { rd, rs },
-                            0b0011 => Lsr { rd, rs },
-                            0b0100 => Asr { rd, rs },
-                            0b0101 => Adc { rd, rs },
-                            0b0110 => Sbc { rd, rs },
-                            0b0111 => Ror { rd, rs },
-                            0b1000 => Tst { rd, rs },
-                            0b1001 => Neg { rd, rs },
-                            0b1010 => Cmp { rd, rs },
-                            0b1011 => Cmn { rd, rs },
-                            0b1100 => Orr { rd, rs },
-                            0b1101 => Mul { rd, rs },
-                            0b1110 => Bic { rd, rs },
-                            0b1111 => Mvn { rd, rs },
+                            0b0000 => I::And { rd, rs },
+                            0b0001 => I::Eor { rd, rs },
+                            0b0010 => I::Lsl { rd, rs },
+                            0b0011 => I::Lsr { rd, rs },
+                            0b0100 => I::Asr { rd, rs },
+                            0b0101 => I::Adc { rd, rs },
+                            0b0110 => I::Sbc { rd, rs },
+                            0b0111 => I::Ror { rd, rs },
+                            0b1000 => I::Tst { rd, rs },
+                            0b1001 => I::Neg { rd, rs },
+                            0b1010 => I::Cmp { rd, rs },
+                            0b1011 => I::Cmn { rd, rs },
+                            0b1100 => I::Orr { rd, rs },
+                            0b1101 => I::Mul { rd, rs },
+                            0b1110 => I::Bic { rd, rs },
+                            0b1111 => I::Mvn { rd, rs },
 
                             _ => unreachable!(),
                         }
@@ -685,18 +685,18 @@ impl Instruction {
 
                         // Match the opcode
                         match (data >> 6) & 0b1111 {
-                            0b0001 => AddLowHi { rd, hs },
-                            0b0010 => AddHiLow { hd, rs },
-                            0b0011 => AddHiHi { hd, hs },
-                            0b0101 => CmpLowHi { rd, hs },
-                            0b0110 => CmpHiLow { hd, rs },
-                            0b0111 => CmpHiHi { hd, hs },
-                            0b1001 => MovLowHi { rd, hs },
-                            0b1010 => MovHiLow { hd, rs },
-                            0b1011 => MovHiHi { hd, hs },
+                            0b0001 => I::AddLowHi { rd, hs },
+                            0b0010 => I::AddHiLow { hd, rs },
+                            0b0011 => I::AddHiHi { hd, hs },
+                            0b0101 => I::CmpLowHi { rd, hs },
+                            0b0110 => I::CmpHiLow { hd, rs },
+                            0b0111 => I::CmpHiHi { hd, hs },
+                            0b1001 => I::MovLowHi { rd, hs },
+                            0b1010 => I::MovHiLow { hd, rs },
+                            0b1011 => I::MovHiHi { hd, hs },
 
-                            0b1100 => Bx { rs },
-                            0b1101 => BxHi { hs },
+                            0b1100 => I::Bx { rs },
+                            0b1101 => I::BxHi { hs },
 
                             0b0000..=0b1111 => return None,
 
@@ -704,7 +704,7 @@ impl Instruction {
                         }
                     }
                     // Format 6
-                    0b010 | 0b011 => LdrPc {
+                    0b010 | 0b011 => I::LdrPc {
                         rd: ((data >> 8) & 0b111) as u8,
                         imm8: (data & 0xff) as u8,
                     },
@@ -717,14 +717,14 @@ impl Instruction {
                         // Match the L and B flags (bits 11 and 10) and
                         // bit 9 differentiating between formats 7 and 8.
                         match (data >> 9) & 0b111 {
-                            0b000 => StrReg { rb, ro, rs: rd },
-                            0b010 => StrbReg { rb, ro, rs: rd },
-                            0b100 => LdrReg { rb, ro, rd },
-                            0b110 => LdrbReg { rb, ro, rd },
-                            0b001 => StrhReg { rb, ro, rs: rd },
-                            0b101 => LdrhReg { rb, ro, rd },
-                            0b011 => LdsbReg { rb, ro, rd },
-                            0b111 => LdshReg { rb, ro, rd },
+                            0b000 => I::StrReg { rb, ro, rs: rd },
+                            0b010 => I::StrbReg { rb, ro, rs: rd },
+                            0b100 => I::LdrReg { rb, ro, rd },
+                            0b110 => I::LdrbReg { rb, ro, rd },
+                            0b001 => I::StrhReg { rb, ro, rs: rd },
+                            0b101 => I::LdrhReg { rb, ro, rd },
+                            0b011 => I::LdsbReg { rb, ro, rd },
+                            0b111 => I::LdshReg { rb, ro, rd },
 
                             _ => unreachable!(),
                         }
@@ -741,10 +741,10 @@ impl Instruction {
 
                 // Match the B and L flags (bits 11 and 10).
                 match (data >> 11) & 0b11 {
-                    0b00 => StrImm { rb, imm5, rs: rd },
-                    0b01 => LdrImm { rb, imm5, rd },
-                    0b10 => StrbImm { rb, imm5, rs: rd },
-                    0b11 => LdrbImm { rb, imm5, rd },
+                    0b00 => I::StrImm { rb, imm5, rs: rd },
+                    0b01 => I::LdrImm { rb, imm5, rd },
+                    0b10 => I::StrbImm { rb, imm5, rs: rd },
+                    0b11 => I::LdrbImm { rb, imm5, rd },
 
                     _ => unreachable!(),
                 }
@@ -760,16 +760,16 @@ impl Instruction {
                         let rb = get_rs(data);
                         let imm5 = get_imm5(data);
                         match next_flag {
-                            false => StrhImm { rb, imm5, rs: rd },
-                            true => LdrhImm { rb, imm5, rd },
+                            false => I::StrhImm { rb, imm5, rs: rd },
+                            true => I::LdrhImm { rb, imm5, rd },
                         }
                     }
                     // Format 11
                     true => {
                         let imm8 = ((data >> 3) & 0xff) as u8;
                         match next_flag {
-                            false => StrSpImm { imm8, rs: rd },
-                            true => LdrSpImm { imm8, rd },
+                            false => I::StrSpImm { imm8, rs: rd },
+                            true => I::LdrSpImm { imm8, rd },
                         }
                     }
                 }
@@ -785,8 +785,8 @@ impl Instruction {
 
                         // Match the bit 11
                         match (data >> 11) & 1 == 1 {
-                            false => AddPcImm { imm8, rd },
-                            true => AddSpImm { imm8, rd },
+                            false => I::AddPcImm { imm8, rd },
+                            true => I::AddSpImm { imm8, rd },
                         }
                     }
                     // Formats 13 and 14
@@ -796,8 +796,8 @@ impl Instruction {
                             0b00 => {
                                 let imm7 = (data & 0x7f) as u8;
                                 match (data >> 7) & 1 == 1 {
-                                    false => AddSpPosImm { imm7 },
-                                    true => AddSpNegImm { imm7 },
+                                    false => I::AddSpPosImm { imm7 },
+                                    true => I::AddSpNegImm { imm7 },
                                 }
                             }
                             0b10 => return None,
@@ -806,10 +806,10 @@ impl Instruction {
                                 // Get the instruction type based on bits 11, 10, 9 and 8
                                 let rlist = (data & 0xff) as u8;
                                 match (data >> 8) & 0b1111 {
-                                    0b0100 => Push { rlist },
-                                    0b0101 => PushLr { rlist },
-                                    0b1100 => Pop { rlist },
-                                    0b1101 => PopPc { rlist },
+                                    0b0100 => I::Push { rlist },
+                                    0b0101 => I::PushLr { rlist },
+                                    0b1100 => I::Pop { rlist },
+                                    0b1101 => I::PopPc { rlist },
 
                                     0b0000..=0b1111 => return None,
 
@@ -835,8 +835,8 @@ impl Instruction {
 
                         // Match bit 11
                         match (data >> 11) & 1 == 1 {
-                            false => Stmia { rb, rlist },
-                            true => Ldmia { rb, rlist },
+                            false => I::Stmia { rb, rlist },
+                            true => I::Ldmia { rb, rlist },
                         }
                     }
                     // Formats 16 or 17
@@ -847,25 +847,25 @@ impl Instruction {
                         // Match the condition
                         match ((data >> 8) & 0xf) as u8 {
                             // Format 16
-                            0b0000 => Beq { soffset },
-                            0b0001 => Bne { soffset },
-                            0b0010 => Bcs { soffset },
-                            0b0011 => Bcc { soffset },
-                            0b0100 => Bmi { soffset },
-                            0b0101 => Bpl { soffset },
-                            0b0110 => Bvs { soffset },
-                            0b0111 => Bvc { soffset },
-                            0b1000 => Bhi { soffset },
-                            0b1001 => Bls { soffset },
-                            0b1010 => Bge { soffset },
-                            0b1011 => Blt { soffset },
-                            0b1100 => Bgt { soffset },
-                            0b1101 => Ble { soffset },
+                            0b0000 => I::Beq { soffset },
+                            0b0001 => I::Bne { soffset },
+                            0b0010 => I::Bcs { soffset },
+                            0b0011 => I::Bcc { soffset },
+                            0b0100 => I::Bmi { soffset },
+                            0b0101 => I::Bpl { soffset },
+                            0b0110 => I::Bvs { soffset },
+                            0b0111 => I::Bvc { soffset },
+                            0b1000 => I::Bhi { soffset },
+                            0b1001 => I::Bls { soffset },
+                            0b1010 => I::Bge { soffset },
+                            0b1011 => I::Blt { soffset },
+                            0b1100 => I::Bgt { soffset },
+                            0b1101 => I::Ble { soffset },
 
                             0b1110 => return None,
 
                             // Format 17
-                            0b1111 => Swi { imm },
+                            0b1111 => I::Swi { imm },
 
                             _ => unreachable!(),
                         }
@@ -881,12 +881,12 @@ impl Instruction {
                 // Match the bits 12 and 11
                 match ((data >> 12) & 1 == 1, hi) {
                     // Format 18
-                    (false, false) => B { offset11 },
+                    (false, false) => I::B { offset11 },
 
                     (false, true) => return None,
 
                     // Format 19
-                    (true, _) => BlHalf { hi, offset11 },
+                    (true, _) => I::BlHalf { hi, offset11 },
                 }
             }
 

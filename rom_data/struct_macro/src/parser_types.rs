@@ -225,14 +225,13 @@ pub enum StructAttributeAction {
 
 impl std::fmt::Debug for StructAttributeAction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use StructAttributeAction::*;
-
+        use StructAttributeAction as A;
         match self {
-            Type(basetype) => write!(f, "type({:?})", basetype),
-            Default(literal) => {
+            A::Type(basetype) => write!(f, "type({:?})", basetype),
+            A::Default(literal) => {
                 write!(f, "default({})", literal.to_string())
             }
-            Swap(ident) => write!(f, "swap({})", ident),
+            A::Swap(ident) => write!(f, "swap({})", ident),
         }
     }
 }
@@ -641,14 +640,13 @@ pub fn build_attribute_condition(
 }
 
 fn build_condition_code(condition: &StructAttributeCondition) -> TokenStream {
-    use StructAttributeCondition::*;
-
+    use StructAttributeCondition as C;
     match condition {
-        Cfg(_) => unimplemented!("cfg not implemented yet"),
-        NotCfg(_) => unimplemented!("!cfg not implemented yet"),
+        C::Cfg(_) => unimplemented!("cfg not implemented yet"),
+        C::NotCfg(_) => unimplemented!("!cfg not implemented yet"),
 
         // Builds to matches!(rom.base, rom_data::RomBase::Ruby | rom_data::RomBase::Sapphire)
-        Base(tokens) => {
+        C::Base(tokens) => {
             let mut conditions = quote! {};
             let size = tokens.len();
 

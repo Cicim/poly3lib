@@ -11,11 +11,9 @@ use super::{layout::MapLayoutError, ProblemsLog};
 mod anim;
 mod data;
 mod pair;
-mod types;
 
-pub use data::TilesetData;
+pub use data::{MetaTile, MetatileAttributes, MetatileLayerType, TilesetData};
 pub use pair::{TilesetNumbers, TilesetPair, TilesetPairRenderingData};
-pub use types::{MetaTile, MetatileAttributes, MetatileLayerType};
 
 rom_struct!(TilesetHeader {
     bool is_compressed;

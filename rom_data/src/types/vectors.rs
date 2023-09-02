@@ -251,14 +251,12 @@ impl<T: RomWritableType + RomSizedType> RomWritableType for RomVector<T> {
 // ANCHOR Serialize and Deserialize methods
 impl<T: Serialize> Serialize for RomVector<T> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use RomVector::*;
-
         match self {
             // NULL is serialized as 0
-            Null => serializer.serialize_u32(0),
+            RomVector::Null => serializer.serialize_u32(0),
 
             // Any invalid vector is serialized as the pointer itself
-            Invalid(ptr) => serializer.serialize_u32(*ptr),
+            RomVector::Invalid(ptr) => serializer.serialize_u32(*ptr),
 
             // A valid vector is serialized as a struct with three fields:
             // RomVector {
@@ -266,7 +264,7 @@ impl<T: Serialize> Serialize for RomVector<T> {
             //   clear_size: u32,           // Number in JSON
             //   data: [T],
             // }
-            Valid {
+            RomVector::Valid {
                 offset,
                 data,
                 clear_size,
@@ -283,7 +281,7 @@ impl<T: Serialize> Serialize for RomVector<T> {
             //   offset: u32,               // Number in JSON
             //   clear_size: u32,           // Number in JSON
             // }
-            Clear { offset, clear_size } => {
+            RomVector::Clear { offset, clear_size } => {
                 let mut state: _ = serializer.serialize_struct("RomVector", 2)?;
                 state.serialize_field("offset", offset)?;
                 state.serialize_field("clear_size", clear_size)?;
@@ -294,7 +292,7 @@ impl<T: Serialize> Serialize for RomVector<T> {
             // RomVector {
             //   data: [T],
             // }
-            New(data) => {
+            RomVector::New(data) => {
                 let mut state: _ = serializer.serialize_struct("RomVector", 1)?;
                 state.serialize_field("data", data)?;
                 state.end()

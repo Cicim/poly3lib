@@ -51,15 +51,14 @@ pub enum RomBase {
 
 impl Display for RomBase {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use RomBase::*;
-
         // Different colored strings
+        use RomBase as B;
         match self {
-            Ruby => write!(f, "{}", "Ruby (AXVE)".red()),
-            Sapphire => write!(f, "{}", "Sapphire (AXPE)".blue()),
-            FireRed => write!(f, "{}", "Fire Red (BPRE)".bright_red()),
-            LeafGreen => write!(f, "{}", "Leaf Green (BPGE)".bright_green()),
-            Emerald => write!(f, "{}", "Emerald (BPEE)".green()),
+            B::Ruby => write!(f, "{}", "Ruby (AXVE)".red()),
+            B::Sapphire => write!(f, "{}", "Sapphire (AXPE)".blue()),
+            B::FireRed => write!(f, "{}", "Fire Red (BPRE)".bright_red()),
+            B::LeafGreen => write!(f, "{}", "Leaf Green (BPGE)".bright_green()),
+            B::Emerald => write!(f, "{}", "Emerald (BPEE)".green()),
         }
     }
 }

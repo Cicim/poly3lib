@@ -30,15 +30,15 @@ impl DisassembledLine {
     ///
     /// or an empty string
     pub fn binary(&self) -> String {
-        use DisassembledLine::*;
+        use DisassembledLine as L;
 
         match self {
-            Instruction { binary, .. } => binary
+            L::Instruction { binary, .. } => binary
                 .iter()
                 .map(|s| format!("{:02X}", s))
                 .collect::<Vec<_>>()
                 .join(" "),
-            Word(binary) => {
+            L::Word(binary) => {
                 let binary = binary.to_le_bytes();
 
                 format!(
@@ -234,60 +234,60 @@ impl<'a> Disassembler<'a, 'a> {
         }
 
         // Match the decoded instruction to obtain an `AssembledInstruction`
-        use AssemblyInstruction::*;
-        use Instruction::*;
+        use AssemblyInstruction as A;
+        use Instruction as I;
         let instruction = match instruction {
             // Format 1
-            LslImm { rd, rs, imm5 } => RdRsVal("lsl", reg!(rd), reg!(rs), imm!(imm5)),
-            LsrImm { rd, rs, imm5 } => RdRsVal("lsr", reg!(rd), reg!(rs), imm!(imm5)),
-            AsrImm { rd, rs, imm5 } => RdRsVal("asr", reg!(rd), reg!(rs), imm!(imm5)),
+            I::LslImm { rd, rs, imm5 } => A::RdRsVal("lsl", reg!(rd), reg!(rs), imm!(imm5)),
+            I::LsrImm { rd, rs, imm5 } => A::RdRsVal("lsr", reg!(rd), reg!(rs), imm!(imm5)),
+            I::AsrImm { rd, rs, imm5 } => A::RdRsVal("asr", reg!(rd), reg!(rs), imm!(imm5)),
             // Format 2
-            AddReg { rd, rs, rn } => RdRsVal("add", reg!(rd), reg!(rs), reg!(rn)),
-            AddImm3 { rd, rs, imm3 } => RdRsVal("add", reg!(rd), reg!(rs), imm!(imm3)),
-            SubReg { rd, rs, rn } => RdRsVal("sub", reg!(rd), reg!(rs), reg!(rn)),
-            SubImm3 { rd, rs, imm3 } => RdRsVal("sub", reg!(rd), reg!(rs), imm!(imm3)),
+            I::AddReg { rd, rs, rn } => A::RdRsVal("add", reg!(rd), reg!(rs), reg!(rn)),
+            I::AddImm3 { rd, rs, imm3 } => A::RdRsVal("add", reg!(rd), reg!(rs), imm!(imm3)),
+            I::SubReg { rd, rs, rn } => A::RdRsVal("sub", reg!(rd), reg!(rs), reg!(rn)),
+            I::SubImm3 { rd, rs, imm3 } => A::RdRsVal("sub", reg!(rd), reg!(rs), imm!(imm3)),
             // Format 3
-            MovImm { rd, imm8 } => RdVal("mov", reg!(rd), imm!(imm8)),
-            CmpImm { rd, imm8 } => RdVal("cmp", reg!(rd), imm!(imm8)),
-            AddImm8 { rd, imm8 } => RdVal("add", reg!(rd), imm!(imm8)),
-            SubImm8 { rd, imm8 } => RdVal("sub", reg!(rd), imm!(imm8)),
+            I::MovImm { rd, imm8 } => A::RdVal("mov", reg!(rd), imm!(imm8)),
+            I::CmpImm { rd, imm8 } => A::RdVal("cmp", reg!(rd), imm!(imm8)),
+            I::AddImm8 { rd, imm8 } => A::RdVal("add", reg!(rd), imm!(imm8)),
+            I::SubImm8 { rd, imm8 } => A::RdVal("sub", reg!(rd), imm!(imm8)),
             // Format 4
-            And { rd, rs } => RdVal("and", reg!(rd), reg!(rs)),
-            Eor { rd, rs } => RdVal("eor", reg!(rd), reg!(rs)),
-            Lsl { rd, rs } => RdVal("lsl", reg!(rd), reg!(rs)),
-            Lsr { rd, rs } => RdVal("lsr", reg!(rd), reg!(rs)),
-            Asr { rd, rs } => RdVal("asr", reg!(rd), reg!(rs)),
-            Adc { rd, rs } => RdVal("adc", reg!(rd), reg!(rs)),
-            Sbc { rd, rs } => RdVal("sbc", reg!(rd), reg!(rs)),
-            Ror { rd, rs } => RdVal("ror", reg!(rd), reg!(rs)),
-            Tst { rd, rs } => RdVal("tst", reg!(rd), reg!(rs)),
-            Neg { rd, rs } => RdVal("neg", reg!(rd), reg!(rs)),
-            Cmp { rd, rs } => RdVal("cmp", reg!(rd), reg!(rs)),
-            Cmn { rd, rs } => RdVal("cmn", reg!(rd), reg!(rs)),
-            Orr { rd, rs } => RdVal("orr", reg!(rd), reg!(rs)),
-            Mul { rd, rs } => RdVal("mul", reg!(rd), reg!(rs)),
-            Bic { rd, rs } => RdVal("bic", reg!(rd), reg!(rs)),
-            Mvn { rd, rs } => RdVal("mvn", reg!(rd), reg!(rs)),
+            I::And { rd, rs } => A::RdVal("and", reg!(rd), reg!(rs)),
+            I::Eor { rd, rs } => A::RdVal("eor", reg!(rd), reg!(rs)),
+            I::Lsl { rd, rs } => A::RdVal("lsl", reg!(rd), reg!(rs)),
+            I::Lsr { rd, rs } => A::RdVal("lsr", reg!(rd), reg!(rs)),
+            I::Asr { rd, rs } => A::RdVal("asr", reg!(rd), reg!(rs)),
+            I::Adc { rd, rs } => A::RdVal("adc", reg!(rd), reg!(rs)),
+            I::Sbc { rd, rs } => A::RdVal("sbc", reg!(rd), reg!(rs)),
+            I::Ror { rd, rs } => A::RdVal("ror", reg!(rd), reg!(rs)),
+            I::Tst { rd, rs } => A::RdVal("tst", reg!(rd), reg!(rs)),
+            I::Neg { rd, rs } => A::RdVal("neg", reg!(rd), reg!(rs)),
+            I::Cmp { rd, rs } => A::RdVal("cmp", reg!(rd), reg!(rs)),
+            I::Cmn { rd, rs } => A::RdVal("cmn", reg!(rd), reg!(rs)),
+            I::Orr { rd, rs } => A::RdVal("orr", reg!(rd), reg!(rs)),
+            I::Mul { rd, rs } => A::RdVal("mul", reg!(rd), reg!(rs)),
+            I::Bic { rd, rs } => A::RdVal("bic", reg!(rd), reg!(rs)),
+            I::Mvn { rd, rs } => A::RdVal("mvn", reg!(rd), reg!(rs)),
             // Format 5
-            AddLowHi { rd, hs } => RdVal("add", reg!(rd), hireg!(hs)),
-            CmpLowHi { rd, hs } => RdVal("cmp", reg!(rd), hireg!(hs)),
-            MovLowHi { rd, hs } => RdVal("mov", reg!(rd), hireg!(hs)),
-            AddHiLow { hd, rs } => RdVal("add", hireg!(hd), reg!(rs)),
-            MovHiLow { hd, rs } => RdVal("mov", hireg!(hd), reg!(rs)),
-            CmpHiLow { hd, rs } => RdVal("cmp", hireg!(hd), reg!(rs)),
-            AddHiHi { hd, hs } => RdVal("add", hireg!(hd), hireg!(hs)),
-            CmpHiHi { hd, hs } => RdVal("cmp", hireg!(hd), hireg!(hs)),
-            MovHiHi { hd, hs } => RdVal("mov", hireg!(hd), hireg!(hs)),
-            Bx { rs } => {
+            I::AddLowHi { rd, hs } => A::RdVal("add", reg!(rd), hireg!(hs)),
+            I::CmpLowHi { rd, hs } => A::RdVal("cmp", reg!(rd), hireg!(hs)),
+            I::MovLowHi { rd, hs } => A::RdVal("mov", reg!(rd), hireg!(hs)),
+            I::AddHiLow { hd, rs } => A::RdVal("add", hireg!(hd), reg!(rs)),
+            I::MovHiLow { hd, rs } => A::RdVal("mov", hireg!(hd), reg!(rs)),
+            I::CmpHiLow { hd, rs } => A::RdVal("cmp", hireg!(hd), reg!(rs)),
+            I::AddHiHi { hd, hs } => A::RdVal("add", hireg!(hd), hireg!(hs)),
+            I::CmpHiHi { hd, hs } => A::RdVal("cmp", hireg!(hd), hireg!(hs)),
+            I::MovHiHi { hd, hs } => A::RdVal("mov", hireg!(hd), hireg!(hs)),
+            I::Bx { rs } => {
                 terminates_function = true;
-                Val("bx", reg!(rs))
+                A::Val("bx", reg!(rs))
             }
-            BxHi { hs } => {
+            I::BxHi { hs } => {
                 terminates_function = true;
-                Val("bx", hireg!(hs))
+                A::Val("bx", hireg!(hs))
             }
             // Format 6
-            LdrPc { rd, imm8 } => {
+            I::LdrPc { rd, imm8 } => {
                 // Get the unsigned offset by which to increment the PC
                 let unsigned_offset = (imm8 as u32) << 2;
                 // Get the target by adding the offset to the PC (which is two steps (4 bytes)
@@ -298,74 +298,74 @@ impl<'a> Disassembler<'a, 'a> {
                 // Explore the given target
                 self.do_word(target);
 
-                LoadLabel(reg!(rd), self.get_dat_label(target))
+                A::LoadLabel(reg!(rd), self.get_dat_label(target))
             }
             // Format 7
-            StrReg { rb, ro, rs: rd } => Mem("str", reg!(rd), reg!(rb), reg!(ro)),
-            StrbReg { rb, ro, rs: rd } => Mem("strb", reg!(rd), reg!(rb), reg!(ro)),
-            LdrReg { rb, ro, rd } => Mem("ldr", reg!(rd), reg!(rb), reg!(ro)),
-            LdrbReg { rb, ro, rd } => Mem("ldrb", reg!(rd), reg!(rb), reg!(ro)),
+            I::StrReg { rb, ro, rs: rd } => A::Mem("str", reg!(rd), reg!(rb), reg!(ro)),
+            I::StrbReg { rb, ro, rs: rd } => A::Mem("strb", reg!(rd), reg!(rb), reg!(ro)),
+            I::LdrReg { rb, ro, rd } => A::Mem("ldr", reg!(rd), reg!(rb), reg!(ro)),
+            I::LdrbReg { rb, ro, rd } => A::Mem("ldrb", reg!(rd), reg!(rb), reg!(ro)),
             // Format 8
-            StrhReg { rb, ro, rs: rd } => Mem("strh", reg!(rd), reg!(rb), reg!(ro)),
-            LdrhReg { rb, ro, rd } => Mem("ldrh", reg!(rd), reg!(rb), reg!(ro)),
-            LdsbReg { rb, ro, rd } => Mem("ldsb", reg!(rd), reg!(rb), reg!(ro)),
-            LdshReg { rb, ro, rd } => Mem("ldsh", reg!(rd), reg!(rb), reg!(ro)),
+            I::StrhReg { rb, ro, rs: rd } => A::Mem("strh", reg!(rd), reg!(rb), reg!(ro)),
+            I::LdrhReg { rb, ro, rd } => A::Mem("ldrh", reg!(rd), reg!(rb), reg!(ro)),
+            I::LdsbReg { rb, ro, rd } => A::Mem("ldsb", reg!(rd), reg!(rb), reg!(ro)),
+            I::LdshReg { rb, ro, rd } => A::Mem("ldsh", reg!(rd), reg!(rb), reg!(ro)),
             // Format 9
-            StrImm { rb, imm5, rs: rd } => Mem("str", reg!(rd), reg!(rb), imm!(imm5, 2)),
-            LdrImm { rb, imm5, rd } => Mem("ldr", reg!(rd), reg!(rb), imm!(imm5, 2)),
-            StrbImm { rb, imm5, rs: rd } => Mem("strb", reg!(rd), reg!(rb), imm!(imm5)),
-            LdrbImm { rb, imm5, rd } => Mem("ldrb", reg!(rd), reg!(rb), imm!(imm5)),
+            I::StrImm { rb, imm5, rs: rd } => A::Mem("str", reg!(rd), reg!(rb), imm!(imm5, 2)),
+            I::LdrImm { rb, imm5, rd } => A::Mem("ldr", reg!(rd), reg!(rb), imm!(imm5, 2)),
+            I::StrbImm { rb, imm5, rs: rd } => A::Mem("strb", reg!(rd), reg!(rb), imm!(imm5)),
+            I::LdrbImm { rb, imm5, rd } => A::Mem("ldrb", reg!(rd), reg!(rb), imm!(imm5)),
             // Format 10
-            StrhImm { rb, imm5, rs: rd } => Mem("strh", reg!(rd), reg!(rb), imm!(imm5, 1)),
-            LdrhImm { rb, imm5, rd } => Mem("ldrh", reg!(rd), reg!(rb), imm!(imm5, 1)),
+            I::StrhImm { rb, imm5, rs: rd } => A::Mem("strh", reg!(rd), reg!(rb), imm!(imm5, 1)),
+            I::LdrhImm { rb, imm5, rd } => A::Mem("ldrh", reg!(rd), reg!(rb), imm!(imm5, 1)),
             // Format 11
-            StrSpImm { imm8, rs } => Mem("str", reg!(rs), reg!(sp), imm!(imm8, 2)),
-            LdrSpImm { imm8, rd } => Mem("ldr", reg!(rd), reg!(sp), imm!(imm8, 2)),
+            I::StrSpImm { imm8, rs } => A::Mem("str", reg!(rs), reg!(sp), imm!(imm8, 2)),
+            I::LdrSpImm { imm8, rd } => A::Mem("ldr", reg!(rd), reg!(sp), imm!(imm8, 2)),
             // Format 12
-            AddPcImm { imm8, rd } => RdRsVal("add", reg!(rd), reg!(pc), imm!(imm8, 2)),
-            AddSpImm { imm8, rd } => RdRsVal("add", reg!(rd), reg!(sp), imm!(imm8, 2)),
+            I::AddPcImm { imm8, rd } => A::RdRsVal("add", reg!(rd), reg!(pc), imm!(imm8, 2)),
+            I::AddSpImm { imm8, rd } => A::RdRsVal("add", reg!(rd), reg!(sp), imm!(imm8, 2)),
             // Format 13
-            AddSpPosImm { imm7 } => RdVal("add", reg!(sp), imm!(imm7, 2)),
-            AddSpNegImm { imm7 } => RdVal("sub", reg!(sp), imm!(imm7, 2)),
+            I::AddSpPosImm { imm7 } => A::RdVal("add", reg!(sp), imm!(imm7, 2)),
+            I::AddSpNegImm { imm7 } => A::RdVal("sub", reg!(sp), imm!(imm7, 2)),
             // Format 14
-            Push { rlist } => parse_push_or_pop("push", rlist, None),
-            PushLr { rlist } => parse_push_or_pop("push", rlist, Some(Register::LR)),
-            Pop { rlist } => parse_push_or_pop("pop", rlist, None),
-            PopPc { rlist } => {
+            I::Push { rlist } => parse_push_or_pop("push", rlist, None),
+            I::PushLr { rlist } => parse_push_or_pop("push", rlist, Some(Register::LR)),
+            I::Pop { rlist } => parse_push_or_pop("pop", rlist, None),
+            I::PopPc { rlist } => {
                 // If something is popped onto pc, the control flow switches away
                 terminates_function = true;
                 parse_push_or_pop("pop", rlist, Some(Register::PC))
             }
             // Format 15
-            Stmia { rb, rlist } => parse_stmia_or_ldmia("stdmia", rlist, reg!(rb)),
-            Ldmia { rb, rlist } => parse_stmia_or_ldmia("ldmia", rlist, reg!(rb)),
+            I::Stmia { rb, rlist } => parse_stmia_or_ldmia("stdmia", rlist, reg!(rb)),
+            I::Ldmia { rb, rlist } => parse_stmia_or_ldmia("ldmia", rlist, reg!(rb)),
             // Format 16
-            Beq { soffset } => jump!("beq", soffset),
-            Bne { soffset } => jump!("bne", soffset),
-            Bcs { soffset } => jump!("bcs", soffset),
-            Bcc { soffset } => jump!("bcc", soffset),
-            Bmi { soffset } => jump!("bmi", soffset),
-            Bpl { soffset } => jump!("bpl", soffset),
-            Bvs { soffset } => jump!("bvs", soffset),
-            Bvc { soffset } => jump!("bvc", soffset),
-            Bhi { soffset } => jump!("bhi", soffset),
-            Bls { soffset } => jump!("bls", soffset),
-            Bge { soffset } => jump!("bge", soffset),
-            Blt { soffset } => jump!("blt", soffset),
-            Bgt { soffset } => jump!("bgt", soffset),
-            Ble { soffset } => jump!("ble", soffset),
+            I::Beq { soffset } => jump!("beq", soffset),
+            I::Bne { soffset } => jump!("bne", soffset),
+            I::Bcs { soffset } => jump!("bcs", soffset),
+            I::Bcc { soffset } => jump!("bcc", soffset),
+            I::Bmi { soffset } => jump!("bmi", soffset),
+            I::Bpl { soffset } => jump!("bpl", soffset),
+            I::Bvs { soffset } => jump!("bvs", soffset),
+            I::Bvc { soffset } => jump!("bvc", soffset),
+            I::Bhi { soffset } => jump!("bhi", soffset),
+            I::Bls { soffset } => jump!("bls", soffset),
+            I::Bge { soffset } => jump!("bge", soffset),
+            I::Blt { soffset } => jump!("blt", soffset),
+            I::Bgt { soffset } => jump!("bgt", soffset),
+            I::Ble { soffset } => jump!("ble", soffset),
             // Format 17
-            Swi { imm } => Val("swi", imm!(imm)),
+            I::Swi { imm } => A::Val("swi", imm!(imm)),
             // Format 18
-            B { offset11 } => {
+            I::B { offset11 } => {
                 // Get the signed 12 bit offset to add to the target
                 let signed_offset = extend_11bit_offset(offset11);
                 let target = instruction_offset.wrapping_add(signed_offset as u32) + 2;
 
-                BranchCond("b", self.get_jmp_label(target))
+                A::BranchCond("b", self.get_jmp_label(target))
             }
             // Format 19
-            BlHalf { hi, offset11 } => {
+            I::BlHalf { hi, offset11 } => {
                 // If we find the high instruction on its own, it's pretty likely it is invalid,
                 // so we can skip this instruction altogether.
                 if hi == true {
@@ -378,7 +378,7 @@ impl<'a> Disassembler<'a, 'a> {
                 let next_opcode = u16::from_le_bytes(next_two_bytes);
                 let next_offset11 = match Instruction::decode(next_opcode) {
                     // The only valid case is a BlHalf with hi set to true
-                    Some(BlHalf { hi: true, offset11 }) => offset11,
+                    Some(I::BlHalf { hi: true, offset11 }) => offset11,
                     // All other cases are invalid
                     _ => {
                         // TODO Handle invalid instructions
@@ -411,7 +411,7 @@ impl<'a> Disassembler<'a, 'a> {
                     None => format!("sub_{:08x}", target),
                 };
 
-                BranchCond("bl", label)
+                A::BranchCond("bl", label)
             }
         };
 
@@ -592,10 +592,9 @@ impl<'a> Disassembler<'a, 'a> {
     }
 
     fn print_instruction(&self, f: &mut String, i: &AssemblyInstruction) -> std::fmt::Result {
-        use AssemblyInstruction::*;
-
+        use AssemblyInstruction as A;
         match i {
-            Mem(op, rd, rb, off) => {
+            A::Mem(op, rd, rb, off) => {
                 self.print_operator(f, op)?;
                 self.print_register(f, *rd)?;
                 write!(f, ", [")?;
@@ -604,7 +603,7 @@ impl<'a> Disassembler<'a, 'a> {
                 self.print_operand(f, off)?;
                 write!(f, "]")
             }
-            RdRsVal(op, rd, rs, val) => {
+            A::RdRsVal(op, rd, rs, val) => {
                 self.print_operator(f, op)?;
                 self.print_register(f, *rd)?;
                 write!(f, ", ")?;
@@ -612,28 +611,28 @@ impl<'a> Disassembler<'a, 'a> {
                 write!(f, ", ")?;
                 self.print_operand(f, val)
             }
-            RdVal(op, rd, val) => {
+            A::RdVal(op, rd, val) => {
                 self.print_operator(f, op)?;
                 self.print_register(f, *rd)?;
                 write!(f, ", ")?;
                 self.print_operand(f, val)
             }
-            Val(op, val) => {
+            A::Val(op, val) => {
                 self.print_operator(f, op)?;
                 self.print_operand(f, val)
             }
-            BranchCond(op, label) => {
+            A::BranchCond(op, label) => {
                 self.print_operator(f, op)?;
                 self.print_label(f, label)
             }
-            LoadLabel(rd, label) => {
+            A::LoadLabel(rd, label) => {
                 self.print_operator(f, "mov")?;
                 self.print_register(f, *rd)?;
                 write!(f, ", =(")?;
                 self.print_label(f, label)?;
                 write!(f, ")")
             }
-            PushPop(op, regs) => {
+            A::PushPop(op, regs) => {
                 self.print_operator(f, op)?;
                 write!(f, "{{ ")?;
                 for (i, r) in regs.iter().enumerate() {
@@ -645,7 +644,7 @@ impl<'a> Disassembler<'a, 'a> {
 
                 write!(f, " }}")
             }
-            StmLdmIA(op, r, regs) => {
+            A::StmLdmIA(op, r, regs) => {
                 self.print_operator(f, op)?;
                 self.print_register(f, *r)?;
                 write!(f, "!, {{ ")?;

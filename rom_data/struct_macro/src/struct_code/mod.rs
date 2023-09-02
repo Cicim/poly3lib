@@ -70,10 +70,10 @@ pub fn build_struct_body(parsed: &ParsedStruct) -> TokenStream {
 
 /// Builds a struct field (or bitfield)
 fn build_field(field: &StructField, vis: &TokenStream) -> TokenStream {
-    use StructField::*;
+    use StructField as F;
     match field {
         // Build a basic field with a derived type
-        Field(StructBasicField {
+        F::Field(StructBasicField {
             name,
             ty,
             attributes: _,
@@ -87,7 +87,7 @@ fn build_field(field: &StructField, vis: &TokenStream) -> TokenStream {
         }
 
         // Build a bitfield
-        BitField(StructBitFields { ty, sizes, names }) => {
+        F::BitField(StructBitFields { ty, sizes, names }) => {
             // Build the type
             let ty = ty.build_to_tokens();
 
@@ -106,7 +106,7 @@ fn build_field(field: &StructField, vis: &TokenStream) -> TokenStream {
             bit_fields
         }
 
-        Vector(StructVectorField { name, ty, .. }) => {
+        F::Vector(StructVectorField { name, ty, .. }) => {
             let ty = ty.build_to_tokens();
             quote!(#name: rom_data::types::RomVector<#ty>,)
         }

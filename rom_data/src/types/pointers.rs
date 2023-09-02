@@ -200,21 +200,19 @@ impl RomClearableType for Void {
 // We define custom ones which are faster to interpret with JavaScript.
 impl<T: Serialize> Serialize for RomPointer<T> {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use RomPointer::*;
-
         match self {
             // Null is serialized as the number 0
-            Null => serializer.serialize_u32(0),
+            RomPointer::Null => serializer.serialize_u32(0),
 
             // Invalid is serialized as the pointer itself
-            Invalid(pointer) => serializer.serialize_u32(*pointer),
+            RomPointer::Invalid(pointer) => serializer.serialize_u32(*pointer),
 
             // A valid pointer with data is serialized as a struct with two fields
             // RomPointer {
             //      offset: u32,        // number in JSON
             //      data: T             // Using the serializer for T
             // }
-            Valid(offset, data) => {
+            RomPointer::Valid(offset, data) => {
                 let mut state: _ = serializer.serialize_struct("RomPointer", 2)?;
                 state.serialize_field("offset", offset)?;
                 state.serialize_field("data", data)?;
@@ -225,7 +223,7 @@ impl<T: Serialize> Serialize for RomPointer<T> {
             // RomPointer {
             //      offset: u32,        // number in JSON
             // }
-            NoData(offset) => {
+            RomPointer::NoData(offset) => {
                 let mut state: _ = serializer.serialize_struct("RomPointer", 2)?;
                 state.serialize_field("offset", offset)?;
                 state.end()

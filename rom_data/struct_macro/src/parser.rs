@@ -753,20 +753,20 @@ fn parse_derived_type_recursive(mut list: Vec<TokenTree>, dereferences: &mut Vec
 
 /// Parses the base type from the first token and the token stream (in case of types that require more than one token)
 fn parse_base_type(base_type: Ident, stream: &mut IntoIter) -> BaseType {
-    use BaseType::*;
+    use BaseType as BT;
 
     // Try to parse this into a field
     match base_type.to_string().as_str() {
-        "u8" => Integer(SizedBaseType::Unsigned(8)),
-        "u16" => Integer(SizedBaseType::Unsigned(16)),
-        "u32" => Integer(SizedBaseType::Unsigned(32)),
-        "i8" | "s8" | "char" => Integer(SizedBaseType::Signed(8)),
-        "i16" | "s16" | "short" => Integer(SizedBaseType::Signed(16)),
-        "i32" | "s32" | "int" => Integer(SizedBaseType::Signed(32)),
-        "bool" | "bool8" => Integer(SizedBaseType::Boolean(8)),
-        "bool16" => Integer(SizedBaseType::Boolean(16)),
-        "bool32" => Integer(SizedBaseType::Boolean(32)),
-        "void" => Void,
+        "u8" => BT::Integer(SizedBaseType::Unsigned(8)),
+        "u16" => BT::Integer(SizedBaseType::Unsigned(16)),
+        "u32" => BT::Integer(SizedBaseType::Unsigned(32)),
+        "i8" | "s8" | "char" => BT::Integer(SizedBaseType::Signed(8)),
+        "i16" | "s16" | "short" => BT::Integer(SizedBaseType::Signed(16)),
+        "i32" | "s32" | "int" => BT::Integer(SizedBaseType::Signed(32)),
+        "bool" | "bool8" => BT::Integer(SizedBaseType::Boolean(8)),
+        "bool16" => BT::Integer(SizedBaseType::Boolean(16)),
+        "bool32" => BT::Integer(SizedBaseType::Boolean(32)),
+        "void" => BT::Void,
 
         // Support for unsigned prefix (useless, but why not)
         "unsigned" => {
@@ -775,9 +775,9 @@ fn parse_base_type(base_type: Ident, stream: &mut IntoIter) -> BaseType {
             // Consume the next token
             match next_not_eof!(stream, message) {
                 TokenTree::Ident(x) => match x.to_string().as_str() {
-                    "char" => Integer(SizedBaseType::Unsigned(8)),
-                    "short" => Integer(SizedBaseType::Unsigned(16)),
-                    "int" => Integer(SizedBaseType::Unsigned(32)),
+                    "char" => BT::Integer(SizedBaseType::Unsigned(8)),
+                    "short" => BT::Integer(SizedBaseType::Unsigned(16)),
+                    "int" => BT::Integer(SizedBaseType::Unsigned(32)),
 
                     _ => abort!(x, "{}, found `{}`", message, x),
                 },
@@ -789,7 +789,7 @@ fn parse_base_type(base_type: Ident, stream: &mut IntoIter) -> BaseType {
         "struct" => {
             // Consume the next token
             match next_not_eof!(stream, "struct name") {
-                TokenTree::Ident(x) => Struct(x),
+                TokenTree::Ident(x) => BT::Struct(x),
                 x => abort!(x, "Expected struct name, found `{}`", x),
             }
         }
@@ -803,17 +803,17 @@ fn parse_base_type(base_type: Ident, stream: &mut IntoIter) -> BaseType {
 
 /// Applies some simple rules to check if the type is valid (recursively)
 fn assert_derived_type_is_valid(derived: &DerivedType, name: &Ident) {
-    use DerivedType::*;
+    use DerivedType as DT;
 
     match derived {
-        Base(BaseType::Void) => abort!(
+        DT::Base(BaseType::Void) => abort!(
             name,
             "Fields cannot have type `void` unless they are pointers"
         ),
-        Base(_) => return,
-        Array(x, _) => {
+        DT::Base(_) => return,
+        DT::Array(x, _) => {
             // Cannot make arrays of voids
-            if let Base(BaseType::Void) = x.as_ref() {
+            if let DT::Base(BaseType::Void) = x.as_ref() {
                 abort!(name, "Cannot have arrays of voids");
             }
             // Cannot make arrays of non-byte boolean types
@@ -821,13 +821,13 @@ fn assert_derived_type_is_valid(derived: &DerivedType, name: &Ident) {
 
             assert_derived_type_is_valid(x, name)
         }
-        Pointer(x) => {
+        DT::Pointer(x) => {
             // Cannot have pointers of non-byte boolean types
             assert_no_nonbyte_booleans(x, name);
 
             // Check only for derived types (the void check should not be done here
             // as this is the only place where it is valid)
-            if let Base(BaseType::Void) = x.as_ref() {
+            if let DT::Base(BaseType::Void) = x.as_ref() {
                 return;
             }
 

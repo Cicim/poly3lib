@@ -215,18 +215,16 @@ impl std::fmt::Debug for RomGraphic {
 // ANCHOR Serde impl
 impl Serialize for RomGraphic {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        use RomGraphic::*;
-
         match self {
             // New is serialized to { tiles: ... }
-            New(tiles) => {
+            RomGraphic::New(tiles) => {
                 let mut state: _ = serializer.serialize_struct("RomGraphic", 1)?;
                 state.serialize_field("tiles", tiles)?;
                 state.end()
             }
 
             // Compressed is serialized to { offset: ..., tiles: ... }
-            Compressed { offset, tiles } => {
+            RomGraphic::Compressed { offset, tiles } => {
                 let mut state: _ = serializer.serialize_struct("RomGraphic", 2)?;
                 state.serialize_field("tiles", tiles)?;
                 state.serialize_field("offset", offset)?;
@@ -234,7 +232,7 @@ impl Serialize for RomGraphic {
             }
 
             // Uncompressed is serialized to { offset: ..., tiles: ..., read_len: ... }
-            Uncompressed {
+            RomGraphic::Uncompressed {
                 offset,
                 tiles,
                 read_len,

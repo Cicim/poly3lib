@@ -92,10 +92,10 @@ pub enum LoggedEvent {
 
 impl Display for LoggedEvent {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        use LoggedEvent::*;
+        use LoggedEvent as E;
 
         match self {
-            FunctionCalled(address, args) => {
+            E::FunctionCalled(address, args) => {
                 let mut args = args.iter().map(|x| format!("{:#010X}", x));
                 let args = format!(
                     "{}",
@@ -110,22 +110,22 @@ impl Display for LoggedEvent {
                     address, args
                 )
             }
-            WordRead(address, value) => {
+            E::WordRead(address, value) => {
                 write!(f, "Read word {:#010X} from {:#010X}", value, address)
             }
-            WordWritten(address, value) => {
+            E::WordWritten(address, value) => {
                 write!(f, "Written word {:#010X} to {:#010X}", value, address)
             }
-            HalfwordRead(address, value) => {
+            E::HalfwordRead(address, value) => {
                 write!(f, "Read halfword {:#06X} from {:#010X}", value, address)
             }
-            HalfwordWritten(address, value) => {
+            E::HalfwordWritten(address, value) => {
                 write!(f, "Written halfword {:#06X} to {:#010X}", value, address)
             }
-            ByteRead(address, value) => {
+            E::ByteRead(address, value) => {
                 write!(f, "Read byte {:#04X} from {:#010X}", value, address)
             }
-            ByteWritten(address, value) => {
+            E::ByteWritten(address, value) => {
                 write!(f, "Written byte {:#04X} to {:#010X}", value, address)
             }
         }
@@ -273,8 +273,6 @@ impl<'rom> Processor<'rom> {
     // ANCHOR Execute
     /// Executes an instruction
     pub fn execute(&mut self, instruction: Instruction) -> ExecutionResult {
-        use Instruction::*;
-
         /// Alu operations with registers as second operand
         macro_rules! alu_op {
             // Performs rd <- ra OP rb
@@ -357,57 +355,58 @@ impl<'rom> Processor<'rom> {
             }};
         }
 
+        use Instruction as I;
         match instruction {
             // Format 1 -- Move shifted register
-            LslImm { rd, rs, imm5 } => alu_op!(rd, rs, lsl, IMM, imm5),
-            LsrImm { rd, rs, imm5 } => alu_op!(rd, rs, lsr, IMM, imm5),
-            AsrImm { rd, rs, imm5 } => alu_op!(rd, rs, asr, IMM, imm5),
+            I::LslImm { rd, rs, imm5 } => alu_op!(rd, rs, lsl, IMM, imm5),
+            I::LsrImm { rd, rs, imm5 } => alu_op!(rd, rs, lsr, IMM, imm5),
+            I::AsrImm { rd, rs, imm5 } => alu_op!(rd, rs, asr, IMM, imm5),
 
             // Format 2 -- Add/subtract
-            AddReg { rd, rs, rn } => alu_op!(rd, rs, add, REG, rn),
-            SubReg { rd, rs, rn } => alu_op!(rd, rs, sub, REG, rn),
-            AddImm3 { rd, rs, imm3 } => alu_op!(rd, rs, add, IMM, imm3),
-            SubImm3 { rd, rs, imm3 } => alu_op!(rd, rs, sub, IMM, imm3),
+            I::AddReg { rd, rs, rn } => alu_op!(rd, rs, add, REG, rn),
+            I::SubReg { rd, rs, rn } => alu_op!(rd, rs, sub, REG, rn),
+            I::AddImm3 { rd, rs, imm3 } => alu_op!(rd, rs, add, IMM, imm3),
+            I::SubImm3 { rd, rs, imm3 } => alu_op!(rd, rs, sub, IMM, imm3),
 
             // Format 3 -- Move/compare/add/subtract immediate
-            MovImm { rd, imm8 } => self.set_register(rd, imm8 as u32),
-            CmpImm { rd, imm8 } => alu_cc!(rd, sub, IMM, imm8),
-            AddImm8 { rd, imm8 } => alu_op!(rd, rd, add, IMM, imm8),
-            SubImm8 { rd, imm8 } => alu_op!(rd, rd, sub, IMM, imm8),
+            I::MovImm { rd, imm8 } => self.set_register(rd, imm8 as u32),
+            I::CmpImm { rd, imm8 } => alu_cc!(rd, sub, IMM, imm8),
+            I::AddImm8 { rd, imm8 } => alu_op!(rd, rd, add, IMM, imm8),
+            I::SubImm8 { rd, imm8 } => alu_op!(rd, rd, sub, IMM, imm8),
 
             // Format 4 -- ALU operations
-            And { rd, rs } => alu_op!(rd, rd, and, REG, rs),
-            Eor { rd, rs } => alu_op!(rd, rd, xor, REG, rs),
-            Lsl { rd, rs } => alu_op!(rd, rd, lsl, REG, rs),
-            Lsr { rd, rs } => alu_op!(rd, rd, lsr, REG, rs),
-            Asr { rd, rs } => alu_op!(rd, rd, asr, REG, rs),
-            Adc { rd, rs } => alu_op!(rd, rd, adc, REG, rs),
-            Sbc { rd, rs } => alu_op!(rd, rd, sbc, REG, rs),
-            Ror { rd, rs } => alu_op!(rd, rd, ror, REG, rs),
-            Tst { rd, rs } => alu_cc!(rd, and, REG, rs),
-            Neg { rd, rs } => alu_op!(rd, neg, REG, rs),
-            Cmp { rd, rs } => alu_cc!(rd, sub, REG, rs),
-            Cmn { rd, rs } => alu_cc!(rd, add, REG, rs),
-            Orr { rd, rs } => alu_op!(rd, rd, or, REG, rs),
-            Mul { rd, rs } => alu_op!(rd, rd, mul, REG, rs),
-            Bic { rd, rs } => alu_op!(rd, rd, bic, REG, rs),
-            Mvn { rd, rs } => alu_op!(rd, not, REG, rs),
+            I::And { rd, rs } => alu_op!(rd, rd, and, REG, rs),
+            I::Eor { rd, rs } => alu_op!(rd, rd, xor, REG, rs),
+            I::Lsl { rd, rs } => alu_op!(rd, rd, lsl, REG, rs),
+            I::Lsr { rd, rs } => alu_op!(rd, rd, lsr, REG, rs),
+            I::Asr { rd, rs } => alu_op!(rd, rd, asr, REG, rs),
+            I::Adc { rd, rs } => alu_op!(rd, rd, adc, REG, rs),
+            I::Sbc { rd, rs } => alu_op!(rd, rd, sbc, REG, rs),
+            I::Ror { rd, rs } => alu_op!(rd, rd, ror, REG, rs),
+            I::Tst { rd, rs } => alu_cc!(rd, and, REG, rs),
+            I::Neg { rd, rs } => alu_op!(rd, neg, REG, rs),
+            I::Cmp { rd, rs } => alu_cc!(rd, sub, REG, rs),
+            I::Cmn { rd, rs } => alu_cc!(rd, add, REG, rs),
+            I::Orr { rd, rs } => alu_op!(rd, rd, or, REG, rs),
+            I::Mul { rd, rs } => alu_op!(rd, rd, mul, REG, rs),
+            I::Bic { rd, rs } => alu_op!(rd, rd, bic, REG, rs),
+            I::Mvn { rd, rs } => alu_op!(rd, not, REG, rs),
 
             // Format 5 - Hi register operations/branch exchange
-            AddLowHi { rd, hs } => alu_op!(rd, rd, add, REG, hs + 8),
-            AddHiLow { hd, rs } => alu_op!(hd + 8, hd + 8, add, REG, rs),
-            AddHiHi { hd, hs } => alu_op!(hd + 8, hd + 8, add, REG, hs + 8),
-            CmpLowHi { rd, hs } => alu_cc!(rd, sub, REG, hs + 8),
-            CmpHiLow { hd, rs } => alu_cc!(hd + 8, sub, REG, rs),
-            CmpHiHi { hd, hs } => alu_cc!(hd + 8, sub, REG, hs + 8),
-            MovLowHi { rd, hs } => self.mov_registers(rd, hs + 8),
-            MovHiLow { hd, rs } => self.mov_registers(hd + 8, rs),
-            MovHiHi { hd, hs } => self.mov_registers(hd + 8, hs + 8),
-            Bx { rs } => self.jump_to(self.get_register(rs))?,
-            BxHi { hs } => self.jump_to(self.get_register(hs + 8))?,
+            I::AddLowHi { rd, hs } => alu_op!(rd, rd, add, REG, hs + 8),
+            I::AddHiLow { hd, rs } => alu_op!(hd + 8, hd + 8, add, REG, rs),
+            I::AddHiHi { hd, hs } => alu_op!(hd + 8, hd + 8, add, REG, hs + 8),
+            I::CmpLowHi { rd, hs } => alu_cc!(rd, sub, REG, hs + 8),
+            I::CmpHiLow { hd, rs } => alu_cc!(hd + 8, sub, REG, rs),
+            I::CmpHiHi { hd, hs } => alu_cc!(hd + 8, sub, REG, hs + 8),
+            I::MovLowHi { rd, hs } => self.mov_registers(rd, hs + 8),
+            I::MovHiLow { hd, rs } => self.mov_registers(hd + 8, rs),
+            I::MovHiHi { hd, hs } => self.mov_registers(hd + 8, hs + 8),
+            I::Bx { rs } => self.jump_to(self.get_register(rs))?,
+            I::BxHi { hs } => self.jump_to(self.get_register(hs + 8))?,
 
             // Format 6 -- PC-relative load
-            LdrPc { rd, imm8 } => {
+            I::LdrPc { rd, imm8 } => {
                 let offset = (imm8 as u32) << 2;
                 let address = self.get_pc() + offset + 2;
 
@@ -419,21 +418,21 @@ impl<'rom> Processor<'rom> {
             }
 
             // Format 7 -- Load/store with register offset
-            StrReg { rb, ro, rs } => {
+            I::StrReg { rb, ro, rs } => {
                 let offset = self.get_register(ro);
                 self.store_word(rs, rb, offset)?;
             }
-            StrbReg { rb, ro, rs } => {
+            I::StrbReg { rb, ro, rs } => {
                 let address = self.get_register(rb) + self.get_register(ro);
                 let value = self.get_register(rs) as u8;
                 log_write!(address, value, ByteWritten);
                 self.memory.write_byte(address, value)?;
             }
-            LdrReg { rb, ro, rd } => {
+            I::LdrReg { rb, ro, rd } => {
                 let offset = self.get_register(ro);
                 self.load_word(rd, rb, offset)?;
             }
-            LdrbReg { rb, ro, rd } => {
+            I::LdrbReg { rb, ro, rd } => {
                 let address = self.get_register(rb) + self.get_register(ro);
                 let value = self.memory.read_byte(address)?;
                 log_read!(address, value, ByteRead);
@@ -441,26 +440,26 @@ impl<'rom> Processor<'rom> {
             }
 
             // Format 8 -- Load/store sign-extended byte/halfword
-            StrhReg { rb, ro, rs } => {
+            I::StrhReg { rb, ro, rs } => {
                 let address = self.get_register(rb) + self.get_register(ro);
                 let value = self.get_register(rs) as u16;
                 log_write!(address, value, HalfwordWritten);
                 self.memory.write_halfword(address, value)?;
             }
-            LdrhReg { rb, ro, rd } => {
+            I::LdrhReg { rb, ro, rd } => {
                 let address = self.get_register(rb) + self.get_register(ro);
                 let value = self.memory.read_halfword(address)?;
                 log_read!(address, value, HalfwordRead);
                 self.set_register(rd, value as u32);
             }
-            LdsbReg { rb, ro, rd } => {
+            I::LdsbReg { rb, ro, rd } => {
                 let address = self.get_register(rb) + self.get_register(ro);
                 let value = self.memory.read_byte(address)?;
                 log_read!(address, value, ByteRead);
                 let value = value as i8 as i32 as u32;
                 self.set_register(rd, value);
             }
-            LdshReg { rb, ro, rd } => {
+            I::LdshReg { rb, ro, rd } => {
                 let address = self.get_register(rb) + self.get_register(ro);
                 let value = self.memory.read_halfword(address)?;
                 log_read!(address, value, HalfwordRead);
@@ -469,21 +468,21 @@ impl<'rom> Processor<'rom> {
             }
 
             // Format 9 -- Load/store with immediate offset
-            StrImm { rb, imm5, rs } => {
+            I::StrImm { rb, imm5, rs } => {
                 let offset = (imm5 as u32) << 2;
                 self.store_word(rs, rb, offset)?;
             }
-            LdrImm { rb, imm5, rd } => {
+            I::LdrImm { rb, imm5, rd } => {
                 let offset = (imm5 as u32) << 2;
                 self.load_word(rd, rb, offset)?;
             }
-            StrbImm { rb, imm5, rs } => {
+            I::StrbImm { rb, imm5, rs } => {
                 let address = self.get_register(rb) + (imm5 as u32);
                 let value = self.get_register(rs) as u8;
                 log_write!(address, value, ByteWritten);
                 self.memory.write_byte(address, value)?;
             }
-            LdrbImm { rb, imm5, rd } => {
+            I::LdrbImm { rb, imm5, rd } => {
                 let address = self.get_register(rb) + (imm5 as u32);
                 let value = self.memory.read_byte(address)?;
                 log_read!(address, value, ByteRead);
@@ -491,13 +490,13 @@ impl<'rom> Processor<'rom> {
             }
 
             // Format 10 -- Load/store halfword
-            StrhImm { rb, imm5, rs } => {
+            I::StrhImm { rb, imm5, rs } => {
                 let address = self.get_register(rb) + ((imm5 as u32) << 1);
                 let value = self.get_register(rs) as u16;
                 log_write!(address, value, HalfwordWritten);
                 self.memory.write_halfword(address, value)?;
             }
-            LdrhImm { rb, imm5, rd } => {
+            I::LdrhImm { rb, imm5, rd } => {
                 let address = self.get_register(rb) + ((imm5 as u32) << 1);
                 let value = self.memory.read_halfword(address)?;
                 log_read!(address, value, HalfwordRead);
@@ -505,36 +504,36 @@ impl<'rom> Processor<'rom> {
             }
 
             // Format 11 -- SP-relative load/store
-            StrSpImm { imm8, rs } => self.store_word(rs, 13, (imm8 as u32) << 2)?,
-            LdrSpImm { imm8, rd } => self.load_word(rd, 13, (imm8 as u32) << 2)?,
+            I::StrSpImm { imm8, rs } => self.store_word(rs, 13, (imm8 as u32) << 2)?,
+            I::LdrSpImm { imm8, rd } => self.load_word(rd, 13, (imm8 as u32) << 2)?,
 
             // Format 12 -- Load address
             // REVIEW - Is imm really a multiple of 4?
-            AddPcImm { imm8, rd } => alu_op!(rd, 15, add, IMM, (imm8 as u32) << 2),
-            AddSpImm { imm8, rd } => alu_op!(rd, 13, add, IMM, (imm8 as u32) << 2),
+            I::AddPcImm { imm8, rd } => alu_op!(rd, 15, add, IMM, (imm8 as u32) << 2),
+            I::AddSpImm { imm8, rd } => alu_op!(rd, 13, add, IMM, (imm8 as u32) << 2),
 
             // Format 13 -- Add offset to Stack Pointer
-            AddSpPosImm { imm7 } => alu_op!(13, 13, add, IMM, (imm7 as u32) << 2),
-            AddSpNegImm { imm7 } => alu_op!(13, 13, sub, IMM, (imm7 as u32) << 2),
+            I::AddSpPosImm { imm7 } => alu_op!(13, 13, add, IMM, (imm7 as u32) << 2),
+            I::AddSpNegImm { imm7 } => alu_op!(13, 13, sub, IMM, (imm7 as u32) << 2),
 
             // Format 14 -- Push/pop registers
-            Push { rlist } => get_registers_in_rlist(rlist)
+            I::Push { rlist } => get_registers_in_rlist(rlist)
                 .iter()
                 .map(|r| self.push_register(*r))
                 .collect::<ExecutionResult>()?,
-            PushLr { rlist } => {
+            I::PushLr { rlist } => {
                 self.push_register(14)?;
                 get_registers_in_rlist(rlist)
                     .iter()
                     .map(|r| self.push_register(*r))
                     .collect::<ExecutionResult>()?;
             }
-            Pop { rlist } => get_registers_in_rlist(rlist)
+            I::Pop { rlist } => get_registers_in_rlist(rlist)
                 .iter()
                 .rev()
                 .map(|r| self.pop_register(*r))
                 .collect::<ExecutionResult>()?,
-            PopPc { rlist } => {
+            I::PopPc { rlist } => {
                 get_registers_in_rlist(rlist)
                     .iter()
                     .rev()
@@ -544,7 +543,7 @@ impl<'rom> Processor<'rom> {
             }
 
             // Format 15 -- Multiple load/store
-            Stmia { rb, rlist } => {
+            I::Stmia { rb, rlist } => {
                 let mut addr = self.get_register(rb);
                 for r in get_registers_in_rlist(rlist) {
                     let value = self.get_register(r);
@@ -553,7 +552,7 @@ impl<'rom> Processor<'rom> {
                 }
                 self.set_register(rb, addr)
             }
-            Ldmia { rb, rlist } => {
+            I::Ldmia { rb, rlist } => {
                 let mut addr = self.get_register(rb);
                 for r in get_registers_in_rlist(rlist) {
                     let value = self.memory.read_word(addr)?;
@@ -564,35 +563,35 @@ impl<'rom> Processor<'rom> {
             }
 
             // Format 16 -- Conditional branch
-            Beq { soffset } => conditional_branch!(is_eq, soffset),
-            Bne { soffset } => conditional_branch!(is_ne, soffset),
-            Bcs { soffset } => conditional_branch!(is_cs, soffset),
-            Bcc { soffset } => conditional_branch!(is_cc, soffset),
-            Bmi { soffset } => conditional_branch!(is_mi, soffset),
-            Bpl { soffset } => conditional_branch!(is_pl, soffset),
-            Bvs { soffset } => conditional_branch!(is_vs, soffset),
-            Bvc { soffset } => conditional_branch!(is_vc, soffset),
-            Bhi { soffset } => conditional_branch!(is_hi, soffset),
-            Bls { soffset } => conditional_branch!(is_ls, soffset),
-            Bge { soffset } => conditional_branch!(is_ge, soffset),
-            Blt { soffset } => conditional_branch!(is_lt, soffset),
-            Bgt { soffset } => conditional_branch!(is_gt, soffset),
-            Ble { soffset } => conditional_branch!(is_le, soffset),
+            I::Beq { soffset } => conditional_branch!(is_eq, soffset),
+            I::Bne { soffset } => conditional_branch!(is_ne, soffset),
+            I::Bcs { soffset } => conditional_branch!(is_cs, soffset),
+            I::Bcc { soffset } => conditional_branch!(is_cc, soffset),
+            I::Bmi { soffset } => conditional_branch!(is_mi, soffset),
+            I::Bpl { soffset } => conditional_branch!(is_pl, soffset),
+            I::Bvs { soffset } => conditional_branch!(is_vs, soffset),
+            I::Bvc { soffset } => conditional_branch!(is_vc, soffset),
+            I::Bhi { soffset } => conditional_branch!(is_hi, soffset),
+            I::Bls { soffset } => conditional_branch!(is_ls, soffset),
+            I::Bge { soffset } => conditional_branch!(is_ge, soffset),
+            I::Blt { soffset } => conditional_branch!(is_lt, soffset),
+            I::Bgt { soffset } => conditional_branch!(is_gt, soffset),
+            I::Ble { soffset } => conditional_branch!(is_le, soffset),
 
             // Format 17 -- Software interrupt
-            Swi { imm } => println!(
+            I::Swi { imm } => println!(
                 "[WARNING] SWI #{} was called, but it is not yet implemented",
                 imm
             ),
 
             // Format 18 -- Unconditional branch
-            B { offset11 } => {
+            I::B { offset11 } => {
                 let offset = extend_11bit_offset(offset11);
                 self.set_pc(self.get_pc().wrapping_add(offset as u32));
             }
 
             // Format 19 -- Long branch with link
-            BlHalf {
+            I::BlHalf {
                 hi: false,
                 offset11,
             } => {
@@ -602,7 +601,7 @@ impl<'rom> Processor<'rom> {
                 // Run the second part immediately
                 self.next()?;
             }
-            BlHalf { hi: true, offset11 } => {
+            I::BlHalf { hi: true, offset11 } => {
                 // Last part
                 // The offset11 contains the lower 11 bits of the target address
                 let bottom = (offset11 as u32) << 1;
@@ -748,26 +747,26 @@ impl<'rom> Processor<'rom> {
 
         // If there is something to do before the function call
         if let Some(action) = self.on_function_call.get(&address) {
-            use FunctionCallAction::*;
+            use FunctionCallAction as A;
             match action {
                 // Don't do anything
-                Skip => {}
+                A::Skip => {}
 
-                RunBefore(cb) => {
+                A::RunBefore(cb) => {
                     // Run the callback
                     cb(self)?;
                     // Then jump to the function
                     self.set_pc(address);
                 }
 
-                RunInstead(cb) => {
+                A::RunInstead(cb) => {
                     // Run the callback
                     cb(self)?;
                     // Don't jump to the function
                 }
 
                 // Log then jump to the function
-                Log => {
+                A::Log => {
                     // Log the function call
                     self.log_function_call(address);
                     // Jump to the function
@@ -775,9 +774,9 @@ impl<'rom> Processor<'rom> {
                 }
 
                 // Log then don't do anything
-                LogAndSkip => self.log_function_call(address),
+                A::LogAndSkip => self.log_function_call(address),
 
-                LogAndRunBefore(cb) => {
+                A::LogAndRunBefore(cb) => {
                     let cb = *cb;
                     // Log the function call
                     self.log_function_call(address);
@@ -786,7 +785,7 @@ impl<'rom> Processor<'rom> {
                     // Then jump to the function
                     self.set_pc(address);
                 }
-                LogAndRunInstead(cb) => {
+                A::LogAndRunInstead(cb) => {
                     let cb = *cb;
                     // Log the function call
                     self.log_function_call(address);
