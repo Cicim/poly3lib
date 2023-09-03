@@ -16,6 +16,7 @@ mod anim;
 mod data;
 mod pair;
 
+pub use anim::{TilesetAnimation, TilesetAnimationError, TilesetAnimationList};
 pub use data::{MetaTile, MetatileAttributes, MetatileLayerType, TilesetData};
 pub use pair::{TilesetNumbers, TilesetPair, TilesetPairRenderingData};
 

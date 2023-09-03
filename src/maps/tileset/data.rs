@@ -11,7 +11,7 @@ use rom_data::{
 
 use crate::Rom;
 
-use super::{MapTilesetError, MapTilesetResult, TilesetHeader};
+use super::{MapTilesetError, MapTilesetResult, TilesetAnimationList, TilesetHeader};
 
 // ANCHOR Metatile
 #[derive(Default, Clone, Copy, Serialize, Deserialize)]
@@ -159,10 +159,10 @@ pub struct TilesetData {
     pub metatiles: Vec<MetaTile>,
     /// The attributes for each metatile
     pub attributes: Vec<MetatileAttributes>,
-    /*     /// Animation data for the tileset
+    /// Animation data for the tileset
     ///
     /// This is loaded at a later time explicitly
-    pub animations: Option<TilesetAnimationList>, */
+    pub animations: Option<TilesetAnimationList>,
 }
 
 impl TilesetData {
@@ -188,7 +188,8 @@ impl TilesetData {
             palettes,
             attributes,
             metatiles,
-            // TODO Animations
+            // Animations are loaded at a later time
+            animations: None,
         })
     }
 }

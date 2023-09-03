@@ -7,7 +7,7 @@ use std::{
 
 use colored::Colorize;
 use thiserror::Error;
-use thumb::Instruction;
+use thumb::{Instruction, Processor};
 
 use crate::{
     lz77::Lz77Header,
@@ -670,6 +670,11 @@ impl RomData {
     }
 
     // ANCHOR Misc
+    /// Returns a new processor for this ROM.
+    pub fn get_cpu(&self) -> Processor {
+        Processor::new(&self.bytes)
+    }
+
     /// Decodes the instruction at the given offset.
     pub fn decode_instruction(&self, offset: Offset) -> RomIoResult<Option<Instruction>> {
         // Read the halfword for the instruction
