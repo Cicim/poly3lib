@@ -80,14 +80,9 @@ impl<T: Sized, const N: usize> Display for BitFields<T, N> {
 macro_rules! impl_bitfields_read_write {
     ($base_type:ty, $unsigned_type:ty) => {
         impl<const N: usize> BitFields<$base_type, N> {
-            pub fn read_from(
-                &self,
-                rom: &RomData,
-                offset: Offset,
-            ) -> Result<[$base_type; N], RomIoError> {
-                let mut bitfield_values: [$base_type; N] = [0; N];
-
-                let value = <$unsigned_type>::read_from(rom, offset)?;
+            /// Read a bitfield given the unsigned container.
+            pub fn read(&self, value: $unsigned_type) -> [$base_type; N] {
+                let mut bitfield_values = [0; N];
 
                 // Read the bitfields
                 for i in 0..N {
@@ -117,20 +112,15 @@ macro_rules! impl_bitfields_read_write {
                     bitfield_values[i] = field;
                 }
 
-                Ok(bitfield_values)
+                bitfield_values
             }
 
-            pub fn write_to(
+            /// Read the bitfields to an unsigned container given its previous value.
+            pub fn write(
                 &self,
-                rom: &mut RomData,
-                offset: Offset,
+                mut base_value: $unsigned_type,
                 fields: [$base_type; N],
-            ) -> Result<(), RomIoError> {
-                // Read the base value from ROM
-                let base_value: $base_type = rom.read(offset)?;
-                // Convert the base value to its signed version
-                let mut base_value = base_value as $unsigned_type;
-
+            ) -> $unsigned_type {
                 // Write the bitfields
                 for i in 0..N {
                     // Here's a little visualization with the same 8-bit field
@@ -154,8 +144,31 @@ macro_rules! impl_bitfields_read_write {
                     base_value |= field;
                 }
 
-                // Convert the base value back to the base type
-                let base_value = base_value as $base_type;
+                base_value
+            }
+        }
+
+        impl<const N: usize> BitFields<$base_type, N> {
+            pub fn read_from(
+                &self,
+                rom: &RomData,
+                offset: Offset,
+            ) -> Result<[$base_type; N], RomIoError> {
+                let value = <$unsigned_type>::read_from(rom, offset)?;
+                Ok(self.read(value))
+            }
+
+            pub fn write_to(
+                &self,
+                rom: &mut RomData,
+                offset: Offset,
+                fields: [$base_type; N],
+            ) -> Result<(), RomIoError> {
+                // Read the base value from ROM
+                let base_value: $base_type = rom.read(offset)?;
+                // Convert the base value to its signed version
+                let base_value = base_value as $unsigned_type;
+                self.write(base_value, fields);
                 // Write the base value to ROM
                 rom.write(offset, base_value)?;
 

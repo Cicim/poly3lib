@@ -52,6 +52,15 @@ impl<T> RomPointer<T> {
         }
     }
 
+    /// Returns the underlying pointer representation.
+    pub fn pointer(&self) -> Pointer {
+        match self {
+            RomPointer::Null => 0,
+            RomPointer::Invalid(x) => *x,
+            RomPointer::Valid(x, _) | RomPointer::NoData(x) => *x as u32 + 0x08_000_000,
+        }
+    }
+
     /// Returns a reference to the data read by this pointer only if it exists.
     pub fn data(&self) -> Option<&T> {
         match self {
@@ -84,6 +93,20 @@ impl RomPointer {
     /// Returns a new [`RomPointer`] (of type void) pointing to the given offset.
     pub fn new(offset: usize) -> RomPointer {
         Self::NoData(offset)
+    }
+
+    /// Turns the given pointer into an offset (`NoData` if valid).
+    pub fn from_pointer(pointer: Pointer, rom: &RomData) -> RomPointer {
+        if pointer == 0 {
+            return RomPointer::Null;
+        }
+
+        let as_usize = pointer as usize;
+        if as_usize >= 0x08_000_000 && as_usize < 0x08_000_000 + rom.size() {
+            return RomPointer::new(as_usize - 0x00_000_000);
+        }
+
+        return RomPointer::Invalid(pointer);
     }
 }
 

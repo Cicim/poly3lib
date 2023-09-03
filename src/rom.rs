@@ -72,6 +72,9 @@ impl Display for Rom {
 ///
 /// Also contains values that are not references to tables.
 pub struct RomReferences {
+    /// The table of all map groups in the ROM, as well as all map groups
+    pub map_groups: Option<crate::maps::map::MapGroups>,
+
     /// The table of all layouts in the ROM.
     pub map_layouts: Option<RomTable>,
 
@@ -91,6 +94,30 @@ impl Display for RomReferences {
                     None => writeln!(f, "{}", "Not loaded".italic())?,
                 }
             };
+        }
+
+        // Printing map groups
+        match self.map_groups {
+            Some(ref groups) => {
+                writeln!(f, "  map_groups: {}", groups.table)?;
+
+                let mut index = 0;
+                // Start printing all groups in groups of 8 per row
+                for eight_groups in groups.groups.chunks(8) {
+                    write!(f, "    ")?;
+                    for group in eight_groups {
+                        let index_str = format!("{:>3}", index).blue();
+                        let length_str = format!("{:>3}", group.length).red();
+
+                        write!(f, "{}: {}  ", index_str, length_str)?;
+                        index += 1;
+                    }
+                    writeln!(f)?;
+                }
+            }
+            None => {
+                writeln!(f, "  map_groups: {}", "Not loaded".italic())?;
+            }
         }
 
         // ANCHOR Fields of rom references
@@ -120,7 +147,7 @@ impl Display for RomReferences {
 }
 
 // ANCHOR RomTable struct
-#[derive(Default, Serialize, Deserialize, Clone)]
+#[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct RomTable {
     /// The offset of the table in the ROM.
     pub offset: Offset,

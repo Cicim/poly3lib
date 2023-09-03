@@ -7,6 +7,7 @@ use crate::Rom;
 
 // Sub-modules
 pub mod layout;
+pub mod map;
 pub mod tileset;
 
 impl Rom {
@@ -14,6 +15,9 @@ impl Rom {
     pub fn init_maps_tables(&mut self) -> ProblemsLog {
         // Keep a hashmap so that you can store which tables failed to initialize
         let mut log = ProblemsLog::new();
+
+        // Initialize the map groups
+        map::init_table(self).unwrap_or_else(|e| log.push_error("map_groups", e));
 
         // Initialize the map layout table
         layout::init_table(self).unwrap_or_else(|e| log.push_error("map_layouts", e));

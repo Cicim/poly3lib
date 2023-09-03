@@ -223,7 +223,7 @@ fn get_table(rom: &Rom) -> MapLayoutResult<&RomTable> {
     }
 }
 
-/// Obtains the offset containing the pointer to the MapLayout given the layout index.
+/// Gets the pointer to the layout offset with the given index in the table.
 fn get_map_layout_pointer(rom: &Rom, index: u16) -> MapLayoutResult<Offset> {
     if index == 0 {
         return Err(MapLayoutError::IndicesStartAtOne);

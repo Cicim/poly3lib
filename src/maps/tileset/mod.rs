@@ -67,6 +67,8 @@ impl TilesetHeader {
 }
 
 // ANCHOR MapTilesetTable trait
+/// Importing this trait allows you create and delete map tilesets
+/// while maintanining consistency with the tileset table.
 pub trait MapTilesetTable {
     /// Reads a [`TilesetPair`] from the given offsets.
     ///
@@ -115,6 +117,7 @@ pub enum MapTilesetError {
     IoError(#[from] RomIoError),
 }
 
+// ANCHOR MapTilesetTable impl
 impl MapTilesetTable for Rom {
     fn read_tileset_pair(
         &self,
