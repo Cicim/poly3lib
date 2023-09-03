@@ -195,6 +195,8 @@ fn read_header(rom: &RomData, offset: Offset) -> Result<Lz77Header, RomIoError> 
 }
 
 /// Returns the size of the deflated (compressed) data in ROM given the offset.
+///
+/// Does not include the size of the Lz77 header.
 pub fn get_deflated_size(rom: &RomData, header_offset: Offset) -> Result<usize, RomIoError> {
     // Read the header
     let header = read_header(rom, header_offset)?;

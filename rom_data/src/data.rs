@@ -632,25 +632,21 @@ impl RomData {
         self.write_slice(offset + 4, &compressed)
     }
 
-    /// Replaces the Lz77-compressed data at the given offset with new data
+    /// Replaces the LZ77-compressed data at the given offset with new data
     /// to compress. Uses the old space if possible, otherwise reallocates.
     ///
     /// Returns the offset of the new data.
-    pub fn repoint_compressed_data(
-        &mut self,
-        header_offset: Offset,
-        data: &[u8],
-    ) -> RomIoResult<Offset> {
+    pub fn repoint_compressed_data(&mut self, offset: Offset, data: &[u8]) -> RomIoResult<Offset> {
         // Compress the data
         let compressed = crate::lz77::compress(data);
 
         // Get the deflated size of the data
-        let new_offset = match crate::lz77::get_deflated_size(self, header_offset) {
+        let new_offset = match crate::lz77::get_deflated_size(self, offset) {
             Ok(deflated_size) => {
                 // Find the offset that can contain this data
                 let old_size = deflated_size + 4;
                 let new_size = compressed.len() + 4;
-                self.repoint_offset(header_offset, old_size, new_size)?
+                self.repoint_offset(offset, old_size, new_size)?
             }
 
             // If there is an error, then we have to find a new space
@@ -665,6 +661,12 @@ impl RomData {
         self.write_slice(new_offset + 4, &compressed)?;
 
         Ok(new_offset)
+    }
+
+    /// Clears the LZ77-compressed data at the given offset.
+    pub fn clear_compressed_data(&mut self, offset: Offset) -> RomIoResult {
+        let size = crate::lz77::get_deflated_size(self, offset)?;
+        self.clear_bytes(offset, size + 4)
     }
 
     // ANCHOR Misc

@@ -1,6 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
-use rom_data::{rom_struct, Offset, RomIoError};
+use rom_data::{
+    rom_struct,
+    types::{RomGraphic, RomPointer, RomSizedType, RomTile},
+    Offset, RomIoError,
+};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -56,10 +60,34 @@ impl TilesetHeader {
         }
         warn("cannot determine tileset size");
 
-        // TODO Compute an actually valid default
+        // TODO Handle uncompressed gfx size
         128
     }
 }
+
+// ANCHOR MapTilesetTable trait
+pub trait MapTilesetTable {
+    /// Reads a [`TilesetPair`] from the given offsets.
+    ///
+    /// Returns an error if either tileset offset is invalid.
+    fn read_tileset_pair(
+        &self,
+        primary_offset: Offset,
+        secondary_offset: Offset,
+    ) -> MapTilesetResult<TilesetPair>;
+
+    /// Deletes the given tileset from the table and from ROM.
+    fn delete_tileset(&mut self, offset: Offset) -> MapTilesetResult;
+
+    /// Creates a new tileset of the given type (primary or secondary)
+    /// with the minimum possible size for everything.
+    ///
+    /// Returns the offset of the new tileset.
+    fn create_tileset(&mut self, is_primary: bool) -> MapTilesetResult<Offset>;
+}
+
+/// Helper type for the result of map tileset operations.
+type MapTilesetResult<T = ()> = Result<T, MapTilesetError>;
 
 #[derive(Debug, Error)]
 pub enum MapTilesetError {
@@ -77,11 +105,130 @@ pub enum MapTilesetError {
     #[error("Invalid metatiles offset")]
     NoMetatiles,
 
+    #[error("The tileset table was not initialized")]
+    TilesetTableNotInitialized,
+    #[error("This tileset is in the table")]
+    TilesetNotInTable,
+
     #[error("IO error: {0}")]
     IoError(#[from] RomIoError),
 }
 
-type MapTilesetResult<T = ()> = Result<T, MapTilesetError>;
+impl MapTilesetTable for Rom {
+    fn read_tileset_pair(
+        &self,
+        primary_offset: Offset,
+        secondary_offset: Offset,
+    ) -> MapTilesetResult<TilesetPair> {
+        // Use the read method
+        TilesetPair::read(self, primary_offset, secondary_offset)
+    }
+
+    fn delete_tileset(&mut self, offset: Offset) -> MapTilesetResult {
+        // Check if the table contains the given offset
+        if let Some(TilesetShortInfo { size, .. }) = get_table(self)?.get(&offset) {
+            // Read the header
+            let header: TilesetHeader = self.data.read(offset)?;
+            let size = *size as usize;
+
+            // Read the offset of metatiles and attributes
+            if let Some(metatiles_offset) = header.metatiles.offset() {
+                self.data.clear_bytes(metatiles_offset, size * 16)?;
+            }
+            if let Some(attributes_offset) = header.attributes.offset() {
+                // TODO Handle different attributes size
+                let elsize = MetatileAttributes::get_size(&self.data);
+                self.data.clear_bytes(attributes_offset, size * elsize)?;
+            }
+
+            // Delete the palettes
+            if let Some(palettes_offset) = header.palettes.offset() {
+                self.data.clear_bytes(palettes_offset, 16 * 32)?;
+            }
+
+            // Delete the tiles
+            if let Some(graphics_offset) = header.graphics.offset() {
+                if header.is_compressed {
+                    // Clear compressed data
+                    self.data.clear_compressed_data(graphics_offset)?;
+                } else {
+                    // TODO Handle uncompressed gfx size
+                    self.data.clear_bytes(offset, 128 * 32)?;
+                }
+            }
+
+            // TODO Handle deleting animations
+
+            // TODO Better clearing interface
+            let header_size = TilesetHeader::get_size(&self.data);
+            self.data.clear_bytes(offset, header_size)?;
+
+            // Delete the tileset from the table
+            get_mut_table(self)?.remove_entry(&offset);
+
+            Ok(())
+        } else {
+            Err(MapTilesetError::TilesetNotInTable)
+        }
+    }
+
+    fn create_tileset(&mut self, is_primary: bool) -> MapTilesetResult<Offset> {
+        const DEFAULT_METATILES: usize = 8;
+        const DEFAULT_TILES: usize = 1;
+
+        // Create the new header
+        let header_size = TilesetHeader::get_size(&self.data);
+        // Allocate the header
+        let header_offset = self.data.find_free_space(header_size, 4)?;
+        self.data.allocate(header_offset, header_size)?;
+
+        // Allocate the palettes
+        let palettes_offset = self.data.find_free_space(32 * 16, 2)?;
+        self.data.allocate(palettes_offset, 32 * 16)?;
+
+        // Write the metatiles and attributes
+        let attr_elsize = MetatileAttributes::get_size(&self.data);
+        let mtattr_size = (16 + attr_elsize) * DEFAULT_METATILES;
+
+        let metatile_offset = self.data.find_free_space(mtattr_size, 4)?;
+        let attributes_offset = metatile_offset + 16 * DEFAULT_METATILES;
+        self.data.allocate(metatile_offset, mtattr_size)?;
+
+        // Write the compressed graphics
+        let graphics = RomGraphic::New(vec![RomTile::default(); DEFAULT_TILES]);
+        let graphics_offset = graphics.write(&mut self.data, true)?;
+
+        self.data.write(
+            header_offset,
+            TilesetHeader {
+                is_compressed: true,
+                is_secondary: !is_primary,
+                graphics: RomPointer::new(graphics_offset),
+                palettes: RomPointer::new(palettes_offset),
+                metatiles: RomPointer::new(metatile_offset),
+                attributes: RomPointer::new(attributes_offset),
+                animations: RomPointer::Null,
+            },
+        )?;
+
+        Ok(header_offset)
+    }
+}
+
+/// Returns a reference to the tileset table
+fn get_table(rom: &Rom) -> MapTilesetResult<&HashMap<usize, TilesetShortInfo>> {
+    rom.refs
+        .map_tilesets
+        .as_ref()
+        .ok_or(MapTilesetError::TilesetTableNotInitialized)
+}
+/// Returns a mutable reference to the tileset table
+fn get_mut_table(rom: &mut Rom) -> MapTilesetResult<&mut HashMap<usize, TilesetShortInfo>> {
+    rom.refs
+        .map_tilesets
+        .as_mut()
+        .ok_or(MapTilesetError::TilesetTableNotInitialized)
+}
 
 // ANCHOR Tileset table initialization
 #[derive(Serialize, Deserialize, Clone)]

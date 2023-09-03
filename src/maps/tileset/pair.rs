@@ -127,6 +127,9 @@ pub struct TilesetPair {
     pub primary: TilesetData,
     pub secondary: TilesetData,
 
+    pub primary_offset: Offset,
+    pub secondary_offset: Offset,
+
     pub numbers: TilesetNumbers,
 }
 
@@ -146,6 +149,8 @@ impl TilesetPair {
         Ok(Self {
             primary,
             secondary,
+            primary_offset,
+            secondary_offset,
             numbers,
         })
     }

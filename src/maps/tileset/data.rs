@@ -99,6 +99,22 @@ impl Debug for MetatileAttributes {
     }
 }
 
+// TODO Find a better way to get these
+impl RomSizedType for MetatileAttributes {
+    fn get_size(rom: &RomData) -> usize {
+        match rom.base {
+            RomBase::Ruby | RomBase::Sapphire | RomBase::Emerald => 2,
+            RomBase::FireRed | RomBase::LeafGreen => 4,
+        }
+    }
+    fn get_alignment(rom: &RomData) -> usize {
+        match rom.base {
+            RomBase::Ruby | RomBase::Sapphire | RomBase::Emerald => 2,
+            RomBase::FireRed | RomBase::LeafGreen => 4,
+        }
+    }
+}
+
 #[derive(Debug, Default, Serialize_repr, Deserialize_repr, Copy, Clone, PartialEq, Eq)]
 #[repr(u8)]
 pub enum MetatileLayerType {

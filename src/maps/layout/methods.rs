@@ -187,6 +187,7 @@ impl MapLayoutTable for Rom {
         let pointer = get_map_layout_pointer(self, index)?;
         // Read the offset
         let offset = self.data.read_offset(pointer)?;
+        // TODO Better clearing interface
         let header_size = MapLayout::get_size(&self.data);
         // Clear the header
         self.data.clear_bytes(offset, header_size)?;

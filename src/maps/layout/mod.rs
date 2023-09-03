@@ -78,6 +78,11 @@ pub struct MapLayoutData {
 }
 
 impl MapLayoutData {
+    /// Writes this [MapLayoutData] to the given ROM.
+    pub fn write(self, rom: &mut Rom) -> MapLayoutResult {
+        rom.write_map_layout(self)
+    }
+
     /// Reads the tilesets associated with this layout.
     #[inline]
     pub fn read_tilesets(&self, rom: &Rom) -> Result<TilesetPair, MapTilesetError> {
@@ -92,6 +97,23 @@ impl MapLayoutData {
     /// Renders this layout's border.
     pub fn render_borders(&self, renderer: &TilesetPairRenderingData) -> RgbaImage {
         self.border_data.render(renderer)
+    }
+
+    /// Renders the map with this layout's tilesets.
+    ///
+    /// This is a faster way to render this map to an image.
+    ///
+    /// If you want to render the borders as well, use this instead:
+    /// ```no_run
+    /// let renderer = layout.read_tilesets(&rom)?.into_rendering_data();
+    /// let map_image = layout.render_map(&renderer);
+    /// let bor_image = layout.render_borders(&renderer);
+    /// ```
+    pub fn load_tilesets_and_render_map(&self, rom: &Rom) -> Result<RgbaImage, MapTilesetError> {
+        // Load the tileset rendering context
+        let renderer = self.read_tilesets(rom)?.into_rendering_data();
+        // Render the map
+        Ok(self.render_map(&renderer))
     }
 }
 
