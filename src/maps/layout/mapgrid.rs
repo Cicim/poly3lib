@@ -1,9 +1,10 @@
+use image::RgbaImage;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use rom_data::{values::RomValueError, Offset, RomData, RomValues};
 
-use crate::Rom;
+use crate::{maps::tileset::TilesetPairRenderingData, Rom};
 
 use super::{MapLayoutError, MapLayoutTable};
 
@@ -52,8 +53,9 @@ impl MapGrid {
     }
 
     /// Obtains the metatile ID at the given coordinates.
-    pub fn get_metatile(&self, x: u32, y: u32) -> u16 {
-        self.metatiles[(y * self.width as u32 + x) as usize]
+    #[inline]
+    pub fn get_metatile(&self, x: u16, y: u16) -> u16 {
+        self.metatiles[(y * self.width + x) as usize]
     }
 
     /// Reads the blocks data of the given size from the ROM at the
@@ -133,6 +135,28 @@ impl MapGrid {
     /// Returns the size of the map data in bytes.
     pub fn get_byte_size(&self) -> usize {
         self.metatiles.len() * 2
+    }
+
+    /// Renders this grid using the given rendering context.
+    pub fn render(&self, renderer: &TilesetPairRenderingData) -> RgbaImage {
+        let image_width = self.width as u32 * 16;
+        let image_height = self.height as u32 * 16;
+
+        // Create an image that is big enough to contain all the output map
+        let mut buffer: _ = RgbaImage::new(image_width, image_height);
+
+        for y in 0..self.height {
+            for x in 0..self.width {
+                // Get the index of the given metatile
+                let index = self.get_metatile(x, y) as usize;
+                let offx = x as usize * 16;
+                let offy = y as usize * 16;
+
+                renderer.draw_metatile(index, &mut buffer, offx, offy);
+            }
+        }
+
+        buffer
     }
 }
 

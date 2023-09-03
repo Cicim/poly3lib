@@ -1,15 +1,16 @@
-use rom_data::{rom_struct, Offset, RomBase, RomIoError};
+use image::RgbaImage;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use rom_data::{rom_struct, Offset, RomBase, RomIoError};
+
 use crate::{Rom, RomTable};
+
+use super::tileset::{MapTilesetError, TilesetPair, TilesetPairRenderingData};
 
 /// Functions for reading the map grid (metatile, elevation and collision) from ROM.
 mod mapgrid;
 pub use mapgrid::{MapGrid, MapGridError, MapGridMasks, MapGridMasksPatchError};
-
-use super::tileset::{MapTilesetError, TilesetPair};
-
 /// Implementation of the [`MapLayoutTable`] trait.
 mod methods;
 
@@ -81,6 +82,16 @@ impl MapLayoutData {
     #[inline]
     pub fn read_tilesets(&self, rom: &Rom) -> Result<TilesetPair, MapTilesetError> {
         self.header.read_tilesets(rom)
+    }
+
+    /// Renders this layout's map.
+    pub fn render_map(&self, renderer: &TilesetPairRenderingData) -> RgbaImage {
+        self.map_data.render(renderer)
+    }
+
+    /// Renders this layout's border.
+    pub fn render_borders(&self, renderer: &TilesetPairRenderingData) -> RgbaImage {
+        self.border_data.render(renderer)
     }
 }
 

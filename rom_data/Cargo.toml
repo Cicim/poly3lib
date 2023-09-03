@@ -11,6 +11,7 @@ value_derive = { path = "value_derive" }
 thumb = { path = "../thumb" }
 
 colored = "2.0.4"
-serde = { version = "1.0.183", features = ["derive"] }
+image = { version = "0.24.7", default-features = false }
+serde = { version = "1.0.188", features = ["derive"] }
 serde_json = "1.0.105"
 thiserror = "1.0.47"

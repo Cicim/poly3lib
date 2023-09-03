@@ -19,16 +19,19 @@ impl RomColor {
     }
 
     /// Returns the red component of the color.
+    #[inline]
     pub fn r(&self) -> u8 {
         (self.0 & 0x1F) as u8
     }
 
     /// Returns the green component of the color.
+    #[inline]
     pub fn g(&self) -> u8 {
         ((self.0 >> 5) & 0x1F) as u8
     }
 
     /// Returns the blue component of the color.
+    #[inline]
     pub fn b(&self) -> u8 {
         ((self.0 >> 10) & 0x1F) as u8
     }
@@ -129,18 +132,31 @@ impl RomPalette {
     }
 
     /// Returns the color at the given index.
-    pub fn get(&self, index: usize) -> RomColor {
-        self.0[index]
+    pub fn get(&self, index: u8) -> RomColor {
+        self.0[index as usize]
     }
 
     /// Sets the color at the given index.
-    pub fn set(&mut self, index: usize, color: RomColor) {
-        self.0[index] = color;
+    #[inline]
+    pub fn set(&mut self, index: u8, color: RomColor) {
+        self.0[index as usize] = color;
     }
 
     /// Returns an iterator over the colors in the palette.
     pub fn iter(&self) -> impl Iterator<Item = RomColor> + '_ {
         self.0.iter().copied()
+    }
+
+    /// Converts this palette to an array of (r, g, b)-tuple colors
+    pub fn to_rgb_colors(&self) -> [(u8, u8, u8); 16] {
+        let mut res = [(0, 0, 0); 16];
+
+        for i in 0..16 {
+            let (r, g, b) = self.get(i).to_rgb888();
+            res[i as usize] = (r, g, b)
+        }
+
+        res
     }
 }
 

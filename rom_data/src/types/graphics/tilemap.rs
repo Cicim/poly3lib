@@ -1,11 +1,14 @@
 use std::fmt::Debug;
 
+use image::{Rgba, RgbaImage};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     types::{RomReadableType, RomSizedType, RomWritableType},
     Offset, RomData, RomIoError,
 };
+
+use super::RomTile;
 
 static FLIP_CHARS: [char; 4] = [' ', '←', '↑', '𝥮'];
 
@@ -45,6 +48,53 @@ impl RomTileMapEntry {
     /// Returns whether the tile is vertically flipped.
     pub fn vflip(&self) -> bool {
         self.0 & 0x800 != 0
+    }
+
+    /// Draws this tilemap tile onto an [`RgbaImage`].
+    ///
+    /// Uses the given palettes and tiles slice.
+    ///
+    /// # Panics
+    /// May panic if the palettes are less than 16.
+    pub fn draw_on_buffer(
+        &self,
+        palettes: &[[(u8, u8, u8); 16]],
+        tiles: &[RomTile],
+        buffer: &mut RgbaImage,
+        offx: usize,
+        offy: usize,
+    ) {
+        // Get the data for drawing
+        let fliph = self.hflip();
+        let flipv = self.vflip();
+        let pal = palettes[self.palette() as usize];
+        let tile_index = self.index() as usize;
+
+        // Skip drawing if the tile is out of bounds for the graphics.
+        if tile_index >= tiles.len() {
+            return;
+        }
+        let tile = tiles[self.index() as usize];
+
+        // Draw each tile
+        for y in 0..8 {
+            for x in 0..8 {
+                let color_index = tile.get_pixel(x, y);
+                // Color 0 is transparent
+                if color_index == 0 {
+                    continue;
+                }
+
+                // Get the RGBA888 color
+                let color = pal[color_index as usize];
+                let pixel = Rgba([color.0, color.1, color.2, 255]);
+                // Get the offset in the image
+                let ox = offx + if fliph { 7 - x } else { x };
+                let oy = offy + if flipv { 7 - y } else { y };
+
+                buffer.put_pixel(ox as u32, oy as u32, pixel);
+            }
+        }
     }
 }
 

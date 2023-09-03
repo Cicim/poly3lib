@@ -15,24 +15,14 @@ use super::{MapTilesetError, MapTilesetResult, TilesetHeader};
 
 // ANCHOR Metatile
 #[derive(Default, Clone, Copy, Serialize, Deserialize)]
-pub struct MetaTile {
-    pub bot: [RomTileMapEntry; 4],
-    pub top: [RomTileMapEntry; 4],
-}
+pub struct MetaTile(pub [RomTileMapEntry; 4], pub [RomTileMapEntry; 4]);
 
 impl Debug for MetaTile {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "[ [{:?} {:?} {:?} {:?}] [{:?} {:?} {:?} {:?}] ]",
-            self.bot[0],
-            self.bot[1],
-            self.bot[2],
-            self.bot[3],
-            self.top[0],
-            self.top[1],
-            self.top[2],
-            self.top[3]
+            self.0[0], self.0[1], self.0[2], self.0[3], self.1[0], self.1[1], self.1[2], self.1[3]
         )
     }
 }
@@ -57,10 +47,7 @@ impl RomReadableType for MetaTile {
         let top3: RomTileMapEntry = rom.read_halfword(offset + 12)?.into();
         let top4: RomTileMapEntry = rom.read_halfword(offset + 14)?.into();
 
-        Ok(Self {
-            bot: [bot1, bot2, bot3, bot4],
-            top: [top1, top2, top3, top4],
-        })
+        Ok(Self([bot1, bot2, bot3, bot4], [top1, top2, top3, top4]))
     }
 }
 

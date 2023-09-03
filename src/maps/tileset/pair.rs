@@ -1,3 +1,4 @@
+use image::RgbaImage;
 use rom_data::{
     types::{RomPalette, RomTile},
     Offset, RomBase, RomData, RomValues,
@@ -156,6 +157,12 @@ impl TilesetPair {
     }
 }
 
+impl Into<TilesetPairRenderingData> for TilesetPair {
+    fn into(self) -> TilesetPairRenderingData {
+        TilesetPairRenderingData::make_from(self)
+    }
+}
+
 /// Tilesets rendering data read from two tilesets data after loading them.
 #[derive(Debug, Serialize)]
 pub struct TilesetPairRenderingData {
@@ -164,7 +171,10 @@ pub struct TilesetPairRenderingData {
     /// - `num_pals_in_secondary` from the secondary tileset
     /// - the remaining are left blank since they
     ///   cannot be used by the tilesets.
-    pub palettes: Vec<RomPalette>,
+    ///
+    /// Palettes are saved as lists of 16 colors (tuples (red, green, blue))
+    /// in RGB888 format (values range between 0 and 255).
+    pub palettes: Vec<[(u8, u8, u8); 16]>,
 
     /// The tilesets metatile data (`num_metatiles_total` in total)
     /// - up to `num_metatiles_in_primary` from the primary tileset
@@ -207,6 +217,8 @@ impl TilesetPairRenderingData {
         while palettes.len() < 16 {
             palettes.push(RomPalette::default());
         }
+        // Convert the palettes to RGB888 format
+        let palettes = palettes.iter().map(RomPalette::to_rgb_colors).collect();
 
         // Combine the tiles from the two tilesets
         let mut tiles = Vec::new();
@@ -270,10 +282,68 @@ impl TilesetPairRenderingData {
             layer_types,
         }
     }
-}
 
-impl Into<TilesetPairRenderingData> for TilesetPair {
-    fn into(self) -> TilesetPairRenderingData {
-        TilesetPairRenderingData::make_from(self)
+    /// Returns the number of metatiles in these tilesets.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.metatiles.len()
+    }
+
+    /// Draws the metatile at the given coordinates on the image.
+    pub fn draw_metatile(&self, index: usize, buffer: &mut RgbaImage, offx: usize, offy: usize) {
+        // Make sure the metatile is within bounds
+        if index > self.len() {
+            return;
+        }
+
+        let palettes = &self.palettes;
+        let tiles = &self.tiles;
+
+        let bot = self.metatiles[index].0;
+        let mid = self.metatiles[index].1;
+
+        macro_rules! draw_tile {
+            ($tile:ident) => {
+                $tile[0].draw_on_buffer(palettes, tiles, buffer, offx, offy);
+                $tile[1].draw_on_buffer(palettes, tiles, buffer, offx + 8, offy);
+                $tile[2].draw_on_buffer(palettes, tiles, buffer, offx, offy + 8);
+                $tile[3].draw_on_buffer(palettes, tiles, buffer, offx + 8, offy + 8);
+            };
+        }
+
+        draw_tile!(bot);
+        draw_tile!(mid);
+        // For three layers
+        if self.layer_types[index] == MetatileLayerType::ThreeLayers {
+            // Read the next metatile
+            if index + 1 > self.len() {
+                return;
+            }
+
+            let top = self.metatiles[index + 1].0;
+            draw_tile!(top);
+        }
+    }
+
+    /// Renders the entirety of this metatile into an image (8 blocks wide)
+    pub fn render_preview_image(&self) -> RgbaImage {
+        const WIDTH: usize = 8;
+
+        // Get the final width and height
+        let width = WIDTH * 16;
+        // ceil(num_metatiles / 16) * 16
+        let height = ((self.len() + WIDTH - 1) / WIDTH) * 16;
+
+        // Create the image buffer
+        let mut buffer: _ = RgbaImage::new(width as u32, height as u32);
+
+        for index in 0..self.len() {
+            let offx = (index % WIDTH) * 16;
+            let offy = (index / WIDTH) * 16;
+
+            self.draw_metatile(index as usize, &mut buffer, offx, offy)
+        }
+
+        buffer
     }
 }
