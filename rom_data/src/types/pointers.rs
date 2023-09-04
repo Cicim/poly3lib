@@ -103,7 +103,7 @@ impl RomPointer {
 
         let as_usize = pointer as usize;
         if as_usize >= 0x08_000_000 && as_usize < 0x08_000_000 + rom.size() {
-            return RomPointer::new(as_usize - 0x00_000_000);
+            return RomPointer::new(as_usize - 0x08_000_000);
         }
 
         return RomPointer::Invalid(pointer);

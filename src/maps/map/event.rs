@@ -18,17 +18,34 @@ rom_struct!(MapEvents {
     struct BgEvent bg_events{$bg_event_count};
 });
 
+impl MapEvents {
+    /// Returns the warp events in this events table.
+    pub fn get_warp_events(&self) -> &[WarpEvent] {
+        self.warps.as_ref()
+    }
+    /// Returns the object events in this events table.
+    pub fn get_object_events(&self) -> &[ObjectEvent] {
+        self.object_events.as_ref()
+    }
+    /// Returns the coordinate events in this events table.
+    pub fn get_coord_events(&self) -> &[CoordEvent] {
+        self.coord_events.as_ref()
+    }
+    /// Returns the background events in this events table.
+    pub fn get_bg_events(&self) -> &[BgEvent] {
+        self.bg_events.as_ref()
+    }
+}
+
 rom_struct!(WarpEvent {
-    i16 x;
-    i16 y;
+    i16 x, y;
     u8 z;
     u8 warp_id;
     u8 map_index;
     u8 map_group;
 });
 rom_struct!(CoordEvent {
-    i16 x;
-    i16 y;
+    i16 x, y;
     u8 z;
     u16 trigger;
     u16 index;
@@ -46,7 +63,7 @@ rom_struct!(ObjectEventUnqualified {
 
     void *script;
     u16 flag_id;
-} priv ppo);
+} priv);
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ObjectEvent {
@@ -126,7 +143,7 @@ impl RomReadableType for ObjectEvent {
                     trainer_range_berry_tree_id,
                 }
             }
-            1 => {
+            255 => {
                 // Clone
                 let target_local_id = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
                 let target_map_num = u16::from_le_bytes([data[4], data[5]]);
@@ -211,6 +228,8 @@ rom_struct!(BgEventUnqualified {
     u16 y;
     u8 z;
     u8 kind;
+
+    // Kind-specific fields
     u32 data;
 } priv);
 
@@ -261,13 +280,13 @@ impl RomReadableType for BgEvent {
 
         let data = match (kind, rom.base) {
             // Script
-            (0, _) => {
+            (0..=4, _) => {
                 let ptr = RomPointer::from_pointer(read.data, rom);
                 BgEventData::Script(ptr)
             }
 
             // Hidden Item
-            (1, RomBase::Emerald | RomBase::Ruby | RomBase::Sapphire) => {
+            (7, RomBase::Emerald | RomBase::Ruby | RomBase::Sapphire) => {
                 let item = read.data as u16;
                 let hidden_item_id = (read.data >> 16) as u16;
                 BgEventData::HiddenItemRSE {
@@ -275,7 +294,7 @@ impl RomReadableType for BgEvent {
                     hidden_item_id,
                 }
             }
-            (1, RomBase::FireRed | RomBase::LeafGreen) => {
+            (7, RomBase::FireRed | RomBase::LeafGreen) => {
                 let fields: BitFields<u32, 4> = BitFields::new([16, 8, 7, 1]);
                 let [item, flag, quantity, underfoot] = fields.read(read.data);
                 BgEventData::HiddenItemFrLg {
@@ -287,7 +306,7 @@ impl RomReadableType for BgEvent {
             }
 
             // Secret Base
-            (2, RomBase::Emerald | RomBase::Ruby | RomBase::Sapphire) => {
+            (8, RomBase::Emerald | RomBase::Ruby | RomBase::Sapphire) => {
                 BgEventData::SecretBaseId(read.data)
             }
 
@@ -334,5 +353,51 @@ impl RomWritableType for BgEvent {
             data,
         };
         write.write_to(rom, offset)
+    }
+}
+
+trait ScriptOffset {
+    /// Read the offsets of the script referenced by this event (if any).
+    fn script_offset(&self) -> Option<Offset>;
+}
+
+impl ScriptOffset for CoordEvent {
+    fn script_offset(&self) -> Option<Offset> {
+        self.script.offset()
+    }
+}
+impl ScriptOffset for ObjectEvent {
+    fn script_offset(&self) -> Option<Offset> {
+        self.script.offset()
+    }
+}
+impl ScriptOffset for BgEvent {
+    fn script_offset(&self) -> Option<Offset> {
+        match self.data {
+            BgEventData::Script(ref x) => x.offset(),
+            _ => None,
+        }
+    }
+}
+
+impl MapEvents {
+    /// Get the scripts' offsets referenced by these events.
+    pub fn get_scripts(&self) -> Vec<Offset> {
+        let mut output = Vec::new();
+
+        push_events(self.get_object_events(), &mut output);
+        push_events(self.get_coord_events(), &mut output);
+        push_events(self.get_bg_events(), &mut output);
+
+        output
+    }
+}
+
+/// Pushes events that can have scripts to the vector
+fn push_events(events: &[impl ScriptOffset], output: &mut Vec<Offset>) {
+    for event in events {
+        if let Some(offset) = event.script_offset() {
+            output.push(offset);
+        }
     }
 }

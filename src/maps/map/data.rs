@@ -24,6 +24,7 @@ pub struct MapData {
 }
 
 impl MapData {
+    /// Reads the map data from the ROM.
     pub fn read(rom: &Rom, group: u8, index: u8) -> MapHeaderResult<MapData> {
         let header = rom.read_map_header(group, index)?;
 
@@ -32,14 +33,25 @@ impl MapData {
             None => None,
         };
 
+        let connections = match header.connections.offset() {
+            Some(connections_offset) => Some(rom.data.read(connections_offset)?),
+            None => None,
+        };
+
         Ok(Self {
             group,
             index,
             header,
-            connections: None,
+            connections,
             scripts: None,
             events,
         })
+    }
+
+    /// Writes the map data to ROM. Reads the previous one if present.
+    pub fn write(self, rom: &Rom) -> MapHeaderResult {
+        println!("{}", rom);
+        Ok(())
     }
 }
 
@@ -51,8 +63,8 @@ rom_struct!(MapConnections {
 rom_struct!(Connection {
     u8 direction;
     u32 offset;
-    u8 map_group;
-    u8 map_index;
+    u8 group;
+    u8 index;
 });
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

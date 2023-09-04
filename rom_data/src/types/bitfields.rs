@@ -168,9 +168,9 @@ macro_rules! impl_bitfields_read_write {
                 let base_value: $base_type = rom.read(offset)?;
                 // Convert the base value to its signed version
                 let base_value = base_value as $unsigned_type;
-                self.write(base_value, fields);
+                let result = self.write(base_value, fields);
                 // Write the base value to ROM
-                rom.write(offset, base_value)?;
+                rom.write(offset, result)?;
 
                 Ok(())
             }

@@ -107,6 +107,15 @@ impl<T> RomVector<T> {
             _ => None,
         }
     }
+
+    /// Returns the reference to the underlying data
+    pub fn as_ref(&self) -> &[T] {
+        match self {
+            RomVector::Valid { data, .. } => data,
+            RomVector::New(data) => data,
+            _ => &[],
+        }
+    }
 }
 
 impl<T: std::fmt::Debug> std::fmt::Debug for RomVector<T> {

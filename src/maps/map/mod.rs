@@ -17,7 +17,7 @@ mod header;
 
 // ANCHOR Re-exported types
 pub use data::{MapConnections, MapData, MapScripts};
-pub use header::MapHeader;
+pub use header::{MapHeader, MapHeaderDump};
 
 // ANCHOR MapHeaderTable trait
 /// Importing this trait allows you to do any operations with map headers
@@ -40,6 +40,9 @@ pub trait MapHeaderTable {
 
     /// Creates a new map at the given group/index if possible
     fn create_map(&mut self, group: u8, index: u8) -> MapHeaderResult;
+
+    /// Dumps all the map headers in all groups, along with some extra information.
+    fn dump_map_headers(&self) -> MapHeaderResult<Vec<MapHeaderDump>>;
 }
 
 /// Helper type for the result of map header operations.
@@ -119,6 +122,35 @@ impl MapHeaderTable for Rom {
     fn create_map(&mut self, group: u8, index: u8) -> MapHeaderResult {
         todo!()
     }
+
+    // ANCHOR Dumping
+    fn dump_map_headers(&self) -> MapHeaderResult<Vec<MapHeaderDump>> {
+        let rom = &self.data;
+        let groups_table = get_groups(self)?;
+
+        // Loop through each group and each index
+        let mut dump = Vec::new();
+        for (group, group_table) in groups_table.groups.iter().enumerate() {
+            let group = group as u8;
+
+            for index in 0..group_table.length as u8 {
+                // Get the header offset
+                let pointer = groups_table.get_header_pointer(group, index)?;
+
+                match rom.read::<RomPointer>(pointer)?.offset() {
+                    // Skip invalid pointers
+                    None => continue,
+                    // Read the header from valid pointers
+                    Some(offset) => match MapHeader::read_to_dump(offset, rom, group, index) {
+                        Some(header_dump) => dump.push(header_dump),
+                        None => continue,
+                    },
+                }
+            }
+        }
+
+        Ok(dump)
+    }
 }
 
 /// Returns the map groups table if present.
@@ -129,7 +161,7 @@ fn get_groups(rom: &Rom) -> MapHeaderResult<&MapGroups> {
         .ok_or(MapError::MapTableNotInitialized)
 }
 
-// ANCHOR Map Header table initialization
+// ANCHOR Map Groups
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MapGroups {
     /// The table of all groups
