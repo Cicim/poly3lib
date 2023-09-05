@@ -8,6 +8,7 @@ use crate::Rom;
 // Sub-modules
 pub mod layout;
 pub mod map;
+pub mod scripts;
 pub mod tileset;
 
 impl Rom {
@@ -24,6 +25,9 @@ impl Rom {
 
         // Load the tileset data
         tileset::init_info(self, &mut log).unwrap_or_else(|e| log.push_error("map_tilesets", e));
+
+        // Initialize the scripts data
+        scripts::init_table(self, &mut log).unwrap_or_else(|e| log.push_error("scripts", e));
 
         log
     }

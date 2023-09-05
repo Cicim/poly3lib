@@ -436,6 +436,12 @@ impl RomData {
         offset < self.size()
     }
 
+    /// Checks if the given pointer is in bounds for this ROM.
+    #[inline]
+    pub fn is_pointer_valid(&self, pointer: Pointer) -> bool {
+        !(pointer < 0x08_000_000 || pointer > 0x08_000_000 + self.bytes.len() as u32)
+    }
+
     /// Find the offset of the next occurrence of a byte starting from the given offset.
     pub fn find_byte_from(&self, offset: Offset, byte: u8) -> Option<Offset> {
         for i in offset..self.bytes.len() {

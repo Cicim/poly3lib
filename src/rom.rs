@@ -80,6 +80,9 @@ pub struct RomReferences {
 
     /// The list of tilesets loaded from the ROM.
     pub map_tilesets: Option<HashMap<Offset, crate::maps::tileset::TilesetShortInfo>>,
+
+    /// The list of script commands.
+    pub script_cmds: Option<crate::maps::scripts::ScriptCommandsTable>,
 }
 
 impl Display for RomReferences {
@@ -140,6 +143,21 @@ impl Display for RomReferences {
             None => {
                 writeln!(f, "  map_tilesets: {}", "Not loaded".italic())?;
             }
+        }
+
+        // Printing the scripts table
+        match self.script_cmds {
+            Some(ref scripts) => {
+                // Only print the length, the rest is superfluous
+                writeln!(
+                    f,
+                    "  script_cmds: {} (range {}-{})",
+                    scripts.table,
+                    "0x00".red(),
+                    format!("0x{:02X}", scripts.len() - 1).red(),
+                )?
+            }
+            None => writeln!(f, "  script_cmds: {}", "Not loaded".italic())?,
         }
 
         Ok(())
