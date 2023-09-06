@@ -114,12 +114,12 @@ impl MapHeaderTable for Rom {
     }
 
     // ANCHOR Deleting
-    fn delete_map(&mut self, group: u8, index: u8) -> MapHeaderResult {
+    fn delete_map(&mut self, _: u8, _: u8) -> MapHeaderResult {
         todo!()
     }
 
     // ANCHOR Creating
-    fn create_map(&mut self, group: u8, index: u8) -> MapHeaderResult {
+    fn create_map(&mut self, _: u8, _: u8) -> MapHeaderResult {
         todo!()
     }
 

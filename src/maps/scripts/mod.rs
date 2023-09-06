@@ -7,8 +7,13 @@ use crate::{Rom, RomTable};
 
 use super::ProblemsLog;
 
+mod resources;
+pub use resources::*;
+
 mod table;
-pub mod tree;
+
+mod graph;
+pub use graph::ScriptGraph;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ScriptCommand {
@@ -51,11 +56,11 @@ pub enum ScriptReadInstruction {
     /// The offset must be valid and in ROM and the referenced
     /// data will be read as well.
     TextOffset = 66,
-    /// The next argument is the offset to text data (4 bytes).
+    /// The next argument is the offset to shop data (4 bytes).
     ///
     /// The offset must be valid and in ROM and the referenced
     /// data will be read as well.
-    MartOffset = 67,
+    ProductsOffset = 67,
 
     /// The next argument is a text offset only if the next command
     /// calls an std function, otherwise it's a word.

@@ -12,20 +12,24 @@ use super::{ScriptCommand, ScriptReadInstruction};
 #[derive(Debug)]
 pub struct ScriptResource {
     /// Offset of the resource.
-    offset: Offset,
+    pub offset: Offset,
     /// Size in bytes.
-    size: usize,
+    pub size: usize,
     /// Type and content.
-    value: ScriptResourceContent,
+    pub value: ScriptResourceContent,
 }
 
 /// Type and content of a script resource.
 #[derive(Debug)]
 pub enum ScriptResourceContent {
+    /// Script with its instruction
     Script(Vec<ScriptInstruction>),
+    /// Movement with its commands (ending in 0xFE)
     Movement(Vec<u8>),
+    /// TODO Text
     Text,
-    Mart(Vec<u16>),
+    /// Products list (ending in 0x0000)
+    Products(Vec<u16>),
 }
 
 /// Instruction in a script resource.
@@ -46,7 +50,7 @@ pub enum ScriptArgument {
     ScriptOffset(Offset),
     MovementOffset(Offset),
     TextOffset(Offset),
-    MartOffset(Offset),
+    ProductsOffset(Offset),
 }
 
 // ANCHOR Tree
@@ -56,7 +60,29 @@ pub enum ScriptResourceMarker {
     Script(Offset),
     Movement(Offset),
     Text(Offset),
-    Mart(Offset),
+    Products(Offset),
+}
+
+impl ScriptResourceMarker {
+    /// Returns this marker's offset.
+    pub fn offset(&self) -> Offset {
+        match self {
+            ScriptResourceMarker::Script(offset) => *offset,
+            ScriptResourceMarker::Movement(offset) => *offset,
+            ScriptResourceMarker::Text(offset) => *offset,
+            ScriptResourceMarker::Products(offset) => *offset,
+        }
+    }
+
+    /// Returns this marker's priority.
+    pub fn priority(&self) -> u8 {
+        match self {
+            ScriptResourceMarker::Script(_) => 0,
+            ScriptResourceMarker::Movement(_) => 1,
+            ScriptResourceMarker::Text(_) => 2,
+            ScriptResourceMarker::Products(_) => 3,
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -70,15 +96,6 @@ pub enum ScriptResourceReadingError {
     IoError(#[from] RomIoError),
 }
 
-// /// Script tree.
-// pub struct ScriptTree {
-//     /// The roots for this tree.
-//     roots: Vec<ScriptResourceMarker>,
-
-//     /// The resources that have been read in this tree with their type.
-//     read: HashMap<ScriptResourceMarker, ScriptResourceContent>,
-// }
-
 // ANCHOR Reading
 impl ScriptResourceMarker {
     /// Reads a resource content starting from a marker, and an
@@ -90,9 +107,9 @@ impl ScriptResourceMarker {
     ) -> Result<ScriptResource, ScriptResourceReadingError> {
         match self {
             ScriptResourceMarker::Script(offset) => read_script(rom, offset, refs),
-            ScriptResourceMarker::Movement(_) => todo!(),
-            ScriptResourceMarker::Text(_) => todo!(),
-            ScriptResourceMarker::Mart(_) => todo!(),
+            ScriptResourceMarker::Movement(offset) => read_movements(rom, offset, None),
+            ScriptResourceMarker::Text(offset) => read_text(rom, offset, None),
+            ScriptResourceMarker::Products(offset) => read_products(rom, offset, None),
         }
     }
 }
@@ -286,11 +303,6 @@ fn read_script(
                             read_offset!(pointer, args, TextOffset, Text);
                         }
                     }
-
-                    // Common end argument
-                    // sTrainerBattleEndScript,      TRAINER_PARAM_LOAD_SCRIPT_RET_ADDR
-                    let pointer = push!(args, word);
-                    read_offset!(pointer, args, ScriptOffset, Script);
                 }
                 // Offsets
                 R::ScriptOffset => {
@@ -308,10 +320,10 @@ fn read_script(
                     index += 4;
                     read_offset!(pointer, args, TextOffset, Text);
                 }
-                R::MartOffset => {
+                R::ProductsOffset => {
                     let pointer = rom.data.read_word(offset + index)?;
                     index += 4;
-                    read_offset!(pointer, args, MartOffset, Mart);
+                    read_offset!(pointer, args, ProductsOffset, Products);
                 }
 
                 // Offset if std. Read a word for now
@@ -349,6 +361,68 @@ fn read_script(
         value: ScriptResourceContent::Script(instructions),
     })
 }
+/// Read a list of movements from a given offset.
+fn read_movements(
+    rom: &Rom,
+    offset: Offset,
+    _refs: Option<&mut Vec<ScriptResourceMarker>>,
+) -> Result<ScriptResource, ScriptResourceReadingError> {
+    let mut bytes = Vec::new();
+    let mut index = 0;
+
+    while index < 0x1000 {
+        let byte = rom.data.read_byte(offset + index)?;
+        bytes.push(byte);
+        index += 1;
+
+        if byte == 0xFE {
+            break;
+        }
+    }
+
+    Ok(ScriptResource {
+        offset,
+        size: index,
+        value: ScriptResourceContent::Movement(bytes),
+    })
+}
+/// Read a text from the given offset.
+fn read_text(
+    _rom: &Rom,
+    offset: Offset,
+    _refs: Option<&mut Vec<ScriptResourceMarker>>,
+) -> Result<ScriptResource, ScriptResourceReadingError> {
+    Ok(ScriptResource {
+        offset,
+        size: 0,
+        value: ScriptResourceContent::Text,
+    })
+}
+/// Read a products list from a given offset
+fn read_products(
+    rom: &Rom,
+    offset: Offset,
+    _refs: Option<&mut Vec<ScriptResourceMarker>>,
+) -> Result<ScriptResource, ScriptResourceReadingError> {
+    let mut products = Vec::new();
+    let mut index = 0;
+
+    while index < 0x1000 {
+        let word = rom.data.read_halfword(offset + index)?;
+        products.push(word);
+        index += 2;
+
+        if word == 0 {
+            break;
+        }
+    }
+
+    Ok(ScriptResource {
+        offset,
+        size: index,
+        value: ScriptResourceContent::Products(products),
+    })
+}
 
 /// Get the table of commands.
 fn get_commands_table(rom: &Rom) -> Result<&Vec<ScriptCommand>, ScriptResourceReadingError> {
@@ -362,7 +436,7 @@ fn get_commands_table(rom: &Rom) -> Result<&Vec<ScriptCommand>, ScriptResourceRe
 }
 
 // ANCHOR Printing
-pub struct ScriptResourceFormatter<'a> {
+pub(crate) struct ScriptResourceFormatter<'a> {
     /// The ROM to use for formatting.
     table: &'a Vec<ScriptCommand>,
     /// Whether to use colors.
@@ -398,7 +472,7 @@ impl<'a> ScriptResourceFormatter<'a> {
                 ScriptResourceContent::Script(_) => "Script",
                 ScriptResourceContent::Movement(_) => "Movement",
                 ScriptResourceContent::Text => "Text",
-                ScriptResourceContent::Mart(_) => "Mart",
+                ScriptResourceContent::Products(_) => "Mart",
             },
         );
         self.push_comment(&format!("size: {}", arg.size));
@@ -436,7 +510,7 @@ impl<'a> ScriptResourceFormatter<'a> {
                     A::ScriptOffset(offset) => self.push_ref(*offset, "Script"),
                     A::MovementOffset(offset) => self.push_ref(*offset, "Movement"),
                     A::TextOffset(offset) => self.push_ref(*offset, "Text"),
-                    A::MartOffset(offset) => self.push_ref(*offset, "Mart"),
+                    A::ProductsOffset(offset) => self.push_ref(*offset, "Mart"),
                 }
 
                 if i != instruction.args.len() - 1 {
