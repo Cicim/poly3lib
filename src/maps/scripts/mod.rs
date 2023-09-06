@@ -1,5 +1,3 @@
-mod table;
-
 use serde::{Deserialize, Serialize};
 
 use rom_data::{Offset, RomIoError};
@@ -8,6 +6,9 @@ use serde_repr::{Deserialize_repr, Serialize_repr};
 use crate::{Rom, RomTable};
 
 use super::ProblemsLog;
+
+mod table;
+pub mod tree;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ScriptCommand {
@@ -56,6 +57,12 @@ pub enum ScriptReadInstruction {
     /// data will be read as well.
     MartOffset = 67,
 
+    /// The next argument is a text offset only if the next command
+    /// calls an std function, otherwise it's a word.
+    TextOffsetIfStd = 129,
+
+    /// The script calls an std function.
+    Std = 254,
     /// The script stops exection here for certain.
     Stop = 255,
 }
@@ -69,8 +76,6 @@ pub struct ScriptCommandsTable {
     pub end_references: Vec<Offset>,
 
     /// The commands in the table.
-    ///
-    /// The length must be consistent with `(end_offset - start_offset) / 4`
     pub commands: Vec<ScriptCommand>,
 }
 
