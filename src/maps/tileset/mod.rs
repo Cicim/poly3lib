@@ -1,12 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
+
 use rom_data::{
     rom_struct,
     types::{RomGraphic, RomPointer, RomSizedType, RomTile},
     Offset, RomIoError,
 };
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
 
 use crate::Rom;
 

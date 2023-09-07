@@ -1,5 +1,6 @@
-use rom_data::{rom_struct, types::RomSizedType, Offset, RomData, RomIoError};
 use serde::{Deserialize, Serialize};
+
+use rom_data::{rom_struct, types::RomSizedType, Offset, RomData, RomIoError};
 
 use crate::Rom;
 

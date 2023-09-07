@@ -5,6 +5,7 @@ use std::{
 };
 
 use colored::{Color, Colorize};
+
 use rom_data::Offset;
 
 use crate::Rom;

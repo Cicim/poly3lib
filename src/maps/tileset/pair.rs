@@ -1,9 +1,10 @@
 use image::RgbaImage;
+use serde::Serialize;
+
 use rom_data::{
     types::{RomPalette, RomTile},
     Offset, RomBase, RomData, RomValues,
 };
-use serde::Serialize;
 
 use crate::Rom;
 
