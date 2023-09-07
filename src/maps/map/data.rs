@@ -1,9 +1,11 @@
-use rom_data::rom_struct;
+use rom_data::{rom_struct, types::RomSizedType, Offset, RomData, RomIoError};
 use serde::{Deserialize, Serialize};
 
 use crate::Rom;
 
-use super::{event::MapEvents, MapHeader, MapHeaderResult, MapHeaderTable};
+use super::{
+    events::MapEvents, get_groups, MapHeader, MapHeaderResult, MapHeaderTable, MapScripts,
+};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MapData {
@@ -11,6 +13,8 @@ pub struct MapData {
     pub group: u8,
     /// The index of the map in the table.
     pub index: u8,
+    /// The offset of the map header.
+    pub offset: Offset,
 
     /// The header of the map.
     pub header: MapHeader,
@@ -26,6 +30,7 @@ pub struct MapData {
 impl MapData {
     /// Reads the map data from the ROM.
     pub fn read(rom: &Rom, group: u8, index: u8) -> MapHeaderResult<MapData> {
+        let offset = get_groups(rom)?.get_header_pointer(group, index)?;
         let header = rom.read_map_header(group, index)?;
 
         let events = match header.events.offset() {
@@ -38,12 +43,18 @@ impl MapData {
             None => None,
         };
 
+        let scripts = match header.scripts.offset() {
+            Some(scripts_offset) => Some(rom.data.read(scripts_offset)?),
+            None => None,
+        };
+
         Ok(Self {
             group,
             index,
+            offset,
             header,
             connections,
-            scripts: None,
+            scripts,
             events,
         })
     }
@@ -51,6 +62,48 @@ impl MapData {
     /// Writes the map data to ROM. Reads the previous one if present.
     pub fn write(self, rom: &Rom) -> MapHeaderResult {
         println!("{}", rom);
+        Ok(())
+    }
+
+    /// Returns all the script resources directly referenced by this map.
+    pub fn get_scripts(&self) -> Vec<Offset> {
+        let mut scripts_offsets = Vec::new();
+
+        // Offsets in Events
+        if let Some(events) = &self.events {
+            scripts_offsets.extend(events.get_scripts());
+        }
+        // Offsets in MapScripts (excluding any table offset)
+        if let Some(scripts) = &self.scripts {
+            scripts_offsets.extend(scripts.get_scripts());
+        }
+
+        scripts_offsets
+    }
+
+    /// Clears all the structs referenced by this map.
+    pub fn clear(self, rom: &mut Rom) -> Result<(), RomIoError> {
+        // Clear the header
+        let header_size = MapHeader::get_size(&rom.data);
+        rom.data.clear_bytes(self.offset, header_size)?;
+
+        // Clear the connections
+        if let Some(connections) = self.connections {
+            // SAFETY: if the connections have been loaded, then there was an offset
+            let conn_offset = self.header.connections.offset().unwrap();
+            connections.clear(&mut rom.data, conn_offset)?;
+        }
+        // Clear the events
+        if let Some(events) = self.events {
+            // SAFETY: if the events have been loaded, then there was an offset
+            let events_offset = self.header.events.offset().unwrap();
+            events.clear(&mut rom.data, events_offset)?;
+        }
+        // Clear the scripts
+        if let Some(scripts) = self.scripts {
+            scripts.clear(&mut rom.data)?;
+        }
+
         Ok(())
     }
 }
@@ -67,5 +120,12 @@ rom_struct!(Connection {
     u8 index;
 });
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct MapScripts;
+impl MapConnections {
+    pub fn clear(mut self, rom: &mut RomData, offset: Offset) -> Result<(), RomIoError> {
+        self.connections.to_clear();
+        // Write the struct while clearing the inner vector
+        rom.write(offset, self)?;
+        // Clear the struct
+        rom.clear_bytes(offset, Self::get_size(rom))
+    }
+}

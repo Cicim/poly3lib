@@ -11,13 +11,17 @@ use rom_data::{
 use crate::{Rom, RomTable};
 
 mod data;
-// Re-exports everything inside event
-pub mod event;
+mod events;
 mod header;
+mod scripts;
 
 // ANCHOR Re-exported types
-pub use data::{MapConnections, MapData, MapScripts};
+pub use data::{MapConnections, MapData};
+pub use events::{
+    BgEvent, BgEventData, CoordEvent, MapEvents, ObjectEvent, ObjectEventData, WarpEvent,
+};
 pub use header::{MapHeader, MapHeaderDump};
+pub use scripts::{MapScripts, MapScriptsSubTable, ScriptWithVars};
 
 // ANCHOR MapHeaderTable trait
 /// Importing this trait allows you to do any operations with map headers
@@ -35,8 +39,9 @@ pub trait MapHeaderTable {
     /// does not extend the table size if out of bounds.
     fn write_map_header(&mut self, group: u8, index: u8, header: MapHeader) -> MapHeaderResult;
 
-    /// Deletes a map along with everything it references.
-    fn delete_map(&mut self, group: u8, index: u8) -> MapHeaderResult;
+    /// Deletes a map and the struct it references. Returns a list of all
+    /// script offsets referenced by this map to clear them from the ROM.
+    fn delete_map(&mut self, group: u8, index: u8) -> MapHeaderResult<Vec<Offset>>;
 
     /// Creates a new map at the given group/index if possible
     fn create_map(&mut self, group: u8, index: u8) -> MapHeaderResult;
@@ -62,8 +67,6 @@ pub enum MapError {
     #[error("Invalid map layout id {0}")]
     InvalidLayout(u16),
 
-    #[error("Trying to maps or group table to an invalid size: {0}")]
-    InvalidResizeLength(usize),
     #[error("Invalid group selected for resizing: {0}")]
     InvalidGroupToResize(u8),
     #[error("Cannot repoint map table")]
@@ -114,13 +117,79 @@ impl MapHeaderTable for Rom {
     }
 
     // ANCHOR Deleting
-    fn delete_map(&mut self, _: u8, _: u8) -> MapHeaderResult {
-        todo!()
+    fn delete_map(&mut self, group: u8, index: u8) -> MapHeaderResult<Vec<Offset>> {
+        // Read the position where to read the header from.
+        let pointer = get_groups(self)?.get_header_pointer(group, index)?;
+
+        // Read the map data to clear.
+        match self.read_map(group, index) {
+            Ok(data) => {
+                // Read the scripts to clear
+                let scripts = data.get_scripts();
+                // Clear all the data
+                data.clear(self)?;
+                // Clear the pointer
+                self.data.write_word(pointer, 0)?;
+
+                Ok(scripts)
+            }
+
+            // If the map data is not present, return an empty list.
+            Err(_) => {
+                // Clear the pointer
+                self.data.write_word(pointer, 0)?;
+
+                Ok(Vec::new())
+            }
+        }
     }
 
     // ANCHOR Creating
-    fn create_map(&mut self, _: u8, _: u8) -> MapHeaderResult {
-        todo!()
+    fn create_map(&mut self, group: u8, index: u8) -> MapHeaderResult {
+        if group == 255 || index == 255 {
+            return Err(MapError::InvalidIndex(255, 255));
+        };
+
+        // Increase the number of groups if needed
+        resize_table_if_needed(self, group + 1)?;
+        // Increase the number of indices in a group if needed
+        resize_group_if_needed(self, group, index + 1)?;
+
+        let pointer = get_groups(self)?.get_header_pointer(group, index)?;
+        if self.data.read_word(pointer)? != 0 {
+            return Err(MapError::InvalidIndex(group, index));
+        }
+
+        // Create a new header
+        let header = MapHeader {
+            layout: RomPointer::Null,
+            events: RomPointer::Null,
+            scripts: RomPointer::Null,
+            connections: RomPointer::Null,
+            music: 0xFFFF,
+            layout_id: 0,
+            mapsec_id: 0,
+            cave: 0,
+            weather: 0,
+            map_type: 0,
+            allow_biking: false,
+            allow_escaping: false,
+            allow_running: false,
+            show_map_name: false,
+            floor_num: 0,
+            battle_type: 0,
+        };
+
+        // Allocate new space for the header
+        let header_size = MapHeader::get_size(&self.data);
+        let header_offset = self.data.find_free_space(header_size, 4)?;
+        // Write the header
+        self.data.write(header_offset, header)?;
+
+        // Update the pointer
+        self.data.write_offset(pointer, header_offset)?;
+
+        Ok(())
     }
 
     // ANCHOR Dumping
@@ -159,6 +228,81 @@ fn get_groups(rom: &Rom) -> MapHeaderResult<&MapGroups> {
         .map_groups
         .as_ref()
         .ok_or(MapError::MapTableNotInitialized)
+}
+
+/// Returns the map groups table (mutable)
+fn get_groups_mut(rom: &mut Rom) -> MapHeaderResult<&mut MapGroups> {
+    rom.refs
+        .map_groups
+        .as_mut()
+        .ok_or(MapError::MapTableNotInitialized)
+}
+
+/// Allocate new space in a group if needed
+fn resize_group_if_needed(rom: &mut Rom, group: u8, new_length: u8) -> MapHeaderResult {
+    // Check if it is needed
+    let groups_table = get_groups(rom)?;
+
+    let group = group as usize;
+    let new_length = new_length as usize;
+    if group >= groups_table.table.length {
+        return Err(MapError::InvalidGroupToResize(group as u8));
+    }
+    if new_length < groups_table.groups[group as usize].length {
+        return Ok(());
+    }
+
+    // Should correctly update the reference as well.
+    let new_table =
+        groups_table.groups[group]
+            .clone()
+            .simple_resize(&mut rom.data, new_length, 4)?;
+
+    get_groups_mut(rom)?.groups[group] = new_table;
+
+    Ok(())
+}
+
+/// Allocates new space for new groups if needed
+fn resize_table_if_needed(rom: &mut Rom, new_length: u8) -> MapHeaderResult {
+    let groups_table = get_groups(rom)?;
+    let old_length = groups_table.table.length;
+
+    let new_length = new_length as usize;
+    if new_length < old_length {
+        return Ok(());
+    }
+
+    // Resize the table
+    let new_table = groups_table
+        .table
+        .clone()
+        .simple_resize(&mut rom.data, new_length, 4)?;
+
+    let groups_table = get_groups_mut(rom)?;
+    groups_table.table = new_table;
+
+    // Add any new element to the table
+    for _ in old_length..new_length {
+        // Create a new table for the new group
+        groups_table.groups.push(RomTable {
+            offset: 0,
+            length: 0,
+            references: vec![],
+        });
+    }
+
+    // Fix all the old tables with the new reference
+    for (index, group) in groups_table.groups.iter_mut().enumerate() {
+        let new_group_pointer = groups_table.table.offset + index * 4;
+
+        if !group.references.is_empty() {
+            group.references.remove(0);
+        }
+        group.references.insert(0, new_group_pointer);
+    }
+
+    Ok(())
 }
 
 // ANCHOR Map Groups

@@ -192,6 +192,10 @@ impl RomData {
     // ANCHOR Slice reading
     /// Reads a slice with the given size at the given offset while checking bounds.
     pub fn read_slice(&self, offset: Offset, size: usize) -> RomIoResult<&[u8]> {
+        if size == 0 {
+            return Ok(&[]);
+        }
+
         // Check bounds
         if !self.in_bounds(offset + size - 1) {
             return Err(RomIoError::OutOfBounds(offset, size));
@@ -212,6 +216,10 @@ impl RomData {
 
     /// Writes the given slice at the given offset while checking bounds.
     pub fn write_slice(&mut self, offset: Offset, slice: &[u8]) -> RomIoResult {
+        if slice.len() == 0 {
+            return Ok(());
+        }
+
         // Check bounds
         if !self.in_bounds(offset + slice.len() - 1) {
             return Err(RomIoError::OutOfBounds(offset, slice.len()));
@@ -456,6 +464,7 @@ impl RomData {
     ///
     /// Returns a map with the offset as the key and the number
     /// of times it was found as the value.
+    #[must_use = "this operation is very expensive, so its result should be used"]
     pub fn find_all_offsets(&self) -> HashMap<Offset, u32> {
         let mut map = HashMap::new();
 
@@ -521,6 +530,10 @@ impl RomData {
     ///
     /// In the context of this library, "clearing" means setting the bytes to `0xFF`.
     pub fn clear_bytes(&mut self, offset: Offset, size: usize) -> RomIoResult {
+        if size == 0 {
+            return Ok(());
+        }
+
         // Check bounds
         if !self.in_bounds(offset + size - 1) {
             return Err(RomIoError::OutOfBounds(offset, size));

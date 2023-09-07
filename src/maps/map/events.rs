@@ -5,7 +5,7 @@ use rom_data::{
 };
 use serde::{Deserialize, Serialize};
 
-// ANCHOR Simple structs
+// ANCHOR Event structs
 rom_struct!(MapEvents {
     u8 object_event_count;
     u8 warp_count;
@@ -399,5 +399,22 @@ fn push_events(events: &[impl ScriptOffset], output: &mut Vec<Offset>) {
         if let Some(offset) = event.script_offset() {
             output.push(offset);
         }
+    }
+}
+
+// ANCHOR Clearing events
+impl MapEvents {
+    /// Clears the events from the ROM.
+    pub fn clear(mut self, rom: &mut RomData, offset: Offset) -> Result<(), RomIoError> {
+        // Clear all the inner vectors
+        self.object_events.to_clear();
+        self.coord_events.to_clear();
+        self.bg_events.to_clear();
+        self.warps.to_clear();
+
+        // Write the cleared events table
+        self.write_to(rom, offset)?;
+        // Clear the events table
+        rom.clear_bytes(offset, Self::get_size(rom))
     }
 }

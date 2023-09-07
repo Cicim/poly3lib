@@ -14,7 +14,7 @@ macro_rules! cmd {
         ($name, &[])
     };
     ($name:literal $(, $args:ident)+) => {
-        ($name, &[$(ScriptReadInstruction::$args, )*])
+        ($name, &[$(ScriptReadInstruction::$args, )+])
     };
 }
 

@@ -237,69 +237,85 @@ fn read_script(
                         // sOrdinaryNoIntroBattleParams
                         TRAINER_BATTLE_SINGLE_NO_INTRO_TEXT => {
                             // sTrainerAIntroSpeech,         TRAINER_PARAM_LOAD_VAL_32BIT
-                            let pointer = push!(args, word);
+                            let pointer = rom.data.read_word(offset + index)?;
+                            index += 4;
                             read_offset!(pointer, args, TextOffset, Text);
                             // sTrainerADefeatSpeech,        TRAINER_PARAM_LOAD_VAL_32BIT
-                            let pointer = push!(args, word);
+                            let pointer = rom.data.read_word(offset + index)?;
+                            index += 4;
                             read_offset!(pointer, args, TextOffset, Text);
                         }
                         // sDoubleBattleParams
                         TRAINER_BATTLE_DOUBLE | TRAINER_BATTLE_REMATCH_DOUBLE => {
                             // sTrainerAIntroSpeech,         TRAINER_PARAM_LOAD_VAL_32BIT
-                            let pointer = push!(args, word);
+                            let pointer = rom.data.read_word(offset + index)?;
+                            index += 4;
                             read_offset!(pointer, args, TextOffset, Text);
                             // sTrainerADefeatSpeech,        TRAINER_PARAM_LOAD_VAL_32BIT
-                            let pointer = push!(args, word);
+                            let pointer = rom.data.read_word(offset + index)?;
+                            index += 4;
                             read_offset!(pointer, args, TextOffset, Text);
                             // sTrainerCannotBattleSpeech,   TRAINER_PARAM_LOAD_VAL_32BIT
-                            let pointer = push!(args, word);
+                            let pointer = rom.data.read_word(offset + index)?;
+                            index += 4;
                             read_offset!(pointer, args, TextOffset, Text);
                         }
                         // sContinueScriptBattleParams
                         TRAINER_BATTLE_CONTINUE_SCRIPT
                         | TRAINER_BATTLE_CONTINUE_SCRIPT_NO_MUSIC => {
                             // sTrainerAIntroSpeech,         TRAINER_PARAM_LOAD_VAL_32BIT
-                            let pointer = push!(args, word);
+                            let pointer = rom.data.read_word(offset + index)?;
+                            index += 4;
                             read_offset!(pointer, args, TextOffset, Text);
                             // sTrainerADefeatSpeech,        TRAINER_PARAM_LOAD_VAL_32BIT
-                            let pointer = push!(args, word);
+                            let pointer = rom.data.read_word(offset + index)?;
+                            index += 4;
                             read_offset!(pointer, args, TextOffset, Text);
                             // sTrainerABattleScriptRetAddr, TRAINER_PARAM_LOAD_VAL_32BIT
-                            let pointer = push!(args, word);
+                            let pointer = rom.data.read_word(offset + index)?;
+                            index += 4;
                             read_offset!(pointer, args, ScriptOffset, Script);
                         }
                         // sContinueScriptDoubleBattleParams
                         TRAINER_BATTLE_CONTINUE_SCRIPT_DOUBLE
                         | TRAINER_BATTLE_CONTINUE_SCRIPT_DOUBLE_NO_MUSIC => {
                             // sTrainerAIntroSpeech,         TRAINER_PARAM_LOAD_VAL_32BIT
-                            let pointer = push!(args, word);
+                            let pointer = rom.data.read_word(offset + index)?;
+                            index += 4;
                             read_offset!(pointer, args, TextOffset, Text);
                             // sTrainerADefeatSpeech,        TRAINER_PARAM_LOAD_VAL_32BIT
-                            let pointer = push!(args, word);
+                            let pointer = rom.data.read_word(offset + index)?;
+                            index += 4;
                             read_offset!(pointer, args, TextOffset, Text);
                             // sTrainerCannotBattleSpeech,   TRAINER_PARAM_LOAD_VAL_32BIT
-                            let pointer = push!(args, word);
+                            let pointer = rom.data.read_word(offset + index)?;
+                            index += 4;
                             read_offset!(pointer, args, TextOffset, Text);
                             // sTrainerABattleScriptRetAddr, TRAINER_PARAM_LOAD_VAL_32BIT
-                            let pointer = push!(args, word);
+                            let pointer = rom.data.read_word(offset + index)?;
+                            index += 4;
                             read_offset!(pointer, args, ScriptOffset, Script);
                         }
                         // sEarlyRivalBattleParams
                         TRAINER_BATTLE_EARLY_RIVAL => {
                             // sTrainerADefeatSpeech,        TRAINER_PARAM_LOAD_VAL_32BIT
-                            let pointer = push!(args, word);
+                            let pointer = rom.data.read_word(offset + index)?;
+                            index += 4;
                             read_offset!(pointer, args, TextOffset, Text);
                             // sTrainerVictorySpeech,        TRAINER_PARAM_LOAD_VAL_32BIT
-                            let pointer = push!(args, word);
+                            let pointer = rom.data.read_word(offset + index)?;
+                            index += 4;
                             read_offset!(pointer, args, TextOffset, Text);
                         }
                         // sOrdinaryBattleParams
                         TRAINER_BATTLE_SINGLE | TRAINER_BATTLE_REMATCH | _ => {
                             // sTrainerAIntroSpeech,         TRAINER_PARAM_LOAD_VAL_32BIT
-                            let pointer = push!(args, word);
+                            let pointer = rom.data.read_word(offset + index)?;
+                            index += 4;
                             read_offset!(pointer, args, TextOffset, Text);
                             // sTrainerADefeatSpeech,        TRAINER_PARAM_LOAD_VAL_32BIT
-                            let pointer = push!(args, word);
+                            let pointer = rom.data.read_word(offset + index)?;
+                            index += 4;
                             read_offset!(pointer, args, TextOffset, Text);
                         }
                     }
