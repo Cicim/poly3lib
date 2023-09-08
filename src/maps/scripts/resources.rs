@@ -1,7 +1,7 @@
 use colored::Colorize;
 use thiserror::Error;
 
-use rom_data::{Offset, RomIoError};
+use rom_data::{types::RomText, Offset, RomIoError};
 
 use crate::Rom;
 
@@ -26,8 +26,8 @@ pub enum ScriptResourceContent {
     Script(Vec<ScriptInstruction>),
     /// Movement with its commands (ending in 0xFE)
     Movement(Vec<u8>),
-    /// TODO Text
-    Text,
+    /// Encoded text tokens.
+    Text(RomText),
     /// Products list (ending in 0x0000)
     Products(Vec<u16>),
 }
@@ -404,14 +404,16 @@ fn read_movements(
 }
 /// Read a text from the given offset.
 fn read_text(
-    _rom: &Rom,
+    rom: &Rom,
     offset: Offset,
     _refs: Option<&mut Vec<ScriptResourceMarker>>,
 ) -> Result<ScriptResource, ScriptResourceReadingError> {
+    let text = rom.data.read::<RomText>(offset)?;
+
     Ok(ScriptResource {
         offset,
-        size: 0,
-        value: ScriptResourceContent::Text,
+        size: text.size,
+        value: ScriptResourceContent::Text(text),
     })
 }
 /// Read a products list from a given offset
@@ -487,7 +489,7 @@ impl<'a> ScriptResourceFormatter<'a> {
             match arg.value {
                 ScriptResourceContent::Script(_) => "Script",
                 ScriptResourceContent::Movement(_) => "Movement",
-                ScriptResourceContent::Text => "Text",
+                ScriptResourceContent::Text(_) => "Text",
                 ScriptResourceContent::Products(_) => "Mart",
             },
         );

@@ -11,7 +11,7 @@ use thumb::{Instruction, Processor};
 
 use crate::{
     lz77::Lz77Header,
-    types::{RomClearableType, RomReadableType, RomWritableType},
+    types::{RomClearableType, RomReadableType, RomWritableType, TextError},
     Lz77DecompressedData, Lz77DecompressionError,
 };
 
@@ -743,6 +743,9 @@ pub enum RomIoError {
 
     #[error("Writing {0} elements to a RomArray of length {1}")]
     InvalidArrayLength(usize, usize),
+
+    #[error("Text encoding error: {0}")]
+    InvalidTextEncoding(#[from] TextError),
 
     #[error("Cannot find free space of size {0}")]
     CannotFindSpace(usize),

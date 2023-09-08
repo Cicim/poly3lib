@@ -5,11 +5,13 @@ mod bitfields;
 mod graphics;
 mod pointers;
 mod primitives;
+mod text;
 mod vectors;
 
 pub use arrays::RomArray;
 pub use bitfields::BitFields;
 pub use pointers::{RomPointer, Void};
+pub use text::{RomText, TextError};
 pub use vectors::RomVector;
 
 pub use graphics::*;
