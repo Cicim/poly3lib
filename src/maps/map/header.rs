@@ -6,7 +6,10 @@ use rom_data::{
     Offset, RomBase, RomData, RomIoError,
 };
 
-use crate::{maps::layout::MapLayout, Rom};
+use crate::{
+    maps::layout::{MapLayout, MapLayoutData, MapLayoutError, MapLayoutTable},
+    Rom,
+};
 
 rom_struct!(RSEMapHeader {
     void *layout;
@@ -139,6 +142,11 @@ impl MapHeader {
         } else {
             (None, None)
         }
+    }
+
+    /// Read the map layout data for this map.
+    pub fn read_layout_data(&self, rom: &Rom) -> Result<MapLayoutData, MapLayoutError> {
+        rom.read_map_layout(self.layout_id)
     }
 }
 
