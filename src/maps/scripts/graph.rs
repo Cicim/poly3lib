@@ -6,7 +6,7 @@ use std::{
 
 use colored::{Color, Colorize};
 
-use rom_data::Offset;
+use rom_data::{Offset, RomIoError};
 
 use crate::Rom;
 
@@ -15,12 +15,12 @@ use super::{ScriptResource, ScriptResourceMarker};
 /// Association between read resources and their content.
 pub struct ScriptGraph {
     /// The roots for this tree.
-    roots: Vec<ScriptResourceMarker>,
+    pub(self) roots: Vec<ScriptResourceMarker>,
 
     /// The resources that have been read in this tree with their type.
-    read: HashMap<ScriptResourceMarker, ScriptResource>,
+    pub(self) read: HashMap<ScriptResourceMarker, ScriptResource>,
     /// The resources referenced by each read script resource.
-    referenced: HashMap<ScriptResourceMarker, Vec<ScriptResourceMarker>>,
+    pub(self) referenced: HashMap<ScriptResourceMarker, Vec<ScriptResourceMarker>>,
 }
 
 impl ScriptGraph {
@@ -56,6 +56,101 @@ impl ScriptGraph {
         }
 
         graph
+    }
+
+    /// Clears these resources from the ROM if all references
+    /// for them are contained in the given list.
+    ///
+    /// Assumes the offsets for the root resources have already been cleared
+    pub fn clear(self, rom: &mut Rom) -> Result<(), RomIoError> {
+        // Get all the offsets in the ROM.
+        let refcounts = rom.data.find_all_offsets();
+        self.clear_internal(rom, refcounts)
+    }
+
+    /// Clears these resources from the ROM if all references
+    /// for them are contained in the given list.
+    ///
+    /// Assumes the root references have not yet been cleared, but deletes
+    /// the root scripts and their resources if needed.
+    pub fn clear_ignore_roots(self, rom: &mut Rom) -> Result<(), RomIoError> {
+        // Get all the offsets in the ROM.
+        let mut refcounts = rom.data.find_all_offsets();
+        // For each root, decrease the refcount
+        for root in self.roots.iter() {
+            match refcounts.get_mut(&root.offset()) {
+                Some(rc) => {
+                    if *rc > 0 {
+                        *rc -= 1
+                    }
+                }
+                None => continue,
+            }
+        }
+
+        self.clear_internal(rom, refcounts)
+    }
+
+    /// Clears these resources from the ROM if all references
+    /// for them are contained in the given list.
+    fn clear_internal(
+        self,
+        rom: &mut Rom,
+        refcounts: HashMap<Offset, u32>,
+    ) -> Result<(), RomIoError> {
+        // Decrease the reference count for each resource.
+        let mut marker_to_refcount: HashMap<ScriptResourceMarker, u32> =
+            HashMap::from_iter(self.referenced.keys().map(|marker| {
+                let value = refcounts.get(&marker.offset()).copied().unwrap_or(0);
+                (*marker, value)
+            }));
+
+        loop {
+            // While there are resources with a reference count of 0,
+            // clear them and decrease the reference count of the
+            // resources that are referenced by them.
+            let maybe_marker_with_no_refs = marker_to_refcount
+                .iter()
+                .find(|(_, refcount)| **refcount == 0)
+                .map(|(marker, _)| *marker);
+
+            let res_to_clear = match maybe_marker_with_no_refs {
+                Some(marker) => marker,
+                None => break,
+            };
+
+            #[cfg(feature = "debug_scripts_clear")]
+            println!("clearing {}", res_to_clear);
+
+            // Find all attached resources and clear them
+            let references = self.referenced.get(&res_to_clear).unwrap();
+            for reference in references.iter() {
+                // And decrease them
+                match marker_to_refcount.get_mut(reference) {
+                    Some(rc) => {
+                        #[cfg(feature = "debug_scripts_clear")]
+                        if *rc == 1 {
+                            println!("  refs {}  is next", reference);
+                        } else {
+                            println!("  refs {}  dec to {}", reference, *rc - 1);
+                        }
+                        if *rc > 0 {
+                            *rc -= 1
+                        }
+                    }
+                    None => continue,
+                }
+            }
+
+            // Delete it from the map
+            marker_to_refcount.remove_entry(&res_to_clear);
+            // Clear the parent resource
+            let res_to_clear = self.read.get(&res_to_clear).unwrap();
+            rom.data
+                .clear_bytes(res_to_clear.offset, res_to_clear.size)?;
+        }
+
+        Ok(())
     }
 
     /// Sort the keys of the graph.
