@@ -9,6 +9,7 @@ use rom_data::{Offset, RomBase, RomData, RomFileError, RomIoError};
 /// The main ROM object.
 ///
 /// Every access to its data can be done via its `data` property.
+#[derive(Clone)]
 pub struct Rom {
     /// The [`RomData`] object that contains the ROM data.
     pub data: RomData,
@@ -23,11 +24,17 @@ impl Rom {
         self.data.save(path)?;
 
         // Write the references
+        self.save_refs(path)?;
+
+        Ok(())
+    }
+
+    /// Saves the references to the given (after replacing .gba with .json).
+    pub fn save_refs(&self, path: &str) -> Result<(), Box<dyn std::error::Error>> {
         let refs_path = std::path::Path::new(path).with_extension("json");
         let mut references = serde_json::to_string_pretty(&self.refs)?;
         references.push('\n');
         std::fs::write(refs_path, references)?;
-
         Ok(())
     }
 

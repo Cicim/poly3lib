@@ -120,6 +120,9 @@ impl MapLayoutData {
 // ANCHOR MapLayoutTable trait
 /// Importing this trait allows you to read, write and delete map layouts.
 pub trait MapLayoutTable {
+    /// Returns the offset of the layout given the index (only if present).
+    fn get_map_layout_offset(&self, index: u16) -> MapLayoutResult<Offset>;
+
     /// Reads the [`MapLayout`] with the given index.
     fn read_map_layout_header(&self, index: u16) -> MapLayoutResult<MapLayout>;
     /// Reads the [`MapLayoutData`] (layout header with map and border data)

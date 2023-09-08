@@ -11,6 +11,11 @@ use super::{
 };
 
 impl MapLayoutTable for Rom {
+    fn get_map_layout_offset(&self, index: u16) -> MapLayoutResult<Offset> {
+        let pointer = get_map_layout_pointer(self, index)?;
+        Ok(self.data.read_offset(pointer)?)
+    }
+
     // ANCHOR Reading functions
     fn read_map_layout_header(&self, index: u16) -> MapLayoutResult<MapLayout> {
         // Get the pointer to the layout

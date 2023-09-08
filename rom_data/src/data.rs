@@ -70,6 +70,7 @@ impl Display for RomBase {
 /// REVIEW *May have support for custom settable attributes
 /// in the future for more options while handling structs,
 /// for example a way of knowing whether a patch was applied*
+#[derive(Clone)]
 pub struct RomData {
     pub base: RomBase,
     bytes: Vec<u8>,

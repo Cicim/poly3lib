@@ -59,6 +59,19 @@ impl RomTile {
         }
     }
 
+    /// Flatten into an array of 64 color indices.
+    pub fn flatten(&self) -> [PaletteIndex; 64] {
+        let mut flat = [0; 64];
+
+        for y in 0..8 {
+            for x in 0..8 {
+                flat[y * 8 + x] = self.get_pixel(x, y);
+            }
+        }
+
+        flat
+    }
+
     /// Prints the given row of the given tile.
     pub(crate) fn print_tile_row(&self, f: &mut std::fmt::Formatter, y: usize) -> std::fmt::Result {
         use colored::Colorize;
