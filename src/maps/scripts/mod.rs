@@ -91,6 +91,27 @@ impl ScriptCommandsTable {
     }
 }
 
+// ANCHOR Methods
+impl Rom {
+    /// Clears the given scripts (and all referenced scripts and resources).
+    ///
+    /// Assumes the references to these scripts have already been cleared, so
+    /// that some of the scripts may have no references in ROM.
+    pub fn clear_scripts(&mut self, scripts: &[Offset]) -> Result<(), RomIoError> {
+        // Convert the offsets to script markers
+        let scripts = scripts
+            .iter()
+            .map(|offset| ScriptResourceMarker::Script(*offset))
+            .collect::<Vec<_>>();
+
+        // Construct the graph
+        let graph = ScriptGraph::read(self, &scripts);
+
+        // Clear the scripts
+        graph.clear(self)
+    }
+}
+
 /// Initialize the script commands table.
 pub fn init_table(rom: &mut Rom, log: &mut ProblemsLog) -> Result<(), RomIoError> {
     if rom.refs.script_cmds.is_some() {
