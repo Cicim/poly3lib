@@ -171,7 +171,7 @@ pub(crate) fn read_table(rom: &Rom) -> Result<RomTable, RomIoError> {
         RomBase::Sapphire => 0x304ea8,
     };
 
-    RomTable::read_table(
+    RomTable::extract_from(
         table_offset,
         &rom.data,
         |data, offset| {

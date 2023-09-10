@@ -9,6 +9,7 @@ use crate::Rom;
 pub mod layout;
 pub mod map;
 pub mod scripts;
+pub mod sections;
 pub mod tileset;
 
 impl Rom {
@@ -28,6 +29,9 @@ impl Rom {
 
         // Initialize the scripts data
         scripts::init_table(self, &mut log).unwrap_or_else(|e| log.push_error("scripts", e));
+
+        // Initialize the region map locations
+        sections::init_table(self).unwrap_or_else(|e| log.push_error("mapsecs", e));
 
         log
     }

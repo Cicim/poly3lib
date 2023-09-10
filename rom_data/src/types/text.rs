@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use thiserror::Error;
 
 use crate::{Offset, RomData, RomIoError};
@@ -36,7 +38,7 @@ const INT_TEXT_ENCODING: [&'static str; 256] = [
 ];
 
 /// Encoded text from the ROM.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct RomText(
     /// List of tokens in the text.
     Vec<TextToken>,
@@ -44,7 +46,7 @@ pub struct RomText(
 
 /// A Token in a text string.
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TextToken {
     /// A normal symbol (in the range 0x00-0xF6)
     Symbol(u8),
@@ -397,6 +399,24 @@ impl TextToken {
     }
 }
 
+impl Debug for TextToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Symbol(sym) => write!(f, "{}", INT_TEXT_ENCODING[*sym as usize]),
+            Self::Dynamic => write!(f, "{{dyn}}"),
+            Self::KeyPadIcon(key) => write!(f, "{{key:{:?}}}", key),
+            Self::ExtraSymbol(sym) => write!(f, "{{sym:{:?}}}", sym),
+            Self::PromptScroll => write!(f, "\\p"),
+            Self::PromptClear => write!(f, "\\l"),
+            Self::PlaceHolder(ph) => write!(f, "{{{:?}}}", ph),
+            Self::ExtCtrlCode(ctrl) => write!(f, "{{ctrl:{:?}}}", ctrl),
+            Self::Color(color) => write!(f, "{{color:{:?}}}", color),
+            Self::NewLine => write!(f, "\\n"),
+            Self::EOS => write!(f, "$"),
+        }
+    }
+}
+
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum TextError {
     #[error("Text is too long")]
@@ -415,6 +435,11 @@ pub enum TextError {
 }
 
 impl RomText {
+    /// Creates a new empty string.
+    pub fn new_empty() -> Self {
+        Self(vec![])
+    }
+
     /// Convert a string to a [`RomText`] object.
     pub fn from_string(_: &str) -> Self {
         todo!()
@@ -459,6 +484,16 @@ impl RomText {
     /// Computes the length of the string
     pub fn byte_size(&self) -> usize {
         self.0.iter().map(TextToken::byte_size).sum()
+    }
+}
+
+impl Debug for RomText {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "_(\"")?;
+        for token in &self.0 {
+            write!(f, "{:?}", token)?;
+        }
+        write!(f, "\")")
     }
 }
 

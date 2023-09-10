@@ -74,6 +74,10 @@ impl Display for Rom {
 }
 
 // ANCHOR Rom references
+use crate::maps::{
+    scripts::ScriptCommandsTable, sections::RegionMapLocationTables, tileset::TilesetShortInfo,
+};
+
 #[derive(Default, Serialize, Deserialize, Clone)]
 /// The references to the various tables in the ROM.
 ///
@@ -81,15 +85,16 @@ impl Display for Rom {
 pub struct RomReferences {
     /// The table of all map groups in the ROM, as well as all map groups
     pub map_groups: Option<crate::maps::map::MapGroups>,
-
     /// The table of all layouts in the ROM.
     pub map_layouts: Option<RomTable>,
-
     /// The list of tilesets loaded from the ROM.
-    pub map_tilesets: Option<HashMap<Offset, crate::maps::tileset::TilesetShortInfo>>,
+    pub map_tilesets: Option<HashMap<Offset, TilesetShortInfo>>,
 
     /// The list of script commands.
-    pub script_cmds: Option<crate::maps::scripts::ScriptCommandsTable>,
+    pub script_cmds: Option<ScriptCommandsTable>,
+
+    /// The region map locations (`mapsec`s)
+    pub region_map_locations: Option<RegionMapLocationTables>,
 }
 
 impl Display for RomReferences {
@@ -167,6 +172,24 @@ impl Display for RomReferences {
             None => writeln!(f, "  script_cmds: {}", "Not loaded".italic())?,
         }
 
+        // Print the region map locations
+        match &self.region_map_locations {
+            None => writeln!(f, "  region_map_locations: {}", "Not loaded".italic())?,
+            Some(RegionMapLocationTables::FrLg {
+                section_start,
+                names,
+                ..
+            }) => writeln!(
+                f,
+                "  region_map_locations: {} (start: {})",
+                names,
+                section_start.to_string().red()
+            )?,
+            Some(RegionMapLocationTables::RSE(table)) => {
+                writeln!(f, "  region_map_locations: {}", table)?
+            }
+        }
+
         Ok(())
     }
 }
@@ -203,10 +226,24 @@ impl Display for RomTable {
 }
 
 impl RomTable {
-    /// Reads a table while its elements are valid (as returned by `is_valid`).
+    /// Creates a new RomTable given offset and size
+    pub fn new(rom: &Rom, offset: Offset, length: usize) -> Self {
+        let references = rom.data.find_references(offset, 4);
+
+        Self {
+            offset,
+            length,
+            references,
+        }
+    }
+
+    /// Extracts a table's length and references given the start offset.
+    ///
+    /// The `is_valid` function is used to determine whether the element in
+    /// the table is valid. The table ends when `is_valid` returns false.
     ///
     /// Requires the `table_offset`, NOT one of its references.
-    pub fn read_table<F>(
+    pub fn extract_from<F>(
         table_offset: Offset,
         rom_data: &RomData,
         is_valid: F,
@@ -272,5 +309,28 @@ impl RomTable {
             length: new_length,
             references: self.references,
         })
+    }
+
+    /// Reads all elements of a table into a vector.
+    ///
+    /// Uses the given function to read the element.
+    pub fn read_elements<F, T>(
+        &self,
+        rom: &Rom,
+        read: F,
+        elsize: usize,
+    ) -> Result<Vec<T>, RomIoError>
+    where
+        F: Fn(&RomData, Offset) -> Result<T, RomIoError>,
+    {
+        let mut elements = Vec::with_capacity(self.length);
+
+        let mut curr_offset = self.offset;
+        for _ in 0..self.length {
+            elements.push(read(&rom.data, curr_offset)?);
+            curr_offset += elsize;
+        }
+
+        Ok(elements)
     }
 }
