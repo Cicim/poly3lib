@@ -210,6 +210,18 @@ impl Rom {
 
         Ok(dump)
     }
+    /// Dumps a single map header.
+    pub fn dump_map_header(&self, group: u8, index: u8) -> MapHeaderResult<MapHeaderDump> {
+        // Get the pointer
+        let table = get_groups(self)?;
+        let pointer = table.get_header_pointer(group, index)?;
+
+        // Read the offset at the pointer
+        let offset = self.data.read_offset(pointer)?;
+        // Dump the map header
+        MapHeader::read_to_dump(offset, &self.data, group, index)
+            .ok_or(MapError::InvalidIndex(group, index))
+    }
 }
 
 /// Returns the map groups table if present.
