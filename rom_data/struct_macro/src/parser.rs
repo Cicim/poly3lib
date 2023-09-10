@@ -122,6 +122,7 @@ pub fn parse(stream: TokenStream) -> ParsedStruct {
                 "priv" | "private" => flags.private = true,
                 "no_debug" => flags.no_debug = true,
                 "ppo" | "print_parser_output" => flags.print_parser_output = true,
+                "readonly" => flags.readonly = true,
                 x => abort!(flag, "Unknown flag `{}`", x),
             },
             x => abort!(x, "Expected flag, found `{}`", x),

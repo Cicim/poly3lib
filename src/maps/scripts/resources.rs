@@ -412,7 +412,7 @@ fn read_text(
 
     Ok(ScriptResource {
         offset,
-        size: text.size,
+        size: text.byte_size(),
         value: ScriptResourceContent::Text(text),
     })
 }

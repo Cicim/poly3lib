@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use crate::{Offset, RomData, RomIoError};
 
-use super::RomReadableType;
+use super::{RomReadableType, RomSizedType, RomWritableType};
 
 const ___: &'static str = "�";
 const LV_: &'static str = "ᴸᵛ";
@@ -36,17 +36,45 @@ const INT_TEXT_ENCODING: [&'static str; 256] = [
 ];
 
 /// Encoded text from the ROM.
-#[derive(Debug)]
-pub struct RomText {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RomText(
     /// List of tokens in the text.
-    tokens: Vec<TextToken>,
-    /// Length of the text in bytes.
-    pub size: usize,
+    Vec<TextToken>,
+);
+
+/// A Token in a text string.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextToken {
+    /// A normal symbol (in the range 0x00-0xF6)
+    Symbol(u8),
+
+    /// `0xF7` Dynamic text got from elsewhere
+    Dynamic,
+    /// `0xF8` Keypad icon. The next byte is the icon index.
+    KeyPadIcon(TextKeyPadIcon),
+    /// `0xF9` Extra symbol. The next byte is the symbol index.
+    ExtraSymbol(TextExtraSymbol),
+    /// `0xFA` Waits for button press and scrolls dialog
+    PromptScroll,
+    /// `0xFB` Waits for button press and clears dialog
+    PromptClear,
+    /// `0xFC` A code for specifying placeholder text. The next byte is the placeholder index.
+    PlaceHolder(TextPlaceHolder),
+    /// `0xFD` Extended control code. The next byte is the control code.
+    ExtCtrlCode(TextExtCtrlCode),
+    /// `0xFD` `0x01` Color. The next byte is the color index.
+    Color(TextColor),
+    /// `0xFE` Newline
+    NewLine,
+
+    /// `0xFF` Not read
+    EOS,
 }
 
 /// Icons representing GBA buttons. (after a 0xF8 byte)
 #[repr(u8)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextKeyPadIcon {
     A = 0x00,
     B = 0x01,
@@ -89,7 +117,7 @@ impl TryFrom<u8> for TextKeyPadIcon {
 
 // Extra symbol (after a 0xF9 byte)
 #[repr(u8)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextExtraSymbol {
     UpArrow = 0x00,
     DownArrow = 0x01,
@@ -153,7 +181,7 @@ impl TryFrom<u8> for TextExtraSymbol {
 
 /// Placeholder strings (after a 0xFC byte)
 #[repr(u8)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextPlaceHolder {
     Unknown = 0x0,
     Player = 0x1,
@@ -197,7 +225,7 @@ impl TryFrom<u8> for TextPlaceHolder {
 
 /// Control Codes (after a 0xFD byte)
 #[repr(u8)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextExtCtrlCode {
     Highlight = 0x02,
     Shadow = 0x03,
@@ -260,7 +288,7 @@ impl TryFrom<u8> for TextExtCtrlCode {
 /// Text colors -- they represent which color to apply
 /// from a palette of 16 colors.
 #[repr(u8)]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextColor {
     Transparent = 0x0,
     White = 0x1,
@@ -306,37 +334,25 @@ impl TryFrom<u8> for TextColor {
     }
 }
 
-/// A Token in a text string.
-#[repr(u8)]
-#[derive(Debug)]
-pub enum TextToken {
-    /// A normal symbol (in the range 0x00-0xF6)
-    Symbol(u8),
-
-    /// `0xF7` Dynamic text got from elsewhere
-    Dynamic,
-    /// `0xF8` Keypad icon. The next byte is the icon index.
-    KeyPadIcon(TextKeyPadIcon),
-    /// `0xF9` Extra symbol. The next byte is the symbol index.
-    ExtraSymbol(TextExtraSymbol),
-    /// `0xFA` Waits for button press and scrolls dialog
-    PromptScroll,
-    /// `0xFB` Waits for button press and clears dialog
-    PromptClear,
-    /// `0xFC` A code for specifying placeholder text. The next byte is the placeholder index.
-    PlaceHolder(TextPlaceHolder),
-    /// `0xFD` Extended control code. The next byte is the control code.
-    ExtCtrlCode(TextExtCtrlCode),
-    /// `0xFD`0x01] Color. The next byte is the color index.
-    Color(TextColor),
-    /// `0xFE` Newline
-    NewLine,
-
-    /// `0xFF` Not read
-    EOS,
-}
-
 impl TextToken {
+    /// Returns the size in bytes of this token
+    pub fn byte_size(&self) -> usize {
+        use TextToken::*;
+        match self {
+            Symbol(_) => 1,
+            Dynamic => 1,
+            KeyPadIcon(_) => 2,
+            ExtraSymbol(_) => 2,
+            PromptScroll => 1,
+            PromptClear => 1,
+            PlaceHolder(_) => 2,
+            ExtCtrlCode(_) => 2,
+            Color(_) => 2,
+            NewLine => 1,
+            EOS => 1,
+        }
+    }
+
     fn is_newline(&self) -> bool {
         use TextToken::*;
         matches!(self, NewLine | PromptScroll | PromptClear)
@@ -399,9 +415,14 @@ pub enum TextError {
 }
 
 impl RomText {
+    /// Convert a string to a [`RomText`] object.
+    pub fn from_string(_: &str) -> Self {
+        todo!()
+    }
+
     /// Converts text to a readable string.
     pub fn to_string(&self) -> String {
-        self.tokens.iter().map(TextToken::format_display).collect()
+        self.0.iter().map(TextToken::format_display).collect()
     }
 
     /// Takes a [`Text`] object and returns a vector of substrings of that text
@@ -413,7 +434,7 @@ impl RomText {
         let mut current_line: Vec<TextToken> = vec![];
         // Every time you encounter a newline token, keep it in the first string
         // then start a new one.
-        for token in self.tokens {
+        for token in self.0 {
             let is_newline = token.is_newline();
             current_line.push(token);
             if is_newline {
@@ -434,8 +455,14 @@ impl RomText {
     pub fn debug_format(line: Vec<TextToken>) -> String {
         line.iter().map(TextToken::format_debug).collect()
     }
+
+    /// Computes the length of the string
+    pub fn byte_size(&self) -> usize {
+        self.0.iter().map(TextToken::byte_size).sum()
+    }
 }
 
+// ANCHOR RomReadableType impl
 // TODO Decide best text lenght limit for safety reasons
 const MAX_TEXT_LENGTH: usize = 0x400;
 
@@ -497,6 +524,80 @@ impl RomReadableType for RomText {
             });
         }
 
-        Ok(Self { tokens, size })
+        Ok(Self(tokens))
+    }
+}
+
+impl RomSizedType for RomText {
+    fn get_size(_: &RomData) -> usize {
+        1
+    }
+    fn get_alignment(_: &RomData) -> usize {
+        1
+    }
+}
+
+impl RomWritableType for RomText {
+    fn write_to(self, rom: &mut RomData, mut offset: Offset) -> Result<(), RomIoError> {
+        use TextToken as T;
+
+        for token in self.0 {
+            match token {
+                T::Symbol(s) => rom.write_byte(offset, s)?,
+                T::Dynamic => rom.write_byte(offset, 0xF7)?,
+                T::PromptScroll => rom.write_byte(offset, 0xFA)?,
+                T::PromptClear => rom.write_byte(offset, 0xFB)?,
+                T::NewLine => rom.write_byte(offset, 0xFE)?,
+                T::EOS => rom.write_byte(offset, 0xFF)?,
+
+                T::KeyPadIcon(i) => {
+                    rom.write_byte(offset, 0xF8)?;
+                    rom.write_byte(offset + 1, i as u8)?;
+                    offset += 1;
+                }
+                T::ExtraSymbol(s) => {
+                    rom.write_byte(offset, 0xF9)?;
+                    rom.write_byte(offset + 1, s as u8)?;
+                    offset += 1;
+                }
+                T::PlaceHolder(p) => {
+                    rom.write_byte(offset, 0xFC)?;
+                    rom.write_byte(offset + 1, p as u8)?;
+                    offset += 1;
+                }
+                T::ExtCtrlCode(c) => {
+                    rom.write_byte(offset, 0xFD)?;
+                    rom.write_byte(offset + 1, c as u8)?;
+                    offset += 1;
+                }
+                T::Color(c) => {
+                    rom.write_byte(offset, 0xFD)?;
+                    rom.write_byte(offset + 1, 0x01)?;
+                    rom.write_byte(offset + 2, c as u8)?;
+                    offset += 2;
+                }
+            }
+            offset += 1;
+        }
+
+        rom.write_byte(offset, 0xFF)?;
+
+        Ok(())
+    }
+}
+
+// ANCHOR serde
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+impl Serialize for RomText {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> Deserialize<'de> for RomText {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        Ok(Self::from_string(&text))
     }
 }

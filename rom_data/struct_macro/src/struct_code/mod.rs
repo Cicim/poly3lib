@@ -23,7 +23,12 @@ pub fn build(parsed: ParsedStruct) -> TokenStream {
     let body = build_struct_body(&parsed);
     let sized = sized::generate_sized_implementation(&parsed);
     let readable = read::generate_readable_implementation(&parsed);
-    let writable = write::generate_writable_implementation(&parsed);
+
+    let writable = if parsed.flags.readonly {
+        quote!()
+    } else {
+        write::generate_writable_implementation(&parsed)
+    };
 
     quote! {
         // Struct bodys

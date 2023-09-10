@@ -86,6 +86,7 @@ mod struct_code;
 ///   the user to add it manually.
 /// + `print_parser_output` (or `ppo`): prints the output of the parser to stderr.
 ///   Useful for debugging.
+/// + `readonly`: does not implement `RomWritableType` for this struct.
 #[proc_macro]
 #[proc_macro_error]
 pub fn rom_struct(input: TokenStream) -> TokenStream {

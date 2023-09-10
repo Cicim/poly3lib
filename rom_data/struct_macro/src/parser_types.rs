@@ -90,6 +90,8 @@ pub struct StructFlags {
     pub no_debug: bool,
     /// Whether to print the output of the parser (for debugging)
     pub print_parser_output: bool,
+    /// Whether to not implement RomWritableType
+    pub readonly: bool,
 }
 
 // ANCHOR Struct fields
