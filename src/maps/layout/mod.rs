@@ -2,7 +2,7 @@ use image::RgbaImage;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use rom_data::{rom_struct, Offset, RomBase, RomIoError};
+use rom_data::{rom_struct, RomBase, RomIoError};
 
 use crate::{Rom, RomTable};
 
@@ -117,42 +117,6 @@ impl MapLayoutData {
     }
 }
 
-// ANCHOR MapLayoutTable trait
-/// Importing this trait allows you to read, write and delete map layouts.
-pub trait MapLayoutTable {
-    /// Returns the offset of the layout given the index (only if present).
-    fn get_map_layout_offset(&self, index: u16) -> MapLayoutResult<Offset>;
-
-    /// Reads the [`MapLayout`] with the given index.
-    fn read_map_layout_header(&self, index: u16) -> MapLayoutResult<MapLayout>;
-    /// Reads the [`MapLayoutData`] (layout header with map and border data)
-    /// with the given index.
-    fn read_map_layout(&self, index: u16) -> MapLayoutResult<MapLayoutData>;
-
-    /// Creates a new [`MapLayout`] (and its data) and returns its index.
-    fn create_map_layout(
-        &mut self,
-        primary_tileset: Offset,
-        secondary_tileset: Offset,
-        width: i32,
-        height: i32,
-    ) -> MapLayoutResult<u16>;
-
-    /// Writes the given [`MapLayout`] at the given index, overwriting the previous
-    /// one if present. Never extends the table if the index is out of bounds.
-    fn write_map_layout_header(&mut self, index: u16, header: MapLayout) -> MapLayoutResult;
-    /// Writes the map [`MapLayoutData`] to the index contained in it.
-    ///
-    /// Writes the header and map border. If possible, utilizes the same spots
-    /// as the layout previously written in its place.
-    fn write_map_layout(&mut self, data: MapLayoutData) -> MapLayoutResult;
-
-    /// Deletes the map layout at the given index from the table.
-    fn delete_map_layout(&mut self, index: u16) -> MapLayoutResult;
-
-    /// Dumps all the valid map layouts indices to a vector;
-    fn dump_map_layouts(&self) -> MapLayoutResult<Vec<u16>>;
-}
 /// Helper type for the result of map layout operations.
 type MapLayoutResult<T = ()> = Result<T, MapLayoutError>;
 

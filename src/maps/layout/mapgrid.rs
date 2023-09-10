@@ -6,7 +6,7 @@ use rom_data::{values::RomValueError, Offset, RomData, RomValues};
 
 use crate::{maps::tileset::TilesetPairRenderingData, Rom};
 
-use super::{MapLayoutError, MapLayoutTable};
+use super::MapLayoutError;
 
 // ANCHOR MapGrid struct
 /// Map data to pass to the writer as a matrix of `BlockInfo`

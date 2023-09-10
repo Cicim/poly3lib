@@ -67,29 +67,6 @@ impl TilesetHeader {
     }
 }
 
-// ANCHOR MapTilesetTable trait
-/// Importing this trait allows you create and delete map tilesets
-/// while maintanining consistency with the tileset table.
-pub trait MapTilesetTable {
-    /// Reads a [`TilesetPair`] from the given offsets.
-    ///
-    /// Returns an error if either tileset offset is invalid.
-    fn read_tileset_pair(
-        &self,
-        primary_offset: Offset,
-        secondary_offset: Offset,
-    ) -> MapTilesetResult<TilesetPair>;
-
-    /// Deletes the given tileset from the table and from ROM.
-    fn delete_tileset(&mut self, offset: Offset) -> MapTilesetResult;
-
-    /// Creates a new tileset of the given type (primary or secondary)
-    /// with the minimum possible size for everything.
-    ///
-    /// Returns the offset of the new tileset.
-    fn create_tileset(&mut self, is_primary: bool) -> MapTilesetResult<Offset>;
-}
-
 /// Helper type for the result of map tileset operations.
 type MapTilesetResult<T = ()> = Result<T, MapTilesetError>;
 
@@ -118,9 +95,12 @@ pub enum MapTilesetError {
     IoError(#[from] RomIoError),
 }
 
-// ANCHOR MapTilesetTable impl
-impl MapTilesetTable for Rom {
-    fn read_tileset_pair(
+// ANCHOR Methods
+impl Rom {
+    /// Reads a [`TilesetPair`] from the given offsets.
+    ///
+    /// Returns an error if either tileset offset is invalid.
+    pub fn read_tileset_pair(
         &self,
         primary_offset: Offset,
         secondary_offset: Offset,
@@ -129,7 +109,8 @@ impl MapTilesetTable for Rom {
         TilesetPair::read(self, primary_offset, secondary_offset)
     }
 
-    fn delete_tileset(&mut self, offset: Offset) -> MapTilesetResult {
+    /// Deletes the given tileset from the table and from ROM.
+    pub fn delete_tileset(&mut self, offset: Offset) -> MapTilesetResult {
         // Check if the table contains the given offset
         if let Some(TilesetShortInfo { size, .. }) = get_table(self)?.get(&offset) {
             // Read the header
@@ -177,7 +158,11 @@ impl MapTilesetTable for Rom {
         }
     }
 
-    fn create_tileset(&mut self, is_primary: bool) -> MapTilesetResult<Offset> {
+    /// Creates a new tileset of the given type (primary or secondary)
+    /// with the minimum possible size for everything.
+    ///
+    /// Returns the offset of the new tileset.
+    pub fn create_tileset(&mut self, is_primary: bool) -> MapTilesetResult<Offset> {
         const DEFAULT_METATILES: usize = 8;
         const DEFAULT_TILES: usize = 1;
 
@@ -250,8 +235,6 @@ pub fn init_info(rom: &mut Rom, log: &mut ProblemsLog) -> Result<(), MapLayoutEr
     if rom.refs.map_tilesets.is_some() {
         return Ok(());
     }
-
-    use super::layout::MapLayoutTable;
 
     // Get the tilesets from all the layouts
     let mut tileset_offsets: HashSet<Offset> = HashSet::new();

@@ -23,33 +23,6 @@ pub use events::{
 pub use header::{MapHeader, MapHeaderDump};
 pub use scripts::{MapScripts, MapScriptsSubTable, ScriptWithVars};
 
-// ANCHOR MapHeaderTable trait
-/// Importing this trait allows you to do any operations with map headers
-/// while referring to them using the group.index notation.
-pub trait MapHeaderTable {
-    /// Reads a map header given the group and the index.
-    fn read_map_header(&self, group: u8, index: u8) -> MapHeaderResult<MapHeader>;
-    /// Reads a [MapData] object from the given group and index
-    fn read_map(&self, group: u8, index: u8) -> MapHeaderResult<MapData>;
-
-    /// Writes a map header to the given group and index,
-    /// overwriting the previous one if present.
-    ///
-    /// Allocates a new space if the spot was empty but
-    /// does not extend the table size if out of bounds.
-    fn write_map_header(&mut self, group: u8, index: u8, header: MapHeader) -> MapHeaderResult;
-
-    /// Deletes a map and the struct it references. Returns a list of all
-    /// script offsets referenced by this map to clear them from the ROM.
-    fn delete_map(&mut self, group: u8, index: u8) -> MapHeaderResult<Vec<Offset>>;
-
-    /// Creates a new map at the given group/index if possible
-    fn create_map(&mut self, group: u8, index: u8) -> MapHeaderResult;
-
-    /// Dumps all the map headers in all groups, along with some extra information.
-    fn dump_map_headers(&self) -> MapHeaderResult<Vec<MapHeaderDump>>;
-}
-
 /// Helper type for the result of map header operations.
 type MapHeaderResult<T = ()> = Result<T, MapError>;
 
@@ -78,10 +51,11 @@ pub enum MapError {
     IoError(#[from] RomIoError),
 }
 
-// ANCHOR MapHeaderTable impl
-impl MapHeaderTable for Rom {
+// ANCHOR Methods
+impl Rom {
     // ANCHOR Reading
-    fn read_map_header(&self, group: u8, index: u8) -> MapHeaderResult<MapHeader> {
+    /// Reads a map header given the group and the index.
+    pub fn read_map_header(&self, group: u8, index: u8) -> MapHeaderResult<MapHeader> {
         // Get the pointer to the header offset
         let pointer = get_groups(self)?.get_header_pointer(group, index)?;
 
@@ -94,12 +68,19 @@ impl MapHeaderTable for Rom {
         let header: MapHeader = self.data.read(offset)?;
         Ok(header)
     }
-    fn read_map(&self, group: u8, index: u8) -> MapHeaderResult<MapData> {
+
+    /// Reads a [MapData] object from the given group and index
+    pub fn read_map(&self, group: u8, index: u8) -> MapHeaderResult<MapData> {
         MapData::read(self, group, index)
     }
 
     // ANCHOR Writing
-    fn write_map_header(&mut self, group: u8, index: u8, header: MapHeader) -> MapHeaderResult {
+    /// Writes a map header to the given group and index,
+    /// overwriting the previous one if present.
+    ///
+    /// Allocates a new space if the spot was empty but
+    /// does not extend the table size if out of bounds.
+    pub fn write_map_header(&mut self, group: u8, index: u8, header: MapHeader) -> MapHeaderResult {
         // Get the pointer to the header offset
         let pointer = get_groups(self)?.get_header_pointer(group, index)?;
 
@@ -117,7 +98,9 @@ impl MapHeaderTable for Rom {
     }
 
     // ANCHOR Deleting
-    fn delete_map(&mut self, group: u8, index: u8) -> MapHeaderResult<Vec<Offset>> {
+    /// Deletes a map and the struct it references. Returns a list of all
+    /// script offsets referenced by this map to clear them from the ROM.
+    pub fn delete_map(&mut self, group: u8, index: u8) -> MapHeaderResult<Vec<Offset>> {
         // Read the position where to read the header from.
         let pointer = get_groups(self)?.get_header_pointer(group, index)?;
 
@@ -145,7 +128,8 @@ impl MapHeaderTable for Rom {
     }
 
     // ANCHOR Creating
-    fn create_map(&mut self, group: u8, index: u8) -> MapHeaderResult {
+    /// Creates a new map at the given group/index if possible
+    pub fn create_map(&mut self, group: u8, index: u8) -> MapHeaderResult {
         if group == 255 || index == 255 {
             return Err(MapError::InvalidIndex(255, 255));
         };
@@ -193,7 +177,8 @@ impl MapHeaderTable for Rom {
     }
 
     // ANCHOR Dumping
-    fn dump_map_headers(&self) -> MapHeaderResult<Vec<MapHeaderDump>> {
+    /// Dumps all the map headers in all groups, along with some extra information.
+    pub fn dump_map_headers(&self) -> MapHeaderResult<Vec<MapHeaderDump>> {
         let rom = &self.data;
         let groups_table = get_groups(self)?;
 

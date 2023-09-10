@@ -4,9 +4,7 @@ use rom_data::{rom_struct, types::RomSizedType, Offset, RomData, RomIoError};
 
 use crate::Rom;
 
-use super::{
-    events::MapEvents, get_groups, MapHeader, MapHeaderResult, MapHeaderTable, MapScripts,
-};
+use super::{events::MapEvents, get_groups, MapHeader, MapHeaderResult, MapScripts};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct MapData {

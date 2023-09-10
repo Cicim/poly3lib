@@ -5,19 +5,18 @@ use rom_data::{
 
 use crate::{Rom, RomTable};
 
-use super::{
-    MapGrid, MapGridMasks, MapLayout, MapLayoutData, MapLayoutError, MapLayoutResult,
-    MapLayoutTable,
-};
+use super::{MapGrid, MapGridMasks, MapLayout, MapLayoutData, MapLayoutError, MapLayoutResult};
 
-impl MapLayoutTable for Rom {
-    fn get_map_layout_offset(&self, index: u16) -> MapLayoutResult<Offset> {
+impl Rom {
+    /// Returns the offset of the layout given the index (only if present).
+    pub fn get_map_layout_offset(&self, index: u16) -> MapLayoutResult<Offset> {
         let pointer = get_map_layout_pointer(self, index)?;
         Ok(self.data.read_offset(pointer)?)
     }
 
     // ANCHOR Reading functions
-    fn read_map_layout_header(&self, index: u16) -> MapLayoutResult<MapLayout> {
+    /// Reads the [`MapLayout`] with the given index.
+    pub fn read_map_layout_header(&self, index: u16) -> MapLayoutResult<MapLayout> {
         // Get the pointer to the layout
         let pointer = get_map_layout_pointer(self, index)?;
         // If the pointer is NULL, return a missing layout error
@@ -31,7 +30,10 @@ impl MapLayoutTable for Rom {
         let header: MapLayout = self.data.read(offset)?;
         Ok(header)
     }
-    fn read_map_layout(&self, index: u16) -> MapLayoutResult<MapLayoutData> {
+
+    /// Reads the [`MapLayoutData`] (layout header with map and border data)
+    /// with the given index.
+    pub fn read_map_layout(&self, index: u16) -> MapLayoutResult<MapLayoutData> {
         // Read the header
         let header = self.read_map_layout_header(index)?;
 
@@ -63,7 +65,8 @@ impl MapLayoutTable for Rom {
     }
 
     // ANCHOR Creation
-    fn create_map_layout(
+    /// Creates a new [`MapLayout`] (and its data) and returns its index.
+    pub fn create_map_layout(
         &mut self,
         primary_offset: Offset,
         secondary_offset: Offset,
@@ -102,7 +105,9 @@ impl MapLayoutTable for Rom {
     }
 
     // ANCHOR Writing functions
-    fn write_map_layout_header(&mut self, index: u16, header: MapLayout) -> MapLayoutResult {
+    /// Writes the given [`MapLayout`] at the given index, overwriting the previous
+    /// one if present. Never extends the table if the index is out of bounds.
+    pub fn write_map_layout_header(&mut self, index: u16, header: MapLayout) -> MapLayoutResult {
         // Get the pointer to the layout
         let pointer = get_map_layout_pointer(self, index)?;
         // Make sure the layout is not invalid
@@ -112,7 +117,12 @@ impl MapLayoutTable for Rom {
 
         Ok(())
     }
-    fn write_map_layout(&mut self, data: MapLayoutData) -> MapLayoutResult {
+
+    /// Writes the map [`MapLayoutData`] to the index contained in it.
+    ///
+    /// Writes the header and map border. If possible, utilizes the same spots
+    /// as the layout previously written in its place.
+    pub fn write_map_layout(&mut self, data: MapLayoutData) -> MapLayoutResult {
         let index = data.index;
 
         // If not big enough, this will update the table so that `index`
@@ -172,7 +182,8 @@ impl MapLayoutTable for Rom {
     }
 
     // ANCHOR Deletion
-    fn delete_map_layout(&mut self, index: u16) -> MapLayoutResult {
+    /// Deletes the map layout at the given index from the table.
+    pub fn delete_map_layout(&mut self, index: u16) -> MapLayoutResult {
         // Read the header
         let header = self.read_map_layout_header(index)?;
 
@@ -203,7 +214,8 @@ impl MapLayoutTable for Rom {
     }
 
     // ANCHOR Dumping
-    fn dump_map_layouts(&self) -> MapLayoutResult<Vec<u16>> {
+    /// Dumps all the valid map layouts indices to a vector;
+    pub fn dump_map_layouts(&self) -> MapLayoutResult<Vec<u16>> {
         let table = get_table(self)?;
 
         let mut results = Vec::new();

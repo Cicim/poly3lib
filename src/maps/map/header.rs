@@ -7,7 +7,7 @@ use rom_data::{
 };
 
 use crate::{
-    maps::layout::{MapLayout, MapLayoutData, MapLayoutError, MapLayoutTable},
+    maps::layout::{MapLayout, MapLayoutData, MapLayoutError},
     Rom,
 };
 
