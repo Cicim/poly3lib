@@ -129,7 +129,7 @@ impl Rom {
 
     // ANCHOR Creating
     /// Creates a new map at the given group/index if possible
-    pub fn create_map(&mut self, group: u8, index: u8) -> MapHeaderResult {
+    pub fn create_map(&mut self, group: u8, index: u8, layout_id: u16) -> MapHeaderResult {
         if group == 255 || index == 255 {
             return Err(MapError::InvalidIndex(255, 255));
         };
@@ -144,14 +144,19 @@ impl Rom {
             return Err(MapError::InvalidIndex(group, index));
         }
 
+        // Read the layout offset
+        let layout_offset = self
+            .get_map_layout_offset(layout_id)
+            .map_err(|_| MapError::InvalidLayout(layout_id))?;
+
         // Create a new header
         let header = MapHeader {
-            layout: RomPointer::Null,
+            layout: RomPointer::new(layout_offset),
             events: RomPointer::Null,
             scripts: RomPointer::Null,
             connections: RomPointer::Null,
             music: 0xFFFF,
-            layout_id: 0,
+            layout_id,
             mapsec_id: 0,
             cave: 0,
             weather: 0,
