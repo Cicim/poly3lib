@@ -2,7 +2,7 @@ use image::RgbaImage;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use rom_data::{rom_struct, RomBase, RomIoError};
+use rom_data::{rom_struct, types::RomPointer, RomBase, RomIoError};
 
 use crate::{Rom, RomTable};
 
@@ -175,14 +175,19 @@ pub(crate) fn read_table(rom: &Rom) -> Result<RomTable, RomIoError> {
         table_offset,
         &rom.data,
         |data, offset| {
+            let word = data.read_word(offset)?;
             // Accept NULL pointers
-            if data.read_word(offset)? == 0 {
+            if word == 0 {
                 return Ok(true);
             }
 
-            let header_offset = data.read_offset(offset)?;
-            let header: MapLayout = data.read(header_offset)?;
-            Ok(header.is_valid())
+            match RomPointer::from_pointer(word, data).offset() {
+                Some(offset) => {
+                    let header: MapLayout = data.read(offset)?;
+                    Ok(header.is_valid())
+                }
+                None => Ok(false),
+            }
         },
         4,
     )
