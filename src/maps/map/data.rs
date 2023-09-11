@@ -2,7 +2,10 @@ use serde::{Deserialize, Serialize};
 
 use rom_data::{rom_struct, types::RomSizedType, Offset, RomData, RomIoError};
 
-use crate::Rom;
+use crate::{
+    maps::layout::{MapLayoutData, MapLayoutError},
+    Rom,
+};
 
 use super::{events::MapEvents, get_groups, MapHeader, MapHeaderResult, MapScripts};
 
@@ -104,6 +107,11 @@ impl MapData {
         }
 
         Ok(())
+    }
+
+    /// Returns the layout of the map data in the ROM.
+    pub fn read_layout_data(&self, rom: &Rom) -> Result<MapLayoutData, MapLayoutError> {
+        self.header.read_layout_data(rom)
     }
 }
 

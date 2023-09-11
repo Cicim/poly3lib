@@ -20,7 +20,7 @@ pub struct TilesetNumbers {
     #[value(Emerald   0x089f2e MovLsl)]
     #[value(FireRed   0x0590b4 Word Sub(1))]
     #[value(LeafGreen 0x0590b4 Word Sub(1))]
-    num_metatiles_total: u16,
+    pub num_metatiles_total: u16,
 
     /// `NUM_METATILES_IN_PRIMARY`
     #[value(FireRed   0x05a97c 0x09b808 Word Sub(1))]
@@ -33,7 +33,7 @@ pub struct TilesetNumbers {
     #[value(Ruby      0x057e84          Word Neg)]
     #[value(Sapphire  0x057e88          Word Neg)]
     #[value(Emerald   0x089f74 0x0e066c Word Neg)]
-    num_metatiles_in_primary: u16,
+    pub num_metatiles_in_primary: u16,
 
     /// `NUM_PALS_IN_PRIMARY`
     #[value(FireRed   0x059a22 AddImm8 Mul(32))]
@@ -52,7 +52,7 @@ pub struct TilesetNumbers {
     #[value(Sapphire  0x056d64 MovImm Mul(16))]
     #[value(Emerald   0x088da0 MovImm Mul(16))]
     #[value(Emerald   0x085114 MovImm)]
-    num_pals_in_primary: u8,
+    pub num_pals_in_primary: u8,
 
     /// `NUM_PALS_TOTAL - NUM_PALS_IN_PRIMARY`
     #[value(FireRed   0x059aa6 MovImm Mul(32))]
@@ -62,7 +62,7 @@ pub struct TilesetNumbers {
     #[value(Emerald   0x088da2 MovImm Mul(32))]
     // REVIEW Add num_pals_total here (computed by sum of the two)
     // or by checking offset 0x085120 for Cmp (sub 1) only in emerald
-    num_pals_in_secondary: u8,
+    pub num_pals_in_secondary: u8,
 
     /// `NUM_TILES_IN_PRIMARY_VRAM`
     #[value(FireRed   0x059a58 0x059a70 0x059a84 0x059a84 MovLsl)]
@@ -74,7 +74,7 @@ pub struct TilesetNumbers {
     // Get the references to the `NUM_TILES_IN_PRIMARY_VRAM` value
     #[value(Ruby      0x056d48 Word Add(0x6000000) Mul(32))]
     #[value(Sapphire  0x056d4c Word Add(0x6000000) Mul(32))]
-    num_tiles_in_primary: u16,
+    pub num_tiles_in_primary: u16,
 
     /// `1024 - NUM_TILES_IN_PRIMARY`
     #[value(LeafGreen 0x059a6c 0x059a80 0x059a80 MovLsl)]
@@ -82,7 +82,7 @@ pub struct TilesetNumbers {
     #[value(FireRed   0x059a6c 0x059a80 0x059a80 MovLsl)]
     #[value(Ruby      0x056d48 Word Add(0x6000000) Mul(32))]
     #[value(Sapphire  0x056d4c Word Add(0x6000000) Mul(32))]
-    num_tiles_in_secondary: u16,
+    pub num_tiles_in_secondary: u16,
 }
 
 impl TilesetNumbers {

@@ -11,7 +11,9 @@ use rom_data::{
 
 use crate::Rom;
 
-use super::{MapTilesetError, MapTilesetResult, TilesetAnimationList, TilesetHeader};
+use super::{
+    MapTilesetError, MapTilesetResult, TilesetAnimationList, TilesetHeader, TilesetNumbers,
+};
 
 // ANCHOR Metatile
 #[derive(Default, Clone, Copy, Serialize, Deserialize)]
@@ -217,8 +219,14 @@ fn read_graphics(rom: &RomData, header: &TilesetHeader) -> MapTilesetResult<RomG
     let length = if header.is_compressed {
         None
     } else {
-        // REVIEW Is this the most reasonable default?
-        Some(256)
+        // Read the number of tiles in the secondary tileset
+        let values = TilesetNumbers::read_or_default(rom);
+
+        // REVIEW Store the graphics size independently?
+        Some(match header.is_secondary {
+            true => values.num_tiles_in_secondary,
+            false => values.num_tiles_in_primary,
+        } as usize)
     };
 
     // Read the graphics (compressed or uncompressed)
