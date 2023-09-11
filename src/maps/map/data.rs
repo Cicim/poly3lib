@@ -32,7 +32,8 @@ pub struct MapData {
 impl MapData {
     /// Reads the map data from the ROM.
     pub fn read(rom: &Rom, group: u8, index: u8) -> MapHeaderResult<MapData> {
-        let offset = get_groups(rom)?.get_header_pointer(group, index)?;
+        let pointer = get_groups(rom)?.get_header_pointer(group, index)?;
+        let offset = rom.data.read_offset(pointer)?;
         let header = rom.read_map_header(group, index)?;
 
         let events = match header.events.offset() {
