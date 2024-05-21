@@ -18,20 +18,26 @@ impl Rom {
         // Keep a hashmap so that you can store which tables failed to initialize
         let mut log = ProblemsLog::new();
 
+        macro_rules! push_error {
+            ($msg:literal) => {
+                |e| log.push_error($msg, e)
+            };
+        }
+
         // Initialize the map groups
-        map::init_table(self).unwrap_or_else(|e| log.push_error("map_groups", e));
+        map::init_table(self).unwrap_or_else(push_error!("map_groups"));
 
         // Initialize the map layout table
-        layout::init_table(self).unwrap_or_else(|e| log.push_error("map_layouts", e));
+        layout::init_table(self).unwrap_or_else(push_error!("map_layouts"));
 
         // Load the tileset data
-        tileset::init_info(self, &mut log).unwrap_or_else(|e| log.push_error("map_tilesets", e));
+        tileset::init_info(self, &mut log).unwrap_or_else(push_error!("map_tilesets"));
 
         // Initialize the scripts data
-        scripts::init_table(self, &mut log).unwrap_or_else(|e| log.push_error("scripts", e));
+        scripts::init_table(self, &mut log).unwrap_or_else(push_error!("scripts"));
 
         // Initialize the region map locations
-        sections::init_table(self).unwrap_or_else(|e| log.push_error("mapsecs", e));
+        sections::init_table(self).unwrap_or_else(push_error!("mapsecs"));
 
         log
     }

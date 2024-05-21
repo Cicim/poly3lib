@@ -81,10 +81,10 @@ impl<T> RomPointer<T> {
 impl<T: std::fmt::Debug> std::fmt::Debug for RomPointer<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            RomPointer::Null => write!(f, "Null"),
+            RomPointer::Null => write!(f, "NULL"),
             RomPointer::Invalid(pointer) => write!(f, "Invalid(0x{:08x})", pointer),
-            RomPointer::Valid(offset, data) => write!(f, "Valid(${:07X}, {:#?})", offset, data),
-            RomPointer::NoData(offset) => write!(f, "NoData(${:07X})", offset),
+            RomPointer::Valid(offset, data) => write!(f, "${:07X} => {:#?}", offset, data),
+            RomPointer::NoData(offset) => write!(f, "${:07X}", offset),
         }
     }
 }

@@ -127,9 +127,9 @@ impl<T: std::fmt::Debug> std::fmt::Debug for RomVector<T> {
                 offset,
                 clear_size,
                 data,
-            } => write!(f, "Vector(${:07X}, {}, {:#?})", offset, clear_size, data),
+            } => write!(f, "[{}]${:07X} => {:#?}", clear_size, offset, data),
             RomVector::Clear { offset, clear_size } => {
-                write!(f, "Vector(clear ${:07X}, {}", offset, clear_size)
+                write!(f, "[{}]${:07X} (to clear)", clear_size, offset)
             }
             RomVector::New(data) => write!(f, "Vector(missing offset, {:#?})", data),
         }
