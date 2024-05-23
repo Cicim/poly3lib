@@ -1,5 +1,6 @@
 //! This crate exports methods needed to write data to and from ROM.
 
+pub(crate) mod allocation;
 pub(crate) mod data;
 pub(crate) mod lz77;
 

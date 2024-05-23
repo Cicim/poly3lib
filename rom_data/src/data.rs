@@ -10,8 +10,9 @@ use thiserror::Error;
 use thumb::{Instruction, Processor};
 
 use crate::{
+    allocation::AllocatedBytes,
     lz77::Lz77Header,
-    types::{RomClearableType, RomReadableType, RomWritableType, TextError},
+    types::{RomClearableType, RomReadableType, RomSizedType, RomWritableType, TextError},
     Lz77DecompressedData, Lz77DecompressionError,
 };
 
@@ -76,8 +77,8 @@ pub struct RomData {
 
     /// Rom data.
     bytes: Vec<u8>,
-    /// List of bytes that have been allocated (as bitarray)
-    allocated: Vec<u8>,
+    /// Allocated bytes in the ROM (to avoid accidentally overwriting data)
+    pub allocated: AllocatedBytes,
 }
 
 impl Display for RomData {
@@ -110,7 +111,7 @@ impl RomData {
         let bytes = vec![0xFF; size];
 
         // Find the bits that are allocated
-        let allocated = vec![0; (size + 7) / 8];
+        let allocated = AllocatedBytes::new(size);
 
         RomData {
             base,
@@ -167,34 +168,13 @@ impl RomData {
         let mut bits_file_path = std::path::PathBuf::from(path);
         bits_file_path.set_extension("bin");
 
-        if let Ok(mut file) = File::open(bits_file_path) {
-            // Make sure the file's size is correct
-            let file_size = file.metadata().map(|m| m.len() as usize).unwrap_or(0);
-
-            if file_size == (bytes.len() + 7) / 8 {
-                let mut allocated = Vec::new();
-                file.read_to_end(&mut allocated)?;
-
-                return Ok(RomData {
-                    bytes,
-                    base,
-                    allocated,
-                });
-            }
-        }
-
-        // Recompute the allocated bytes bitarray
-        let mut allocated = vec![0; (bytes.len() + 7) / 8];
-
-        // Check if each byte is allocated (not 0xFF)
-        for i in 0..bytes.len() {
-            if bytes[i] != 0xFF {
-                // Set the bit to 1
-                let byte = i / 8;
-                let bit = i % 8;
-                allocated[byte] |= 1 << bit;
-            }
-        }
+        let allocated = if let Some(allocated) =
+            AllocatedBytes::try_read_from_file(bits_file_path, &bytes, 0xFF)
+        {
+            allocated
+        } else {
+            AllocatedBytes::build_from_data(&bytes, 0xFF)
+        };
 
         Ok(RomData {
             bytes,
@@ -215,9 +195,8 @@ impl RomData {
         // Open the bits file
         let mut bits_file_path = std::path::PathBuf::from(path);
         bits_file_path.set_extension("bin");
-        let mut bits_file = File::create(bits_file_path)?;
         // Write the allocated bytes bitarray to the file
-        bits_file.write_all(&self.allocated)?;
+        self.allocated.write_to_file(bits_file_path)?;
 
         Ok(())
     }
@@ -335,6 +314,7 @@ impl RomData {
             return Err(RomIoError::OutOfBounds(offset, 1));
         }
 
+        self.allocated.set_bit(offset);
         self.bytes[offset] = value;
         Ok(())
     }
@@ -353,6 +333,9 @@ impl RomData {
         // Write the bytes
         self.bytes[offset] = bytes[0];
         self.bytes[offset + 1] = bytes[1];
+
+        self.allocated.set_bit(offset);
+        self.allocated.set_bit(offset + 1);
         Ok(())
     }
 
@@ -372,6 +355,8 @@ impl RomData {
         self.bytes[offset + 1] = bytes[1];
         self.bytes[offset + 2] = bytes[2];
         self.bytes[offset + 3] = bytes[3];
+
+        self.allocated.set_consecutive_bits(offset, 4);
         Ok(())
     }
 
@@ -415,6 +400,8 @@ impl RomData {
         self.bytes[offset + 1] = bytes[1];
         self.bytes[offset + 2] = bytes[2];
         self.bytes[offset + 3] = bytes[3];
+
+        self.allocated.set_consecutive_bits(offset, 4);
         Ok(())
     }
 
@@ -471,15 +458,28 @@ impl RomData {
     /// data.write(0x00, 0x1234_u16).unwrap();
     /// assert_eq!(data.read_halfword(0x00).unwrap(), 0x1234);
     /// ```
-    pub fn write<T: RomWritableType>(&mut self, offset: Offset, value: T) -> RomIoResult {
-        value.write_to(self, offset)
+    pub fn write<T: RomWritableType + RomSizedType>(
+        &mut self,
+        offset: Offset,
+        value: T,
+    ) -> RomIoResult {
+        value.write_to(self, offset)?;
+        self.allocated
+            .set_consecutive_bits(offset, T::get_size(self));
+
+        Ok(())
     }
 
     /// Clears a value at the given offset.
     ///
     /// The type of the value being cleared must implement [`RomClearableType`].
-    pub fn clear<T: RomClearableType>(&mut self, offset: Offset) -> RomIoResult {
-        T::clear_in(self, offset)
+    pub fn clear<T: RomClearableType + RomSizedType>(&mut self, offset: Offset) -> RomIoResult {
+        T::clear_in(self, offset)?;
+
+        self.allocated
+            .clear_consecutive_bits(offset, T::get_size(self));
+
+        Ok(())
     }
 
     // ANCHOR Utilities
@@ -597,6 +597,7 @@ impl RomData {
 
         // Clear the bytes
         self.bytes[offset..offset + size].fill(0xff);
+        self.allocated.clear_consecutive_bits(offset, size);
 
         Ok(())
     }
@@ -612,10 +613,12 @@ impl RomData {
 
         // Clear the bytes
         self.bytes[offset..offset + size].fill(0);
+        self.allocated.set_consecutive_bits(offset, size);
 
         Ok(())
     }
 
+    /// Find all references to the given bytes in the ROM.
     pub fn find_bytes(&self, bytes: &[u8]) -> Vec<Offset> {
         let mut offsets = Vec::new();
 
@@ -633,38 +636,10 @@ impl RomData {
 
     /// Finds the offset to a free space in the ROM with the given size and alignment.
     pub fn find_free_space(&self, size: usize, align: usize) -> RomIoResult<Offset> {
-        let mut offset = 0;
-
-        // If no data of that size can fit in this ROM
-        if size + offset > self.bytes.len() {
-            return Err(RomIoError::CannotFindSpace(size));
+        match self.allocated.find_free_space(size, align) {
+            Some(offset) => Ok(offset),
+            None => Err(RomIoError::CannotFindSpace(size)),
         }
-
-        'outer: while offset <= self.bytes.len() - size {
-            // If this was a possible free space, but the last bit was not 0xFF,
-            // then we need to skip ahead because no possible sub-window could
-            // be free.
-            if self.bytes[offset + size - 1] != 0xFF {
-                offset += size;
-                continue;
-            }
-
-            // The window ends with 0xFF
-            // Check if the window is free
-            for i in 0..size {
-                if self.bytes[offset + i] != 0xFF {
-                    // An 0xFF was found in the middle of the window
-                    // We can keep looking right after it (aligned)
-                    offset += 1;
-                    offset = (offset + align - 1) & !(align - 1);
-                    continue 'outer;
-                }
-            }
-
-            return Ok(offset);
-        }
-
-        Err(RomIoError::CannotFindSpace(size))
     }
 
     /// Returns free space that can contain `new_size` bytes. If `old_size` is
@@ -825,7 +800,7 @@ type RomIoResult<T = ()> = Result<T, RomIoError>;
 
 #[cfg(test)]
 mod test_romdata_methods {
-    use crate::{RomBase, RomData, RomIoError};
+    use crate::{types::RomPointer, RomBase, RomData, RomIoError};
 
     /// Create a standard ROM for testing.
     ///
@@ -1022,7 +997,7 @@ mod test_romdata_methods {
         assert_eq!(rom.find_free_space(0x100, 4), Ok(0));
 
         // Add a spot at the beginning
-        rom.bytes[0] = 0x00;
+        rom.write_byte(0, 0x00).unwrap();
 
         assert_eq!(rom.find_free_space(0x10, 1), Ok(1));
         assert_eq!(rom.find_free_space(0x10, 2), Ok(2));
@@ -1086,5 +1061,24 @@ mod test_romdata_methods {
         assert_eq!(rom.bytes[5], 0xFF);
         assert_eq!(rom.bytes[6], 0xFF);
         assert_eq!(rom.bytes[7], 0xFF);
+    }
+
+    #[test]
+    fn test_indirect_allocation_sets_bits() {
+        let mut rom = RomData::new(RomBase::FireRed, 0x100);
+
+        rom.write::<RomPointer<u32>>(0, RomPointer::Valid(4, 0x22))
+            .unwrap();
+
+        assert_eq!(rom.read_word(0).unwrap(), 0x08_000_004);
+        assert_eq!(rom.read_word(4).unwrap(), 0x22);
+        assert!(rom.allocated.get_bit(0));
+        assert!(rom.allocated.get_bit(1));
+        assert!(rom.allocated.get_bit(2));
+        assert!(rom.allocated.get_bit(3));
+        assert!(rom.allocated.get_bit(4));
+        assert!(rom.allocated.get_bit(5));
+        assert!(rom.allocated.get_bit(6));
+        assert!(rom.allocated.get_bit(7));
     }
 }
