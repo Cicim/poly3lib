@@ -75,7 +75,7 @@ pub struct MapHeader {
 
 impl MapHeader {
     /// Checks if the [`MapHeader`] is valid.
-    pub(crate) fn is_valid(&self, rom: &Rom) -> bool {
+    pub fn is_valid(&self, rom: &Rom) -> bool {
         // For a MapHeader to be real it has to pass the following checks:
         if !(
             //  1. All pointers must be valid
@@ -91,11 +91,22 @@ impl MapHeader {
             return false;
         }
 
-        //  4. There must be a valid layout offset
+        //  4. There must be a valid layout offset, which means
+        //  4.1  Either it is NULL and the layout_id is 0
+        if self.layout.is_null() {
+            return self.layout_id == 0;
+        }
+        // 4.2 The offset is valid, and aligned to 4
         let layout_offset = match self.layout.offset() {
-            Some(offset) => offset as usize,
+            Some(offset) => {
+                if offset % 4 != 0 {
+                    return false;
+                }
+                offset
+            }
             None => return false,
         };
+
         //  5. The used map layout must be valid
         match rom.data.read::<MapLayout>(layout_offset) {
             Ok(layout) => layout.is_valid(),

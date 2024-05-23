@@ -1,11 +1,9 @@
-use std::collections::HashSet;
-
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use rom_data::{
     types::{RomPointer, RomSizedType},
-    Offset, RomBase, RomIoError,
+    Offset, RomIoError,
 };
 
 use crate::{Rom, RomTable};
@@ -13,6 +11,7 @@ use crate::{Rom, RomTable};
 mod data;
 mod events;
 mod header;
+pub mod loader;
 mod scripts;
 
 // ANCHOR Re-exported types
@@ -182,6 +181,39 @@ impl Rom {
     }
 
     // ANCHOR Dumping
+    /// Iterates over all the map headers in all groups, returning a dump of
+    /// each header with information about which tileset was used.
+    pub fn iter_map_headers<'a>(
+        &'a self,
+    ) -> MapHeaderResult<impl Iterator<Item = MapHeaderDump> + 'a> {
+        let groups_table = get_groups(self)?;
+        let groups_count = groups_table.groups_count();
+
+        // Loop through each group
+        let iter = (0..groups_count).flat_map(move |group| {
+            let maps_count = groups_table.maps_in_group(group).unwrap_or(0);
+            // Loop through each index
+            let iter = (0..maps_count)
+                .map(move |index| {
+                    // Get the header offset
+                    match groups_table.get_header_pointer(group, index) {
+                        // Skip invalid headers
+                        Err(_) => None,
+                        // Read the header from valid pointers
+                        Ok(pointer) => match self.data.read_offset(pointer) {
+                            Ok(offset) => MapHeader::read_to_dump(offset, &self.data, group, index),
+                            Err(_) => None,
+                        },
+                    }
+                })
+                .filter_map(|x| x);
+
+            iter
+        });
+
+        Ok(iter)
+    }
+
     /// Dumps all the map headers in all groups, along with some extra information.
     pub fn dump_map_headers(&self) -> MapHeaderResult<Vec<MapHeaderDump>> {
         let rom = &self.data;
@@ -355,118 +387,8 @@ pub fn init_table(rom: &mut Rom) -> Result<(), RomIoError> {
         return Ok(());
     }
 
-    let table = read_table(rom)?;
+    let table = loader::find_map_groups_in_rom(rom)?;
     rom.refs.map_groups = Some(table);
 
     Ok(())
-}
-
-/// Reads the map groups table from ROM.
-pub(crate) fn read_table(rom: &mut Rom) -> Result<MapGroups, RomIoError> {
-    let table_offset = match rom.base() {
-        RomBase::Emerald => 0x486578,
-        RomBase::FireRed => 0x3526a8,
-        RomBase::LeafGreen => 0x352688,
-        RomBase::Ruby => 0x308588,
-        RomBase::Sapphire => 0x308518,
-    };
-
-    // Read all the map groups
-    let mut groups = vec![];
-
-    for i in 0..256 {
-        let offset = table_offset + i * 4;
-
-        // This is the structure at this point
-        //  offset            -> | group_i_offset | ...
-        //  group_i_offset    -> | header_i_0_offset | header_i_1_offset | ...
-        // We can already read group_i_offset, and we want it to be valid
-        if let Ok(group_offset) = rom.data.read_offset(offset) {
-            if !is_header_pointer_valid(rom, group_offset) {
-                break;
-            }
-            groups.push(RomTable {
-                offset: group_offset,
-                length: 0,
-                references: vec![offset],
-            });
-        } else {
-            // If this offset is already invalid, we can quit
-            break;
-        }
-    }
-
-    compute_groups_sizes(rom, &mut groups);
-
-    Ok(MapGroups {
-        table: RomTable {
-            offset: table_offset,
-            length: groups.len(),
-            references: rom.data.find_references(table_offset, 4),
-        },
-        groups,
-    })
-}
-
-/// Computes the size of each group by counting the number of
-/// valid pointers to headers in it.
-///
-/// Then, shrinks each group so that only the first group contains a map.
-fn compute_groups_sizes(rom: &Rom, groups: &mut [RomTable]) {
-    // Create a set with all the groups offsets to understand
-    // when a group "bleeds" into another.
-    let group_offsets: HashSet<Offset> =
-        HashSet::from_iter(groups.iter().map(|group| group.offset));
-
-    for group in groups {
-        // Start reading the maps
-        for index in 0..256 {
-            let curr_offset = group.offset + index * 4;
-
-            // We assume the first offset will always belong to this group,
-            // but for any other offset, if it appears in the group_offsets
-            // then it must belong to another group.
-            if index > 0 && group_offsets.contains(&curr_offset) {
-                break;
-            }
-
-            // Increase the size while it's valid
-            if is_header_pointer_valid(rom, curr_offset) {
-                group.length += 1;
-            } else {
-                break;
-            }
-        }
-    }
-}
-
-/// Returns true if an header pointer in a group is valid, after
-/// receiving as input the header itself.
-fn is_header_pointer_valid(rom: &Rom, pointer_in_group: Offset) -> bool {
-    // GROUP TABLE
-    // | header_a.b | header_a.c | header a.d
-    //              ^ pointer_in_group
-    // Read the header_offset in the group
-    let header_offset = match rom.data.read::<RomPointer>(pointer_in_group) {
-        Ok(x) => x,
-        Err(_) => return false,
-    };
-
-    // If it is invalid, the table ends here
-    if !header_offset.is_valid() {
-        return false;
-    }
-
-    // If it is not nul
-    if let Some(header_offset) = header_offset.offset() {
-        // If the map header could be read
-        if let Ok(header) = rom.data.read::<MapHeader>(header_offset) {
-            header.is_valid(&rom)
-        } else {
-            // If it could not be read, the groups end here
-            false
-        }
-    } else {
-        true
-    }
 }

@@ -116,6 +116,19 @@ impl<T> RomVector<T> {
             _ => &[],
         }
     }
+
+    /// Is the underlying pointer valid (null is included).
+    pub fn is_valid(&self) -> bool {
+        match self {
+            RomVector::Valid { .. } | RomVector::Clear { .. } | RomVector::Null => true,
+            _ => false,
+        }
+    }
+
+    /// Is the underlying pointer null.
+    pub fn is_null(&self) -> bool {
+        matches!(self, RomVector::Null)
+    }
 }
 
 impl<T: std::fmt::Debug> std::fmt::Debug for RomVector<T> {

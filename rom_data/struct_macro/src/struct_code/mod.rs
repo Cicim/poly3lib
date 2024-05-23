@@ -113,7 +113,7 @@ fn build_field(field: &StructField, vis: &TokenStream) -> TokenStream {
 
         F::Vector(StructVectorField { name, ty, .. }) => {
             let ty = ty.build_to_tokens();
-            quote!(#name: rom_data::types::RomVector<#ty>,)
+            quote!(#vis #name: rom_data::types::RomVector<#ty>,)
         }
     }
 }

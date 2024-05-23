@@ -2,7 +2,7 @@ use image::RgbaImage;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
-use rom_data::{rom_struct, types::RomPointer, RomBase, RomIoError};
+use rom_data::{rom_struct, types::RomPointer, RomIoError};
 
 use crate::{Rom, RomTable};
 
@@ -160,16 +160,8 @@ pub fn init_table(rom: &mut Rom) -> Result<(), RomIoError> {
 
 /// Reads the table of map layouts from the ROM.
 pub(crate) fn read_table(rom: &Rom) -> Result<RomTable, RomIoError> {
-    // TODO Better way to find the layout table offset?
-
     // Get the layout table offset to start from.
-    let table_offset = match rom.base() {
-        RomBase::Emerald => 0x481dd4,
-        RomBase::FireRed => 0x34eb8c,
-        RomBase::LeafGreen => 0x34eb6c,
-        RomBase::Ruby => 0x304f18,
-        RomBase::Sapphire => 0x304ea8,
-    };
+    let table_offset = find_layout_table_offset(rom)?;
 
     RomTable::extract_from(
         table_offset,
@@ -191,4 +183,36 @@ pub(crate) fn read_table(rom: &Rom) -> Result<RomTable, RomIoError> {
         },
         4,
     )
+}
+
+/// Find the offset of the layout table in the ROM
+fn find_layout_table_offset(rom: &Rom) -> Result<usize, RomIoError> {
+    // This is the code before the reference to the layout table
+    // This is the greatest common divisor among the rom bases
+    // label:     ; thus certainly aligned to 4 bytes
+    // 03 48      mov     r0, =(gMapLayouts)
+    // 01 39      sub     r1, #1
+    // 89 00      lsl     r1, r1, #2
+    // 09 18      add     r1, r1, r0
+    // 08 68      ldr     r0, [r1, #0]
+    // 02 BC      pop     { r1 }
+    // 08 47      bx      r1
+    // ?? ??      ; padding to align to 4 bytes
+    //        gMapLayouts:
+    let code_before_reference = [
+        0x03, 0x48, 0x01, 0x39, 0x89, 0x00, 0x09, 0x18, 0x08, 0x68, 0x02, 0xBC, 0x08, 0x47,
+    ];
+    // Find the second part
+    let layout_references = rom.data.find_bytes(&code_before_reference);
+
+    if layout_references.is_empty() {
+        return Err(RomIoError::ReadingInvalidPointer(0, 0));
+    }
+
+    // Note how we add 16 instead of 14, because the reference, being an offset
+    // has to be aligned to 4 bytes.
+    let layout_reference = layout_references[0] + 16;
+
+    // Find the offset at the reference
+    rom.data.read_offset(layout_reference)
 }

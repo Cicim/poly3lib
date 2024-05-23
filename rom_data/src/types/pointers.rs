@@ -70,10 +70,20 @@ impl<T> RomPointer<T> {
     }
 
     /// Returns whether the given offset is valid (writable to ROM).
+    #[inline]
     pub fn is_valid(&self) -> bool {
         match self {
             RomPointer::Invalid(_) => false,
             _ => true,
+        }
+    }
+
+    /// Returns whether the pointer is null.
+    #[inline]
+    pub fn is_null(&self) -> bool {
+        match self {
+            RomPointer::Null => true,
+            _ => false,
         }
     }
 }

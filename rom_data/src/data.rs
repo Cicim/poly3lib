@@ -73,7 +73,11 @@ impl Display for RomBase {
 #[derive(Clone)]
 pub struct RomData {
     pub base: RomBase,
+
+    /// Rom data.
     bytes: Vec<u8>,
+    /// List of bytes that have been allocated (as bitarray)
+    allocated: Vec<u8>,
 }
 
 impl Display for RomData {
@@ -105,7 +109,14 @@ impl RomData {
         // Create the bytes
         let bytes = vec![0xFF; size];
 
-        RomData { base, bytes }
+        // Find the bits that are allocated
+        let allocated = vec![0; (size + 7) / 8];
+
+        RomData {
+            base,
+            bytes,
+            allocated,
+        }
     }
 
     /// Loads the [`RomData`] into memory from a given file path.
@@ -152,7 +163,44 @@ impl RomData {
             }
         };
 
-        Ok(RomData { bytes, base })
+        // Load the allocated bytes bitarray
+        let mut bits_file_path = std::path::PathBuf::from(path);
+        bits_file_path.set_extension("bin");
+
+        if let Ok(mut file) = File::open(bits_file_path) {
+            // Make sure the file's size is correct
+            let file_size = file.metadata().map(|m| m.len() as usize).unwrap_or(0);
+
+            if file_size == (bytes.len() + 7) / 8 {
+                let mut allocated = Vec::new();
+                file.read_to_end(&mut allocated)?;
+
+                return Ok(RomData {
+                    bytes,
+                    base,
+                    allocated,
+                });
+            }
+        }
+
+        // Recompute the allocated bytes bitarray
+        let mut allocated = vec![0; (bytes.len() + 7) / 8];
+
+        // Check if each byte is allocated (not 0xFF)
+        for i in 0..bytes.len() {
+            if bytes[i] != 0xFF {
+                // Set the bit to 1
+                let byte = i / 8;
+                let bit = i % 8;
+                allocated[byte] |= 1 << bit;
+            }
+        }
+
+        Ok(RomData {
+            bytes,
+            base,
+            allocated,
+        })
     }
 
     /// Saves the [`RomData`] to the given path.
@@ -163,6 +211,13 @@ impl RomData {
         let mut file = File::create(path)?;
         // Write the ROM to the file
         file.write_all(&self.bytes)?;
+
+        // Open the bits file
+        let mut bits_file_path = std::path::PathBuf::from(path);
+        bits_file_path.set_extension("bin");
+        let mut bits_file = File::create(bits_file_path)?;
+        // Write the allocated bytes bitarray to the file
+        bits_file.write_all(&self.allocated)?;
 
         Ok(())
     }
@@ -559,6 +614,21 @@ impl RomData {
         self.bytes[offset..offset + size].fill(0);
 
         Ok(())
+    }
+
+    pub fn find_bytes(&self, bytes: &[u8]) -> Vec<Offset> {
+        let mut offsets = Vec::new();
+
+        self.bytes
+            .windows(bytes.len())
+            .enumerate()
+            .for_each(|(i, window)| {
+                if window == bytes {
+                    offsets.push(i);
+                }
+            });
+
+        offsets
     }
 
     /// Finds the offset to a free space in the ROM with the given size and alignment.

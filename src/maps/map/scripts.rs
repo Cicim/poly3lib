@@ -8,7 +8,7 @@ const ON_TRANSITION: u8 = 3;
 const ON_WARP_INTO_MAP: u8 = 4;
 const ON_RESUME: u8 = 5;
 const ON_DIVE_WARP: u8 = 6;
-const ON_RETURN_TO_FIELD: u8 = 7;
+pub(crate) const ON_RETURN_TO_FIELD: u8 = 7;
 const MAX_TYPE_SIZE: usize = (ON_RETURN_TO_FIELD as usize) * 5 + 1;
 
 // ANCHOR Map Scripts
@@ -62,7 +62,7 @@ impl RomReadableType for MapScripts {
         let mut return_to_field = None;
 
         // The form is that of a variable-length list of entries consisting
-        // if one byte for type and then a pointer to the script.
+        // of one byte for type and then a pointer to the script.
         // Only the first script of each type is read.
         let mut read_size = 0;
 
