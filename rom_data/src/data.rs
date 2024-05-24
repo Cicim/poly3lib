@@ -13,7 +13,7 @@ use crate::{
     allocation::AllocatedBytes,
     lz77::Lz77Header,
     types::{RomClearableType, RomReadableType, RomSizedType, RomWritableType, TextError},
-    Lz77DecompressedData, Lz77DecompressionError,
+    Lz77DecompressedData, Lz77DecompressionError, SearchPattern, SearchResult,
 };
 
 /// Maximum space in the ROM section of GBA memory.
@@ -55,11 +55,11 @@ impl Display for RomBase {
         // Different colored strings
         use RomBase as B;
         match self {
-            B::Ruby => write!(f, "{}", "Ruby (AXVE)".red()),
-            B::Sapphire => write!(f, "{}", "Sapphire (AXPE)".blue()),
-            B::FireRed => write!(f, "{}", "Fire Red (BPRE)".bright_red()),
-            B::LeafGreen => write!(f, "{}", "Leaf Green (BPGE)".bright_green()),
-            B::Emerald => write!(f, "{}", "Emerald (BPEE)".green()),
+            B::Ruby => write!(f, "{}", "Ruby".red()),
+            B::Sapphire => write!(f, "{}", "Sapphire".blue()),
+            B::FireRed => write!(f, "{}", "Fire Red".bright_red()),
+            B::LeafGreen => write!(f, "{}", "Leaf Green".bright_green()),
+            B::Emerald => write!(f, "{}", "Emerald".green()),
         }
     }
 }
@@ -85,7 +85,18 @@ impl Display for RomData {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let size = self.size();
         let size = (size as f32) / 1024.0 / 1024.0;
-        write!(f, "ROM: {} ({:.2} MB)", self.base, size)
+
+        let code = self.bytes[0xAC..0xB0]
+            .iter()
+            .map(|x| *x as char)
+            .collect::<String>();
+        let name = self.name();
+
+        write!(
+            f,
+            "ROM: {} ({}, {}) ({:.2} MB)",
+            self.base, code, name, size
+        )
     }
 }
 
@@ -146,11 +157,11 @@ impl RomData {
 
         // Determine the ROM type
         let base = match &bytes[0xAC..0xB0] {
-            b"AXVE" => RomBase::Ruby,
-            b"AXPE" => RomBase::Sapphire,
-            b"BPRE" => RomBase::FireRed,
-            b"BPGE" => RomBase::LeafGreen,
-            b"BPEE" => RomBase::Emerald,
+            b"AXVE" | b"AXVD" | b"AXVS" | b"AXVF" | b"AXVI" => RomBase::Ruby,
+            b"AXPE" | b"AXPD" | b"AXPS" | b"AXPF" | b"AXPI" => RomBase::Sapphire,
+            b"BPRE" | b"BPRD" | b"BPRS" | b"BPRF" | b"BPRI" => RomBase::FireRed,
+            b"BPGE" | b"BPGD" | b"BPGS" | b"BPGF" | b"BPGI" => RomBase::LeafGreen,
+            b"BPEE" | b"BPED" | b"BPES" | b"BPEF" | b"BPEI" => RomBase::Emerald,
             code => {
                 // If there is any character that is not an ASCII uppercase
                 return if code.iter().any(|x| !x.is_ascii_uppercase()) {
@@ -618,6 +629,15 @@ impl RomData {
         Ok(())
     }
 
+    /// Finds the offset to a free space in the ROM with the given size and alignment.
+    pub fn find_free_space(&self, size: usize, align: usize) -> RomIoResult<Offset> {
+        match self.allocated.find_free_space(size, align) {
+            Some(offset) => Ok(offset),
+            None => Err(RomIoError::CannotFindSpace(size)),
+        }
+    }
+
+    /// ANCHOR Search functions
     /// Find all references to the given bytes in the ROM.
     pub fn find_bytes(&self, bytes: &[u8]) -> Vec<Offset> {
         let mut offsets = Vec::new();
@@ -634,12 +654,10 @@ impl RomData {
         offsets
     }
 
-    /// Finds the offset to a free space in the ROM with the given size and alignment.
-    pub fn find_free_space(&self, size: usize, align: usize) -> RomIoResult<Offset> {
-        match self.allocated.find_free_space(size, align) {
-            Some(offset) => Ok(offset),
-            None => Err(RomIoError::CannotFindSpace(size)),
-        }
+    /// Find the first occurrence of a pattern and return its offset
+    /// and the match groups.
+    pub fn find_pattern(&self, pattern: &SearchPattern) -> Option<SearchResult> {
+        pattern.find(&self.bytes)
     }
 
     /// Returns free space that can contain `new_size` bytes. If `old_size` is

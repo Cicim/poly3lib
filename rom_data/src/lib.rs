@@ -3,6 +3,7 @@
 pub(crate) mod allocation;
 pub(crate) mod data;
 pub(crate) mod lz77;
+pub(crate) mod pattern_search;
 
 // Tests
 #[cfg(test)]
@@ -15,6 +16,7 @@ pub mod values;
 // Re-exports
 pub use data::{Offset, Pointer, RomBase, RomData, RomFileError, RomIoError};
 pub use lz77::{Lz77DecompressedData, Lz77DecompressionError};
+pub use pattern_search::{SearchPart, SearchPattern, SearchResult};
 
 // Re-export the struct macro
 pub use struct_macro::rom_struct;
