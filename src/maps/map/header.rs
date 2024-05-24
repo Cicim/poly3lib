@@ -114,47 +114,6 @@ impl MapHeader {
         }
     }
 
-    /// Reads the map header at the given offset into a [`MapHeaderDump`] struct.
-    pub(crate) fn read_to_dump(
-        offset: Offset,
-        rom: &RomData,
-        group: u8,
-        index: u8,
-    ) -> Option<MapHeaderDump> {
-        // Read the header
-        match rom.read::<MapHeader>(offset) {
-            Ok(header) => {
-                let (tileset1, tileset2) = header.read_tilesets_offsets(rom);
-
-                Some(MapHeaderDump {
-                    group,
-                    index,
-                    offset,
-                    header,
-                    tileset1,
-                    tileset2,
-                })
-            }
-            // Skip invalid headers
-            Err(_) => None,
-        }
-    }
-
-    /// Reads the offsets of the tilesets used by this map's layout.
-    ///
-    /// Faster, since it does not read the entire layout struct.
-    fn read_tilesets_offsets(&self, rom: &RomData) -> (Option<Offset>, Option<Offset>) {
-        // Read the tilesets from the layout (only if present)
-        if let Some(layout_offset) = self.layout.offset() {
-            (
-                rom.read_offset(layout_offset + 16).ok(),
-                rom.read_offset(layout_offset + 20).ok(),
-            )
-        } else {
-            (None, None)
-        }
-    }
-
     /// Read the map layout data for this map.
     pub fn read_layout_data(&self, rom: &Rom) -> Result<MapLayoutData, MapLayoutError> {
         rom.read_map_layout(self.layout_id)
@@ -162,14 +121,12 @@ impl MapHeader {
 }
 
 #[derive(Debug, Serialize)]
-/// A [`MapHeader`] with its group, index and offset and layout's tilesets.
-pub struct MapHeaderDump {
+/// A [`MapHeader`] with its group, index and offset.
+pub struct MapHeaderAnnotated {
     pub group: u8,
     pub index: u8,
     pub offset: Offset,
     pub header: MapHeader,
-    pub tileset1: Option<Offset>,
-    pub tileset2: Option<Offset>,
 }
 
 // ANCHOR RomType implementations

@@ -6,7 +6,10 @@ use rom_data::{rom_struct, types::RomPointer, RomIoError};
 
 use crate::{Rom, RomTable};
 
-use super::tileset::{MapTilesetError, TilesetPair, TilesetPairRenderingData};
+use super::{
+    tileset::{MapTilesetError, TilesetPair, TilesetPairRenderingData},
+    ProblemsLog,
+};
 
 /// Functions for reading the map grid (metatile, elevation and collision) from ROM.
 mod mapgrid;
@@ -146,43 +149,106 @@ pub enum MapLayoutError {
 
 // ANCHOR Init function
 /// Initializes the table of map layouts in the ROM if it is not already initialized.
-pub fn init_table(rom: &mut Rom) -> Result<(), RomIoError> {
+pub fn init_table(rom: &mut Rom, log: &mut ProblemsLog) -> Result<(), RomIoError> {
     // If already initialized, return
     if rom.refs.map_layouts.is_some() {
         return Ok(());
     }
 
-    let table = read_table(rom)?;
+    let table = read_table(rom, log)?;
     rom.refs.map_layouts = Some(table);
 
     Ok(())
 }
 
+#[derive(PartialEq, Eq)]
+enum MapLayoutProblem {
+    /// The map layout is correct.
+    Ok = 0,
+
+    /// The pointer to the layout is NULL
+    NullPointer,
+
+    /// The pointer is valid, but the layout has some problem
+    InvalidMapLayout,
+}
+
+impl std::fmt::Debug for MapLayoutProblem {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Ok => write!(f, "O"),
+            Self::NullPointer => write!(f, "N"),
+            Self::InvalidMapLayout => write!(f, "I"),
+        }
+    }
+}
+
 /// Reads the table of map layouts from the ROM.
-pub(crate) fn read_table(rom: &Rom) -> Result<RomTable, RomIoError> {
+pub(crate) fn read_table(rom: &Rom, log: &mut ProblemsLog) -> Result<RomTable, RomIoError> {
     // Get the layout table offset to start from.
     let table_offset = find_layout_table_offset(rom)?;
 
-    RomTable::extract_from(
-        table_offset,
-        &rom.data,
-        |data, offset| {
-            let word = data.read_word(offset)?;
-            // Accept NULL pointers
-            if word == 0 {
-                return Ok(true);
-            }
+    // The problem with each layout, if any.
+    let mut problems = Vec::new();
 
-            match RomPointer::from_pointer(word, data).offset() {
-                Some(offset) => {
-                    let header: MapLayout = data.read(offset)?;
-                    Ok(header.is_valid())
+    // Loop through all possible offsets
+    for i in 0..65535 {
+        let pointer = table_offset + 0x4 * i;
+
+        // Try to read the pointer at the given offset
+        if let Ok(pointer) = rom.data.read::<RomPointer<MapLayout>>(pointer) {
+            let problem = match pointer {
+                RomPointer::Null => MapLayoutProblem::NullPointer,
+                RomPointer::Invalid(_) => break,
+                RomPointer::Valid(_, layout) => {
+                    if layout.is_valid() {
+                        MapLayoutProblem::Ok
+                    } else {
+                        MapLayoutProblem::InvalidMapLayout
+                    }
                 }
-                None => Ok(false),
-            }
-        },
-        4,
-    )
+                // Should be unreachable
+                RomPointer::NoData(_) => {
+                    log.push_error("map_layouts", "Reached NoData branch for some reason");
+                    break;
+                }
+            };
+
+            problems.push(problem);
+        };
+    }
+
+    // Shave any invalid pointer at the end of the layouts.
+    while let Some(problem) = problems.last() {
+        if problem != &MapLayoutProblem::Ok {
+            problems.pop();
+        } else {
+            break;
+        }
+    }
+
+    // for i in 0..problems.len() {
+    //     if i % 128 == 0 && i != 0 {
+    //         println!();
+    //     }
+    //     print!("{:?}", problems[i]);
+    // }
+    // println!();
+
+    if let Some(message) = identify_problem(
+        &problems,
+        MapLayoutProblem::InvalidMapLayout,
+        "invalid map layouts",
+        5,
+    ) {
+        log.push_warning("map_layouts", message);
+    }
+
+    Ok(RomTable {
+        offset: table_offset,
+        length: problems.len(),
+        references: rom.data.find_references(table_offset, 4),
+    })
 }
 
 /// Find the offset of the layout table in the ROM
@@ -215,4 +281,44 @@ fn find_layout_table_offset(rom: &Rom) -> Result<usize, RomIoError> {
 
     // Find the offset at the reference
     rom.data.read_offset(layout_reference)
+}
+
+/// Get a log message for a problem if necessary.
+fn identify_problem(
+    problems: &[MapLayoutProblem],
+    problem_type: MapLayoutProblem,
+    problem_name: &str,
+    max_show: usize,
+) -> Option<String> {
+    let found: Vec<usize> = problems
+        .iter()
+        .enumerate()
+        .filter_map(|(i, problem)| {
+            if problem == &problem_type {
+                Some(i)
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    if found.is_empty() {
+        return None;
+    }
+
+    let count = found.len();
+    // Take the first max_show indices to show
+    let mut first_indices = found
+        .into_iter()
+        .take(max_show)
+        .map(|x| format!("{x}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    if count > max_show {
+        first_indices += ", ...";
+    }
+
+    return Some(format!(
+        "Found {count} {problem_name} (indices {first_indices})"
+    ));
 }

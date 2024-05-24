@@ -28,7 +28,7 @@ impl Rom {
         map::init_table(self).unwrap_or_else(push_error!("map_groups"));
 
         // Initialize the map layout table
-        layout::init_table(self).unwrap_or_else(push_error!("map_layouts"));
+        layout::init_table(self, &mut log).unwrap_or_else(push_error!("map_layouts"));
 
         // Load the tileset data
         tileset::init_info(self, &mut log).unwrap_or_else(push_error!("map_tilesets"));

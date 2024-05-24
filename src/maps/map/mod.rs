@@ -19,7 +19,7 @@ pub use data::{MapConnections, MapData};
 pub use events::{
     BgEvent, BgEventData, CoordEvent, MapEvents, ObjectEvent, ObjectEventData, WarpEvent,
 };
-pub use header::{MapHeader, MapHeaderDump};
+pub use header::{MapHeader, MapHeaderAnnotated};
 pub use scripts::{MapScripts, MapScriptsSubTable, ScriptWithVars};
 
 /// Helper type for the result of map header operations.
@@ -180,79 +180,76 @@ impl Rom {
         Ok(())
     }
 
-    // ANCHOR Dumping
-    /// Iterates over all the map headers in all groups, returning a dump of
-    /// each header with information about which tileset was used.
+    // ANCHOR Data mining.
+    /// Iterates over all the map headers in all groups, returning a [`MapHeaderAnnotated`]
+    /// struct which contains group, index and offset together with the map header data.
+    ///
+    ///
+    /// ```no_run
+    /// let musics = rom.iter_map_headers().unwrap()
+    ///     .map(|MapHeaderAnnotated {group, index, header, ..}| (group, index, header.music))
+    ///     .collect::<Vec<_>>();
+    /// ```
     pub fn iter_map_headers<'a>(
         &'a self,
-    ) -> MapHeaderResult<impl Iterator<Item = MapHeaderDump> + 'a> {
+    ) -> MapHeaderResult<impl Iterator<Item = MapHeaderAnnotated> + 'a> {
         let groups_table = get_groups(self)?;
         let groups_count = groups_table.groups_count();
 
         // Loop through each group
         let iter = (0..groups_count).flat_map(move |group| {
             let maps_count = groups_table.maps_in_group(group).unwrap_or(0);
+
             // Loop through each index
-            let iter = (0..maps_count)
+            (0..maps_count)
                 .map(move |index| {
                     // Get the header offset
-                    match groups_table.get_header_pointer(group, index) {
-                        // Skip invalid headers
-                        Err(_) => None,
-                        // Read the header from valid pointers
-                        Ok(pointer) => match self.data.read_offset(pointer) {
-                            Ok(offset) => MapHeader::read_to_dump(offset, &self.data, group, index),
-                            Err(_) => None,
-                        },
-                    }
+                    groups_table
+                        // Get the MapHeader**
+                        .get_header_pointer(group, index)
+                        .ok()
+                        // Then get the MapHeader*
+                        .and_then(|pointer| self.data.read_offset(pointer).ok())
+                        // The read the map header and return it together with the offset, group and index.
+                        .and_then(|offset| {
+                            self.data.read::<MapHeader>(offset).ok().map(|header| {
+                                MapHeaderAnnotated {
+                                    group,
+                                    index,
+                                    offset,
+                                    header,
+                                }
+                            })
+                        })
                 })
-                .filter_map(|x| x);
-
-            iter
+                .filter_map(|x| x)
         });
 
         Ok(iter)
     }
 
-    /// Dumps all the map headers in all groups, along with some extra information.
-    pub fn dump_map_headers(&self) -> MapHeaderResult<Vec<MapHeaderDump>> {
-        let rom = &self.data;
-        let groups_table = get_groups(self)?;
-
-        // Loop through each group and each index
-        let mut dump = Vec::new();
-        for (group, group_table) in groups_table.groups.iter().enumerate() {
-            let group = group as u8;
-
-            for index in 0..group_table.length as u8 {
-                // Get the header offset
-                let pointer = groups_table.get_header_pointer(group, index)?;
-
-                match rom.read::<RomPointer>(pointer)?.offset() {
-                    // Skip invalid pointers
-                    None => continue,
-                    // Read the header from valid pointers
-                    Some(offset) => match MapHeader::read_to_dump(offset, rom, group, index) {
-                        Some(header_dump) => dump.push(header_dump),
-                        None => continue,
-                    },
-                }
-            }
-        }
-
-        Ok(dump)
-    }
-    /// Dumps a single map header.
-    pub fn dump_map_header(&self, group: u8, index: u8) -> MapHeaderResult<MapHeaderDump> {
+    /// Returns a single map header with its group, index and offset.
+    pub fn read_annotated_map_header(
+        &self,
+        group: u8,
+        index: u8,
+    ) -> MapHeaderResult<MapHeaderAnnotated> {
         // Get the pointer
         let table = get_groups(self)?;
         let pointer = table.get_header_pointer(group, index)?;
 
         // Read the offset at the pointer
         let offset = self.data.read_offset(pointer)?;
-        // Dump the map header
-        MapHeader::read_to_dump(offset, &self.data, group, index)
-            .ok_or(MapError::InvalidIndex(group, index))
+
+        // Try to read the header
+        let header = self.data.read::<MapHeader>(offset)?;
+
+        Ok(MapHeaderAnnotated {
+            group,
+            index,
+            offset,
+            header,
+        })
     }
 }
 
